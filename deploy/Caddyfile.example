@@ -1,0 +1,8 @@
+# Reference Caddyfile (the setup script writes this for you to /etc/caddy/Caddyfile).
+# Caddy fetches and auto-renews a free HTTPS certificate for these names.
+# Replace example.com with your domain.
+
+example.com, www.example.com {
+    encode zstd gzip
+    reverse_proxy localhost:3000
+}

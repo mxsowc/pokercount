@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0f0d" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <title>pokercount — home game tracker</title>
+  <link rel="stylesheet" href="/app.css" />
+  <script>try { if (localStorage.getItem('pc_splashed')) document.documentElement.classList.add('no-splash'); } catch (e) {}</script>
+</head>
+<body>
+  <!-- Intro splash: poker chips shuffling together (first welcome of the session) -->
+  <div class="splash" id="splash">
+    <div class="chip-loader">
+      <div class="pchip" style="--x0:-80px;--y0:-11px;--r0:-11deg;--ym:-30px;background:#d64545;z-index:6"></div>
+      <div class="pchip" style="--x0:80px;--y0:-11px;--r0:11deg;--ym:-18px;background:#e08a2b;z-index:5"></div>
+      <div class="pchip" style="--x0:-80px;--y0:0;--r0:-11deg;--ym:-6px;background:#2f9e6e;z-index:4"></div>
+      <div class="pchip" style="--x0:80px;--y0:0;--r0:11deg;--ym:6px;background:#3a78d6;z-index:3"></div>
+      <div class="pchip" style="--x0:-80px;--y0:11px;--r0:-11deg;--ym:18px;background:#f4c451;z-index:2"></div>
+      <div class="pchip" style="--x0:80px;--y0:11px;--r0:11deg;--ym:30px;background:#1c1c1c;z-index:1"></div>
+    </div>
+    <div class="splash-word">poker<b>count</b></div>
+  </div>
+  <script>
+    (function () {
+      var s = document.getElementById('splash');
+      if (!s) return;
+      var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (document.documentElement.classList.contains('no-splash') || reduce) { s.remove(); return; }
+      try { localStorage.setItem('pc_splashed', '1'); } catch (e) {}
+      function hide() { s.classList.add('hide'); setTimeout(function () { s.remove(); }, 550); }
+      s.addEventListener('click', hide);     // tap to skip
+      setTimeout(hide, 2100);
+    })();
+  </script>
+
+  <div class="topbar">
+    <div class="brand">poker<b>count</b></div>
+    <nav><a class="pill pot-link" href="/pot"><svg class="cardstack" width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.6" y="5.2" width="8.4" height="11.6" rx="2" transform="rotate(-11 6.8 11)" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/><rect x="8.6" y="3.4" width="8.4" height="11.6" rx="2" transform="rotate(10 12.8 9.2)" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/><path d="M12.8 7.4l1.1 1.9-1.1 1.9-1.1-1.9z" fill="currentColor"/></svg>Split</a><span id="nav-me"></span></nav>
+  </div>
+  <script type="module" src="/js/nav.js"></script>
+
+  <div class="wrap">
+    <!-- INTRO -->
+    <section id="view-intro">
+      <h1 class="wordmark">poker<b>count</b></h1>
+      <p class="muted">Track buy-ins and top-ups. At the end it works out who pays who — and who had the best night.</p>
+
+      <div id="recent-wrap" hidden>
+        <h3 style="margin-top:24px">Your games</h3>
+        <div id="recent"></div>
+      </div>
+
+      <div class="stack" style="margin-top:24px">
+        <button id="go-open" style="width:100%; padding:18px; font-size:1.1rem">Open a game</button>
+        <button id="go-join" class="secondary" style="width:100%; padding:18px; font-size:1.1rem">Join a game</button>
+      </div>
+      <p class="hint center" style="margin-top:16px">Games live on the server — anyone with the code can keep adding and settle later, even after the host closes the app.</p>
+      <p class="center small" style="margin-top:16px"><a href="/pot">Just need to split a pot? →</a></p>
+    </section>
+
+    <!-- OPEN -->
+    <section id="view-open" hidden>
+      <button class="ghost small" data-back style="margin-bottom:12px">← Back</button>
+      <h1>Open a game</h1>
+      <p class="muted">You’ll get a code to share. Everyone else just joins with it.</p>
+      <div class="card">
+        <label>Your name</label>
+        <input id="o-you" placeholder="e.g. Max" maxlength="40" />
+        <label>Game name</label>
+        <input id="o-name" placeholder="Friday Night PLO" />
+        <details style="margin-top:12px">
+          <summary class="small muted" style="cursor:pointer">More options</summary>
+          <div class="row" style="margin-top:8px">
+            <div>
+              <label>Custom code (optional)</label>
+              <input id="o-code" inputmode="numeric" placeholder="auto e.g. 2137" maxlength="6" />
+            </div>
+            <div>
+              <label>Extra empty seats</label>
+              <input id="o-seats" type="number" inputmode="numeric" min="0" max="20" value="0" />
+            </div>
+          </div>
+          <p class="hint">Empty seats are for setting up the whole table yourself. Otherwise leave 0 and let people join.</p>
+        </details>
+        <button id="open-btn" style="width:100%; margin-top:16px">Open game</button>
+      </div>
+    </section>
+
+    <!-- JOIN -->
+    <section id="view-join" hidden>
+      <button class="ghost small" data-back style="margin-bottom:12px">← Back</button>
+      <h1>Join a game</h1>
+      <p class="muted">Enter the code the host shared and your name — you’ll be seated automatically.</p>
+      <div class="card">
+        <label>Game code</label>
+        <input id="j-code" inputmode="numeric" placeholder="2137" style="letter-spacing:.15em; font-size:1.3rem" maxlength="6" />
+        <label>Your name</label>
+        <input id="j-you" placeholder="e.g. Max" maxlength="40" />
+        <button id="join-btn" style="width:100%; margin-top:16px">Join game</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { api, toast, getActor, setActorName, setMyPlayerId, rememberGame, listMyGames, forgetGame, patchGame } from '/js/api.js';
+
+    const views = { intro: 'view-intro', open: 'view-open', join: 'view-join' };
+    function show(v) {
+      for (const [k, id] of Object.entries(views)) document.getElementById(id).hidden = k !== v;
+    }
+
+    // ---- Continue a game (recent games on this device) ----
+    function ago(ts) {
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 3600) return Math.max(1, Math.floor(s / 60)) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86400) + 'd ago';
+    }
+    function esc(x) { return String(x ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function renderRecent() {
+      const games = listMyGames();
+      document.getElementById('recent-wrap').hidden = games.length === 0;
+      document.getElementById('recent').innerHTML = games.map((g) => {
+        const ended = g.status === 'ended' || g.status === 'settled';
+        const tag = g.status === 'settled' ? ' · settled' : (g.status === 'ended' ? ' · ended' : '');
+        const action = ended ? '<span class="pill">View →</span>' : '<span class="pill win">Continue →</span>';
+        return `
+        <a class="player" href="/game?g=${g.id}" style="text-decoration:none; color:inherit">
+          <div>
+            <div class="name">${esc(g.name || 'Home Game')} <span class="code-badge" style="font-size:.9rem">#${g.id}</span></div>
+            <div class="meta">${g.you ? 'you: ' + esc(g.you) + ' · ' : ''}${g.players} players · ${ago(g.at)}${tag}</div>
+          </div>
+          <span style="display:flex; gap:8px; align-items:center">
+            ${action}
+            <button class="small danger" data-forget="${g.id}">✕</button>
+          </span>
+        </a>`;
+      }).join('');
+      document.querySelectorAll('[data-forget]').forEach((b) =>
+        b.addEventListener('click', (e) => {
+          e.preventDefault();
+          const g = listMyGames().find((x) => x.id === b.dataset.forget);
+          const ok = confirm(
+            `Remove “${(g && g.name) || 'Home Game'}” (#${b.dataset.forget}) from your list?\n\n` +
+            '• It’s only hidden from “Continue a game” on this device.\n' +
+            '• It stays in your stats.\n' +
+            '• The other players still have the full game.\n\n' +
+            'You can always get back in with the game code.'
+          );
+          if (ok) { forgetGame(b.dataset.forget); renderRecent(); }
+        }));
+    }
+    renderRecent();
+
+    // Refresh each remembered game from the server: update its live status (so
+    // the action reads "Continue" vs "View"), and drop ones that 404 — but never
+    // on a network error, so a server hiccup doesn't wipe the list.
+    async function refreshRecent() {
+      let changed = false;
+      await Promise.all(listMyGames().map(async (g) => {
+        try {
+          const live = await api.getGame(g.id);
+          patchGame(g.id, { name: live.name, players: live.players.length, status: live.status });
+          changed = true;
+        } catch (e) {
+          if (String(e.message).toLowerCase().includes('not found')) { forgetGame(g.id); changed = true; }
+        }
+      }));
+      if (changed) renderRecent();
+    }
+    refreshRecent();
+    document.getElementById('go-open').onclick = () => { show('open'); prefill('o-you'); };
+    document.getElementById('go-join').onclick = () => { show('join'); prefill('j-you'); document.getElementById('j-code').focus(); };
+    document.querySelectorAll('[data-back]').forEach((b) => (b.onclick = () => show('intro')));
+
+    function prefill(elId) {
+      const n = getActor().name;
+      if (n) document.getElementById(elId).value = n;
+    }
+
+    // ---- Open ----
+    document.getElementById('open-btn').onclick = async () => {
+      const you = document.getElementById('o-you').value.trim();
+      if (!you) return toast('Enter your name');
+      setActorName(you);
+      const name = document.getElementById('o-name').value.trim();
+      const code = document.getElementById('o-code').value.replace(/[^0-9]/g, '');
+      const seats = Math.max(0, Math.min(20, parseInt(document.getElementById('o-seats').value, 10) || 0));
+      const players = [{ name: you }];
+      for (let i = 0; i < seats; i++) players.push({ name: `Player ${i + 2}` });
+      try {
+        const game = await api.createGame({ name, players, code: code || undefined });
+        setMyPlayerId(game.id, game.players[0].id); // host is seat 1
+        rememberGame(game);
+        location.href = `/game?g=${game.id}&new=1`;
+      } catch (e) { toast(e.message); }
+    };
+
+    // ---- Join ----
+    async function join() {
+      const code = document.getElementById('j-code').value.replace(/[^0-9]/g, '');
+      const you = document.getElementById('j-you').value.trim();
+      if (code.length < 3) return toast('Enter the game code');
+      if (!you) return toast('Enter your name');
+      setActorName(you);
+      try {
+        const { game, playerId } = await api.joinGame(code, you); // self-join (linked if signed in)
+        setMyPlayerId(code, playerId);
+        rememberGame(game);
+        location.href = `/game?g=${code}`;
+      } catch (e) { toast(e.message.includes('not found') ? `No game with code #${code}` : e.message); }
+    }
+    document.getElementById('join-btn').onclick = join;
+    document.getElementById('j-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+    document.getElementById('j-you').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+  </script>
+</body>
+</html>
