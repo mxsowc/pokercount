@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createHmac, randomBytes, createPublicKey, verify as cryptoVerify, timingSafeEqual } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
+const DATA_DIR = process.env.PC_DATA_DIR || join(__dirname, '..', 'data');
 const SECRET_FILE = join(DATA_DIR, '.session-secret');
 const COOKIE = 'pc_session';
 const MAX_AGE = 60 * 60 * 24 * 365; // 1 year
@@ -79,6 +79,22 @@ export function sessionCookie(uid, req) {
 export function clearCookie(req) {
   const secure = secureFor(req) ? '; Secure' : '';
   return `${COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
+}
+
+// ---- Anonymous host tokens ---------------------------------------------------
+// An anonymous game has no account behind it, so "are you the host?" can't lean
+// on a session. Instead the creator gets a token derived from the game id and
+// the server secret — unguessable and not stored in (or derivable from) the
+// publicly-served game body, unlike the old plaintext hostId. The holder of the
+// token is the host; everyone else with the code is just a player.
+export function signGameToken(gameId) {
+  return hmac('host:' + gameId);
+}
+export function verifyGameToken(token, gameId) {
+  if (!token) return false;
+  const expected = Buffer.from(signGameToken(gameId));
+  const provided = Buffer.from(String(token));
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
 // ---- Google ID token verification -------------------------------------------

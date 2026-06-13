@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
+// Overridable so tests (and alternate deployments) can point at an isolated dir.
+const DATA_DIR = process.env.PC_DATA_DIR || join(__dirname, '..', 'data');
 
 // Internal ids (players, transactions, log lines) use this alphabet.
 const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -76,7 +77,7 @@ function persist(game) {
 export function init() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   for (const f of readdirSync(DATA_DIR)) {
-    if (!f.endsWith('.json') || f === 'users.json') continue;
+    if (!f.endsWith('.json') || f === 'users.json' || f === 'follows.json') continue;
     try {
       const game = JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8'));
       if (!Array.isArray(game.log)) game.log = []; // backfill older saves
@@ -127,7 +128,8 @@ export function createGame({ name, unit, players, code }) {
     log: [],
   };
   for (const p of players || []) {
-    if (p && p.name) game.players.push({ id: uid(6), name: String(p.name).slice(0, 40) });
+    const nm = p && p.name != null ? String(p.name).trim() : '';
+    if (nm) game.players.push({ id: uid(6), name: nm.slice(0, 40) });
   }
   games.set(id, game);
   persist(game);

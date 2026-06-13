@@ -136,8 +136,14 @@ function showdown(amount, eligible, runout, game, hiLo) {
     }
   }
 
-  // Best high among eligible players.
-  const highScores = eligible.map((p) => ({ p, score: bestHigh(p.hole, runout, game) }));
+  // Best high among eligible players. A player who can't form a legal hand (too
+  // few hole cards for the game) yields a null score — fail loudly rather than
+  // let it reach cmp() as a cryptic null-deref.
+  const highScores = eligible.map((p) => {
+    const score = bestHigh(p.hole, runout, game);
+    if (score === null) throw new Error(`Player ${p.id} cannot form a hand at showdown (too few cards)`);
+    return { p, score };
+  });
   const highWinners = topByCmp(highScores, (a, b) => cmp(a, b)); // ties included
   const highHand = highHandName(highWinners[0].score);
 

@@ -12,7 +12,7 @@
 // Hand strength uses the same evaluator the pot engine does (Hold'em best-5-of-7,
 // Omaha exactly 2+3; low = 8-or-better), which is already test-covered.
 
-import { parseCard, parseCards, combinations } from './cards.js';
+import { parseCard, parseCards, combinations, assertNoDuplicates } from './cards.js';
 import { bestHigh, bestLow } from './select.js';
 import { cmp } from './evaluate.js';
 
@@ -81,6 +81,11 @@ export function equityAt({ game, players, board, hiLo = false }) {
   if (known.length < 3 || known.length > 5) throw new Error('board must be 3–5 cards');
   if (!players || players.length < 2) throw new Error('need at least two players');
   const holes = players.map((p) => parseCards(p.hole));
+
+  // No card may appear twice across the board and every hole — otherwise we'd
+  // enumerate impossible runouts and return fabricated equity. (resolve() guards
+  // its deals the same way.)
+  assertNoDuplicates(known, ...holes);
 
   const used = new Set([...known, ...holes.flat()].map((c) => c.str));
   const deck = fullDeck().filter((s) => !used.has(s)).map(parseCard);

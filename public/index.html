@@ -50,6 +50,7 @@
 
       <div id="recent-wrap" hidden>
         <h3 style="margin-top:24px">Your games</h3>
+        <p class="hint" style="margin-top:-4px">Remembered on this device — they stay here whether or not you’re signed in.</p>
         <div id="recent"></div>
       </div>
 
@@ -105,7 +106,7 @@
   </div>
 
   <script type="module">
-    import { api, toast, getActor, setActorName, setMyPlayerId, rememberGame, listMyGames, forgetGame, patchGame } from '/js/api.js';
+    import { api, toast, getActor, setActorName, setMyPlayerId, setHostToken, rememberGame, listMyGames, forgetGame, patchGame } from '/js/api.js';
 
     const views = { intro: 'view-intro', open: 'view-open', join: 'view-join' };
     function show(v) {
@@ -166,7 +167,9 @@
           patchGame(g.id, { name: live.name, players: live.players.length, status: live.status });
           changed = true;
         } catch (e) {
-          if (String(e.message).toLowerCase().includes('not found')) { forgetGame(g.id); changed = true; }
+          // Only a real 404 means the game is gone — drop it. Any other failure
+          // (offline, 5xx, 429 rate-limit) is transient: leave the list untouched.
+          if (e.status === 404) { forgetGame(g.id); changed = true; }
         }
       }));
       if (changed) renderRecent();
@@ -194,6 +197,7 @@
       try {
         const game = await api.createGame({ name, players, code: code || undefined });
         setMyPlayerId(game.id, game.players[0].id); // host is seat 1
+        setHostToken(game.id, game.hostToken);      // proof we can reopen it later
         rememberGame(game);
         location.href = `/game?g=${game.id}&new=1`;
       } catch (e) { toast(e.message); }

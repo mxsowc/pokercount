@@ -1,4 +1,4 @@
-import { api, subscribe, toast, money, getActor, setActorName, getMyPlayerId, setMyPlayerId, rememberGame, forgetGame } from '/js/api.js';
+import { api, subscribe, toast, money, getActor, setActorName, getMyPlayerId, setMyPlayerId, getHostToken, rememberGame, forgetGame } from '/js/api.js';
 import { computeSettlement } from '/src/settle.js';
 import { haptic, celebrate, animateCounts } from '/js/fx.js';
 
@@ -72,6 +72,7 @@ function render() {
   const allEntered = game.players.length > 0 && game.players.every((p) => game.finalStacks[p.id] != null);
   const me = getActor().name;
   const amHost = !game.hostId
+    || !!getHostToken(id) // the device that opened it holds the signed host token
     || game.hostId === getActor().id
     || (myAccount && (game.ownerId === myAccount.id || game.hostId === 'user:' + myAccount.id));
   const defaultBuyin = localStorage.getItem('pc_default_buyin') || 20;
@@ -754,12 +755,27 @@ joinModal.querySelector('#join-watch').addEventListener('click', () => {
   render();
 });
 
+// ---- live-sync status banner -------------------------------------------------
+// Surface SSE connection drops instead of letting the screen go silently stale.
+function setLiveStatus(msg) {
+  let el = document.getElementById('live-status');
+  if (!msg) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'live-status';
+    el.className = 'banner warn';
+    el.style.cssText = 'position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:50; max-width:90vw';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+}
+
 // ---- boot --------------------------------------------------------------------
 (async () => {
   try {
     game = await api.getGame(id);
   } catch (e) {
-    const missing = String(e.message || '').toLowerCase().includes('not found');
+    const missing = e.status === 404;
     if (missing) {
       forgetGame(id); // drop the dead link from "Continue a game"
       app.innerHTML = `<div class="banner warn">Game <b>#${esc(id)}</b> no longer exists, so it's been removed from your list.</div><p><a href="/">← Back home</a></p>`;
@@ -772,7 +788,17 @@ joinModal.querySelector('#join-watch').addEventListener('click', () => {
   render();
   if (showShareBanner) toast('Game started!');
   rememberGame(game); // refresh last-seen so it shows under "Continue a game"
-  subscribe(id, (g) => { game = g; render(); });
-  // If this device hasn't taken a seat in this game yet, offer to join.
-  if (!iAmSeated()) openJoinGate();
+  let liveLost = false;
+  subscribe(id, (g) => { game = g; render(); }, (status) => {
+    if (status === 'open') {
+      if (liveLost) { liveLost = false; setLiveStatus(null); toast('Reconnected'); }
+    } else if (status === 'reconnecting') {
+      liveLost = true; setLiveStatus('Live sync lost — reconnecting…');
+    } else if (status === 'closed') {
+      liveLost = true; setLiveStatus('Live sync stopped — refresh to reconnect.');
+    }
+  });
+  // If this device hasn't taken a seat in an active game, offer to join.
+  // Finished games are view-only — no need for the join gate.
+  if (!iAmSeated() && game.status === 'active') openJoinGate();
 })();

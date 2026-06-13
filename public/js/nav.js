@@ -19,6 +19,17 @@ function paint() {
     .catch(() => { el.innerHTML = `<a class="pill" href="/account">Sign in</a>`; });
 }
 
+// Inject Feed link into the topbar nav (before the account chip).
+const navEl = el?.parentElement;
+if (navEl && !document.getElementById('nav-feed')) {
+  const feedLink = document.createElement('a');
+  feedLink.id = 'nav-feed';
+  feedLink.className = 'pill';
+  feedLink.href = '/feed';
+  feedLink.textContent = 'Feed';
+  navEl.insertBefore(feedLink, el);
+}
+
 paint();
 window.addEventListener('pc:auth', paint);
 // Refresh when returning to the tab (e.g. signed in/out elsewhere).

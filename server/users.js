@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
+const DATA_DIR = process.env.PC_DATA_DIR || join(__dirname, '..', 'data');
 const FILE = join(DATA_DIR, 'users.json');
 
 const byId = new Map();
@@ -36,7 +36,10 @@ export function init() {
   try {
     for (const u of JSON.parse(readFileSync(FILE, 'utf8'))) index(u);
   } catch (err) {
-    console.error('[users] failed to load users.json:', err.message);
+    // A single shared file holds every account. Silently starting with an empty
+    // store would log everyone out and quietly break ownership checks — far worse
+    // than refusing to start. Fail fast so an operator notices and recovers it.
+    throw new Error(`[users] refusing to start: ${FILE} is unreadable (${err.message}). Restore or remove it.`);
   }
   return byId.size;
 }
@@ -66,6 +69,20 @@ export function publicUser(u) {
     provider: u.provider,
     needsHandle: !!u.needsHandle, // true until an OAuth user has chosen their name
   };
+}
+
+export function searchUsers(query, excludeId, limit = 20) {
+  const q = String(query || '').trim().toLowerCase();
+  if (q.length < 1) return [];
+  const results = [];
+  for (const u of byId.values()) {
+    if (results.length >= limit) break;
+    if (excludeId && u.id === excludeId) continue;
+    if (u.handle.includes(q) || u.displayName.toLowerCase().includes(q)) {
+      results.push(u);
+    }
+  }
+  return results;
 }
 
 const HANDLE_RE = /^[a-z0-9_]{3,20}$/;

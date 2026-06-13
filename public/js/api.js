@@ -28,6 +28,16 @@ export function setMyPlayerId(gameId, playerId) {
   if (playerId) localStorage.setItem('pc_me_' + gameId, playerId);
 }
 
+// Proof that THIS device opened the game — issued by the server at creation and
+// presented (as X-Host-Token) for host-only actions like reopen. Lives only on
+// the device, independent of whether you're signed in.
+export function getHostToken(gameId) {
+  return localStorage.getItem('pc_host_' + gameId) || null;
+}
+export function setHostToken(gameId, token) {
+  if (token) localStorage.setItem('pc_host_' + gameId, token);
+}
+
 // The games this device has opened or joined, so a player can return any time
 // to keep adding or settle later — independent of whether the host is online.
 const GAMES_KEY = 'pc_games';
@@ -61,6 +71,10 @@ export function patchGame(gameId, fields) {
 }
 export function forgetGame(gameId) {
   localStorage.setItem(GAMES_KEY, JSON.stringify(listMyGames().filter((x) => x.id !== gameId)));
+  // Drop the per-game device keys too, so a forgotten game leaves nothing behind
+  // that could mis-attribute this device in a later game reusing the same code.
+  localStorage.removeItem('pc_me_' + gameId);
+  localStorage.removeItem('pc_host_' + gameId);
 }
 
 function actorHeaders() {
@@ -77,6 +91,8 @@ async function req(method, url, body) {
   if (m) {
     const pid = getMyPlayerId(m[1]);
     if (pid) opts.headers['X-Player-Id'] = pid;
+    const ht = getHostToken(m[1]);
+    if (ht) opts.headers['X-Host-Token'] = ht;
   }
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
@@ -84,7 +100,13 @@ async function req(method, url, body) {
   }
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    // Carry the HTTP status on the error so callers can branch on it reliably
+    // (e.g. only drop a remembered game on a real 404, not a transient 5xx/429).
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -116,16 +138,35 @@ export const api = {
   logout: () => req('POST', '/api/auth/logout'),
   googleAuth: (credential) => req('POST', '/api/auth/google', { credential }),
   userStats: (handle) => req('GET', `/api/users/${encodeURIComponent(handle)}/stats`),
+
+  // social
+  searchUsers: (q) => req('GET', `/api/users/search?q=${encodeURIComponent(q)}`),
+  follow: (handle) => req('POST', `/api/users/${encodeURIComponent(handle)}/follow`),
+  unfollow: (handle) => req('DELETE', `/api/users/${encodeURIComponent(handle)}/follow`),
+  myFollowing: () => req('GET', '/api/me/following'),
+  userSocial: (handle) => req('GET', `/api/users/${encodeURIComponent(handle)}/social`),
+  userFollowers: (handle) => req('GET', `/api/users/${encodeURIComponent(handle)}/followers`),
+  userFollowing: (handle) => req('GET', `/api/users/${encodeURIComponent(handle)}/following`),
+  feed: () => req('GET', '/api/feed'),
 };
 
-/** Subscribe to live game updates. Returns an unsubscribe function. */
-export function subscribe(id, onUpdate) {
+/** Subscribe to live game updates. Returns an unsubscribe function.
+ *  onStatus (optional) is called with 'open' | 'reconnecting' | 'closed' so the
+ *  UI can tell the user when live sync drops instead of silently going stale.
+ *  EventSource reconnects on its own for transient errors; we just surface it. */
+export function subscribe(id, onUpdate, onStatus) {
   const es = new EventSource(`/api/games/${id}/events`);
   es.addEventListener('update', (e) => {
     let parsed;
     try { parsed = JSON.parse(e.data); }
     catch { return; } // malformed payload — skip just this event, keep listening
     onUpdate(parsed); // let render errors surface (don't swallow live-sync bugs)
+  });
+  es.addEventListener('open', () => onStatus && onStatus('open'));
+  es.addEventListener('error', () => {
+    // readyState CLOSED means it won't retry (e.g. the game 404s); CONNECTING
+    // means the browser is already attempting to reconnect.
+    onStatus && onStatus(es.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting');
   });
   return () => es.close();
 }

@@ -4,12 +4,13 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, dirname, extname, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { init, onChange, getGame, createGame, mutate, uid, allGames } from './store.js';
 import { computeSettlement } from '../src/settle.js';
 import { computeUserStats } from '../src/stats.js';
 import * as users from './users.js';
-import { initAuth, sessionUid, sessionCookie, clearCookie, verifyGoogleIdToken } from './auth.js';
+import * as social from './social.js';
+import { initAuth, sessionUid, sessionCookie, clearCookie, verifyGoogleIdToken, signGameToken, verifyGameToken } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -82,7 +83,17 @@ function readBody(req) {
 }
 
 const num = (v) => (typeof v === 'number' ? v : Number(v));
-const isMoney = (v) => Number.isFinite(num(v)) && num(v) >= 0;
+// A valid money amount: finite, non-negative, and either exactly 0 or at least
+// one cent. A value like 0.003 is rejected — it would survive here but round to
+// 0 cents in the settlement engine, silently losing money.
+const isMoney = (v) => {
+  const n = num(v);
+  return Number.isFinite(n) && n >= 0 && (n === 0 || Math.round(n * 100) >= 1);
+};
+// A client-supplied id used as an object key (e.g. finalStacks[playerId]) must be
+// an ordinary string, never a prototype-polluting key.
+const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const isSafeId = (v) => typeof v === 'string' && v.length > 0 && !RESERVED_KEYS.has(v);
 
 // Who made this change? Sent by the client as headers (name URI-encoded so
 // non-ASCII names survive transit).
@@ -153,6 +164,7 @@ const server = createServer(async (req, res) => {
     if (path === '/game') return void (await serveFile(res, join(ROOT, 'public/game.html')));
     if (path === '/pot') return void (await serveFile(res, join(ROOT, 'public/pot.html')));
     if (path === '/account') return void (await serveFile(res, join(ROOT, 'public/account.html')));
+    if (path === '/feed') return void (await serveFile(res, join(ROOT, 'public/feed.html')));
     if (path.startsWith('/u/')) return void (await serveFile(res, join(ROOT, 'public/profile.html')));
 
     // Static: engine modules under /src/*, everything else under /public/*.
@@ -187,10 +199,10 @@ async function handleApi(req, res, path, method) {
   if (parts[1] === 'config' && method === 'GET') {
     return sendJson(res, 200, { googleClientId: GOOGLE_CLIENT_ID });
   }
-  if (parts[1] === 'me' && method === 'GET') {
+  if (parts[1] === 'me' && !parts[2] && method === 'GET') {
     return sendJson(res, 200, { user: users.publicUser(su) });
   }
-  if (parts[1] === 'me' && method === 'PUT') {
+  if (parts[1] === 'me' && !parts[2] && method === 'PUT') {
     if (!su) return sendJson(res, 401, { error: 'not signed in' });
     const { name } = await readBody(req);
     let u;
@@ -241,6 +253,102 @@ async function handleApi(req, res, path, method) {
     return sendJson(res, 404, { error: 'unknown auth route' });
   }
 
+  // ---- social: following list ----
+  if (parts[1] === 'me' && parts[2] === 'following' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const ids = social.getFollowing(su.id);
+    const list = [];
+    for (const fid of ids) {
+      const u = users.getUser(fid);
+      if (u) list.push(users.publicUser(u));
+    }
+    return sendJson(res, 200, { following: list });
+  }
+
+  // ---- social: activity feed ----
+  if (parts[1] === 'feed' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in to see your feed' });
+    const followedIds = social.getFollowing(su.id);
+    if (followedIds.size === 0) return sendJson(res, 200, { items: [] });
+    const items = [];
+    for (const g of allGames()) {
+      if (g.status !== 'ended' && g.status !== 'settled') continue;
+      for (const p of g.players) {
+        if (!p.userId || !followedIds.has(p.userId)) continue;
+        let net = 0;
+        if (g.settlement && Array.isArray(g.settlement.lines)) {
+          const ln = g.settlement.lines.find((l) => l.playerId === p.id);
+          if (ln && ln.net != null) net = ln.net;
+        }
+        const u = users.getUser(p.userId);
+        if (!u) continue;
+        items.push({
+          user: users.publicUser(u),
+          game: { id: g.id, name: g.name },
+          net,
+          unit: g.unit || '\u20ac',
+          at: g.settlement?.computedAt || g.updatedAt,
+          status: g.status,
+        });
+      }
+    }
+    items.sort((a, b) => (a.at < b.at ? 1 : -1));
+    return sendJson(res, 200, { items: items.slice(0, 30) });
+  }
+
+  // ---- social: search users ----
+  if (parts[1] === 'users' && parts[2] === 'search' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in to search' });
+    const q = new URL(req.url, 'http://x').searchParams.get('q') || '';
+    const results = users.searchUsers(q, su.id);
+    return sendJson(res, 200, { users: results.map(users.publicUser) });
+  }
+
+  // ---- social: followers / following lists for any user ----
+  if (parts[1] === 'users' && parts[2] && parts[3] === 'followers' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const target = users.getByHandle(parts[2]);
+    if (!target) return sendJson(res, 404, { error: 'no such player' });
+    const ids = social.getFollowers(target.id);
+    const list = ids.map((id) => users.publicUser(users.getUser(id))).filter(Boolean);
+    return sendJson(res, 200, { followers: list });
+  }
+  if (parts[1] === 'users' && parts[2] && parts[3] === 'following' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const target = users.getByHandle(parts[2]);
+    if (!target) return sendJson(res, 404, { error: 'no such player' });
+    const ids = social.getFollowing(target.id);
+    const list = [...ids].map((id) => users.publicUser(users.getUser(id))).filter(Boolean);
+    return sendJson(res, 200, { following: list });
+  }
+
+  // ---- social: follow / unfollow / counts ----
+  if (parts[1] === 'users' && parts[2] && parts[3] === 'social' && method === 'GET') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const target = users.getByHandle(parts[2]);
+    if (!target) return sendJson(res, 404, { error: 'no such player' });
+    return sendJson(res, 200, {
+      followers: social.getFollowerCount(target.id),
+      following: social.getFollowingCount(target.id),
+      youFollow: social.isFollowing(su.id, target.id),
+    });
+  }
+  if (parts[1] === 'users' && parts[2] && parts[3] === 'follow' && method === 'POST') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const target = users.getByHandle(parts[2]);
+    if (!target) return sendJson(res, 404, { error: 'no such player' });
+    if (target.id === su.id) return sendJson(res, 400, { error: "you can't follow yourself" });
+    social.follow(su.id, target.id);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (parts[1] === 'users' && parts[2] && parts[3] === 'follow' && method === 'DELETE') {
+    if (!su) return sendJson(res, 401, { error: 'sign in first' });
+    const target = users.getByHandle(parts[2]);
+    if (!target) return sendJson(res, 404, { error: 'no such player' });
+    social.unfollow(su.id, target.id);
+    return sendJson(res, 200, { ok: true });
+  }
+
   // ---- public profile stats (public — profiles are meant to be shareable) ----
   if (parts[1] === 'users' && parts[2] && parts[3] === 'stats' && method === 'GET') {
     const u = users.getByHandle(parts[2]);
@@ -259,13 +367,16 @@ async function handleApi(req, res, path, method) {
     }
     game = mutate(game.id, (g) => {
       g.hostId = actor.id; // who opened the game — the only one who can close it
+      g.tokenedHost = true; // host proven by signed token, not by replaying hostId
       if (su) {
         g.ownerId = su.id;
         if (g.players[0]) g.players[0].userId = su.id; // host takes seat 1, linked to their account
       }
       g.log.push(logEntry(actor, 'create', { detail: { name: g.name } }));
     });
-    return sendJson(res, 201, game);
+    // Hand the creator a host token (in addition to the account link, if any).
+    // The client stores it and presents it for host-only actions like reopen.
+    return sendJson(res, 201, { ...game, hostToken: signGameToken(game.id) });
   }
 
   if (parts[1] !== 'games' || !parts[2]) return sendJson(res, 404, { error: 'unknown route' });
@@ -310,11 +421,18 @@ async function handleApi(req, res, path, method) {
   // The requester can be recognised by their account OR their device id — and a
   // game's host may have been recorded under either (e.g. created anonymously,
   // then signed up). Match any of them.
+  const hostTokenHeader = req.headers['x-host-token'];
   const isHost = (g) => {
     if (!g.hostId) return true;
-    if (su && g.ownerId && g.ownerId === su.id) return true; // account owns the game
-    if (g.hostId === actor.id) return true;                  // current actor (account or device)
-    if (g.hostId === (req.headers['x-actor-id'] || 'anon')) return true; // device id, even when logged in
+    if (su && g.ownerId && g.ownerId === su.id) return true;          // account owns the game
+    if (hostTokenHeader && verifyGameToken(hostTokenHeader, g.id)) return true; // signed host token
+    // Legacy games created before host tokens existed never received one, so we
+    // still honour the old device-id match for them — but never for new games,
+    // where the (publicly-readable) hostId must NOT be accepted as proof.
+    if (!g.tokenedHost) {
+      if (g.hostId === actor.id) return true;
+      if (g.hostId === (req.headers['x-actor-id'] || 'anon')) return true;
+    }
     return false;
   };
   // Is the requester someone with a seat in this game? Used so any player (not
@@ -335,6 +453,9 @@ async function handleApi(req, res, path, method) {
   // Host confirms the game is over → freeze a settlement snapshot we can track.
   if (sub === 'close' && method === 'POST') {
     const g0 = getGame(id);
+    // Already closed? Don't recompute — that would rebuild the settlement and
+    // silently reset every "paid" mark someone may have already recorded.
+    if (g0.status !== 'active') return sendJson(res, 409, { error: 'Game is already closed.' });
     const s = computeSettlement(g0.players, g0.transactions, g0.finalStacks);
     if (!isHost(g0)) {
       // A non-host can still close — but only if they're actually in the game and
@@ -352,7 +473,11 @@ async function handleApi(req, res, path, method) {
         discrepancy: s.discrepancy,
         balanced: s.balanced,
       };
-      g.status = s.transfers.length === 0 ? 'settled' : 'ended';
+      // "settled" means the night is fully reconciled. That's only true when the
+      // books balance AND nothing is left to pay. An unbalanced game (a miscount,
+      // a lone player, everyone busted to zero) is "ended" with its discrepancy
+      // surfaced — never dressed up as done.
+      g.status = (s.balanced && s.transfers.length === 0) ? 'settled' : 'ended';
       g.log.push(logEntry(actor, 'close_game', {}));
     });
     return sendJson(res, 200, game);
@@ -438,7 +563,7 @@ async function handleApi(req, res, path, method) {
         };
       });
       const allPaid = g.settlement.transfers.every((t) => t.paid);
-      g.status = allPaid ? 'settled' : 'ended';
+      g.status = (g.settlement.balanced && allPaid) ? 'settled' : 'ended';
       g.log.push(logEntry(actor, 'edit_settlement', { detail: { count: g.settlement.transfers.length } }));
     });
     return sendJson(res, 200, game);
@@ -449,15 +574,20 @@ async function handleApi(req, res, path, method) {
   if (sub === 'settlement' && parts[4] && method === 'PUT') {
     const tid = parts[4];
     const { paid } = await readBody(req);
+    const g0 = getGame(id);
+    if (!g0.settlement) return sendJson(res, 409, { error: 'The game has to be ended first' });
+    // Don't silently 200 on a transfer that no longer exists (e.g. the plan was
+    // re-routed and ids changed) — the client would think it succeeded.
+    if (!g0.settlement.transfers.some((x) => x.id === tid)) {
+      return sendJson(res, 404, { error: 'no such payment' });
+    }
     const game = mutate(id, (g) => {
-      if (!g.settlement) return;
       const t = g.settlement.transfers.find((x) => x.id === tid);
-      if (!t) return;
       t.paid = !!paid;
       t.paidAt = paid ? new Date().toISOString() : null;
       t.paidBy = paid ? actor.name : null;
       const allPaid = g.settlement.transfers.every((x) => x.paid);
-      g.status = allPaid ? 'settled' : 'ended';
+      g.status = (g.settlement.balanced && allPaid) ? 'settled' : 'ended';
       g.log.push(logEntry(actor, paid ? 'mark_paid' : 'mark_unpaid', {
         detail: { from: t.fromName, to: t.toName, amount: t.amount },
       }));
@@ -472,6 +602,9 @@ async function handleApi(req, res, path, method) {
     const { name } = await readBody(req);
     const nm = String(name || '').trim();
     if (!nm) return sendJson(res, 400, { error: 'name required' });
+    // The checks below and the insert all run with no `await` between them, and
+    // getGame returns the live object — so under Node's single thread two
+    // concurrent joins can't interleave to create duplicate seats.
     const g0 = getGame(id);
     // A signed-in player who already has a seat just reuses it.
     if (su) {
@@ -585,6 +718,13 @@ async function handleApi(req, res, path, method) {
   if (sub === 'final' && method === 'PUT') {
     if (blockIfClosed()) return;
     const { playerId, amount } = await readBody(req);
+    if (!isSafeId(playerId) || !getGame(id).players.some((p) => p.id === playerId)) {
+      return sendJson(res, 400, { error: 'unknown player' });
+    }
+    const clearing = amount === null || amount === '' || amount === undefined;
+    if (!clearing && !isMoney(amount)) {
+      return sendJson(res, 400, { error: 'amount must be a number ≥ 0' });
+    }
     const game = mutate(id, (g) => {
       const from = g.finalStacks[playerId] ?? null;
       let to;
@@ -613,13 +753,31 @@ async function handleApi(req, res, path, method) {
   return sendJson(res, 404, { error: 'unknown route' });
 }
 
-initAuth();
-const usersLoaded = users.init();
-const loaded = init();
-server.listen(PORT, () => {
-  console.log(
-    `pokercount running on http://localhost:${PORT}  ` +
-    `(${loaded} game(s), ${usersLoaded} user(s) loaded` +
-    `${GOOGLE_CLIENT_ID ? ', Google sign-in ON' : ''})`,
-  );
-});
+/** Boot the stores and start listening. Returns the http.Server once bound.
+ *  Exported (rather than run on import) so tests can spin up an isolated
+ *  instance on an ephemeral port. Pass port 0 to let the OS pick one. */
+export function start(port = PORT) {
+  initAuth();
+  const usersLoaded = users.init();
+  const socialLoaded = social.init();
+  const loaded = init();
+  return new Promise((resolve) => {
+    server.listen(port, () => {
+      const actual = server.address().port;
+      console.log(
+        `pokercount running on http://localhost:${actual}  ` +
+        `(${loaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s) loaded` +
+        `${GOOGLE_CLIENT_ID ? ', Google sign-in ON' : ''})`,
+      );
+      resolve(server);
+    });
+  });
+}
+
+export { server };
+
+// Run directly (`node server/index.js`) → start on the configured port. When
+// imported (tests), do nothing until start() is called.
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  start();
+}

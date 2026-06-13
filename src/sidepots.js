@@ -65,19 +65,10 @@ export function buildPots(players) {
 
     if (eligible.length === 0) {
       // Degenerate: every contributor to this layer folded. This cannot arise
-      // from legal betting (the bettor who built the layer is eligible), but
-      // we guard rather than silently vanish chips — return them pro rata.
-      const each = Math.floor(amount / contributors.length);
-      let rem = amount - each * contributors.length;
-      for (const id of contributors) {
-        const give = each + (rem > 0 ? 1 : 0);
-        if (rem > 0) rem--;
-        if (give > 0) {
-          if (!returned) returned = { id, amount: 0 };
-          // fold orphaned chips into a multi-return map
-        }
-      }
-      // Represent orphan returns as zero-eligible pots so callers can detect.
+      // from legal betting (the bettor who built the layer is eligible), but we
+      // guard rather than silently vanish chips: represent it as a zero-eligible
+      // pot carrying its contributors, which resolve() refunds pro rata. No bet
+      // here was "uncalled", so `returned` is deliberately left untouched.
       pots.push({ amount, eligible: [], orphanContributors: contributors });
       continue;
     }
