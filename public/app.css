@@ -141,7 +141,7 @@ button.ghost { background: transparent; color: var(--info); border-color: var(--
 button.ghost:hover { background: var(--surface-2); filter: none; }
 button.danger { background: transparent; color: var(--danger); border-color: var(--border); box-shadow: none; }
 button.danger:hover { background: rgba(255,95,109,.1); border-color: var(--danger); filter: none; }
-button.small { padding: 9px 13px; font-size: 0.85rem; min-height: 40px; border-radius: 9px; }
+button.small { padding: 9px 13px; font-size: 0.85rem; min-height: 44px; border-radius: 9px; }
 button.active { background: linear-gradient(180deg, var(--accent), #18b07e); color: var(--accent-ink); border-color: transparent; }
 button:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
 button:focus-visible, a:focus-visible, [contenteditable]:focus-visible {
@@ -360,7 +360,7 @@ button.ghost.small.is-out { color: var(--accent-ink); background: var(--accent);
   position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translate(-50%, 12px);
   background: var(--surface-3); border: 1px solid var(--border); color: var(--text);
   padding: 11px 18px; border-radius: 999px; font-size: 0.9rem; font-weight: 500; z-index: 200;
-  opacity: 0; transition: opacity .22s var(--ease), transform .22s var(--ease); pointer-events: none; max-width: 90%;
+  opacity: 0; transition: opacity .22s var(--ease), transform .22s var(--ease); pointer-events: none; max-width: min(90%, 480px);
   box-shadow: 0 14px 34px -16px rgba(0,0,0,.8);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -442,7 +442,7 @@ button.ghost.small.is-out { color: var(--accent-ink); background: var(--accent);
 dialog {
   background: linear-gradient(180deg, var(--surface-3), var(--surface));
   color: var(--text); border: 1px solid var(--border-soft); border-radius: var(--radius);
-  padding: var(--pad); max-width: 90vw; margin: auto;
+  padding: var(--pad); max-width: min(90vw, 420px); margin: auto;
   box-shadow: 0 30px 70px -30px rgba(0,0,0,.8);
 }
 dialog::backdrop { background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
@@ -470,7 +470,7 @@ dialog::backdrop { background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(3p
   opacity: 0; transform: translateY(8px); animation: rise .55s var(--ease) .2s forwards; }
 @keyframes rise { to { opacity: 1; transform: none; } }
 
-/* On laptops/tablets, center the welcome hero (game list stays left-aligned). */
+/* On iPads/tablets/laptops, centre the hero and give the content more breathing room. */
 @media (min-width: 640px) {
   #view-intro .eyebrow,
   #view-intro h1,
@@ -478,6 +478,12 @@ dialog::backdrop { background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(3p
   #view-intro > p.hint,
   #view-intro > p.center { text-align: center; }
   #view-intro > p.muted { margin-left: auto; margin-right: auto; max-width: 52ch; }
+  .wrap { padding-left: 24px; padding-right: 24px; }
+  .topbar { padding-left: clamp(22px, 5vw, 48px); padding-right: clamp(22px, 5vw, 48px); }
+}
+/* Wider iPads / landscape — expand the content column slightly. */
+@media (min-width: 900px) {
+  :root { --maxw: 700px; }
 }
 
 /* ---- intro splash: poker chips shuffling together ------------------------ */
@@ -567,7 +573,7 @@ html.no-splash .splash { display: none; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .social-list-sheet {
-  width: 100%; max-width: 640px; max-height: 70vh; overflow-y: auto;
+  width: 100%; max-width: var(--maxw); max-height: 70vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 18px 18px 0 0; padding: 16px;
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));

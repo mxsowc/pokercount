@@ -102,3 +102,6 @@ searchInput.addEventListener('input', () => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.feed-search')) searchResults.hidden = true;
 });
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { searchResults.hidden = true; searchInput.blur(); }
+});

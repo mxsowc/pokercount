@@ -128,6 +128,8 @@ const CONTENT_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
 };
 
 async function serveFile(res, absPath) {

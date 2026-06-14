@@ -675,7 +675,7 @@ function openMoneyModal(pid, name) {
   modalType = hasPrior ? 'topup' : 'buyin';
   modal.querySelector('#modal-title').textContent = hasPrior ? `Top up — ${name}` : `Buy in — ${name}`;
   const amt = modal.querySelector('#modal-amount');
-  amt.value = localStorage.getItem('pc_default_buyin') || '15';
+  amt.value = localStorage.getItem('pc_default_buyin') || '20';
   if (modal.open) modal.close(); // guard: showModal() throws if already open
   modal.showModal();
   setTimeout(() => amt.focus(), 50);
