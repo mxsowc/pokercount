@@ -2,7 +2,7 @@
 // of these has an answer provable by hand — we check the engine matches it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { flopEquity, equityAt } from '../src/equity.js';
+import { flopEquity, equityAt } from '../src/lib/engine/equity.js';
 
 const eqOf = (r, id) => r.equity.find((e) => e.id === id).equity;
 const sum = (r) => r.equity.reduce((a, e) => a + e.equity, 0);

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from '../src/resolve.js';
-import { HIGH } from '../src/evaluate.js';
-import { bestHigh } from '../src/select.js';
-import { parseCards } from '../src/cards.js';
+import { resolve } from '../src/lib/engine/resolve.js';
+import { HIGH } from '../src/lib/engine/evaluate.js';
+import { bestHigh } from '../src/lib/engine/select.js';
+import { parseCards } from '../src/lib/engine/cards.js';
 
 // Helper: every resolution must distribute exactly the chips that went in.
 function assertConserved(result, contributed) {

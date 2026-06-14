@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCards } from '../src/cards.js';
-import { scoreHigh5, scoreLow8_5, cmp, HIGH } from '../src/evaluate.js';
+import { parseCards } from '../src/lib/engine/cards.js';
+import { scoreHigh5, scoreLow8_5, cmp, HIGH } from '../src/lib/engine/evaluate.js';
 
 const h = (s) => scoreHigh5(parseCards(s));
 

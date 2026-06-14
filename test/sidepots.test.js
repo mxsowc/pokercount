@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPots } from '../src/sidepots.js';
+import { buildPots } from '../src/lib/engine/sidepots.js';
 
 test('three-way all-in builds a main and one side pot, returns uncalled top', () => {
   // A all-in 25, B all-in 60, C all-in 100.

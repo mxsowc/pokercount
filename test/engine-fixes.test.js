@@ -4,9 +4,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { equityAt } from '../src/equity.js';
-import { buildPots } from '../src/sidepots.js';
-import { resolve } from '../src/resolve.js';
+import { equityAt } from '../src/lib/engine/equity.js';
+import { buildPots } from '../src/lib/engine/sidepots.js';
+import { resolve } from '../src/lib/engine/resolve.js';
 
 test('equityAt rejects a card used twice across holes (H11)', () => {
   assert.throws(

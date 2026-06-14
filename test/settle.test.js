@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeSettlement } from '../src/settle.js';
+import { computeSettlement } from '../src/lib/engine/settle.js';
 
 test('basic settlement: nets and minimal transfers balance', () => {
   const players = [

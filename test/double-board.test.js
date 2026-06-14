@@ -2,10 +2,10 @@
 // double board — and that it genuinely changes outcomes vs Hold'em rules.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from '../src/resolve.js';
-import { bestHigh } from '../src/select.js';
-import { HIGH } from '../src/evaluate.js';
-import { parseCards } from '../src/cards.js';
+import { resolve } from '../src/lib/engine/resolve.js';
+import { bestHigh } from '../src/lib/engine/select.js';
+import { HIGH } from '../src/lib/engine/evaluate.js';
+import { parseCards } from '../src/lib/engine/cards.js';
 
 // Board 1 has FOUR hearts (Ah Kh Qh 2h). P1 holds exactly ONE heart (Jh);
 // P2 holds TWO hearts (Th 8h).

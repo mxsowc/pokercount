@@ -2,8 +2,8 @@
 // bugs and edge cases beyond the happy-path suites.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from '../src/resolve.js';
-import { computeSettlement } from '../src/settle.js';
+import { resolve } from '../src/lib/engine/resolve.js';
+import { computeSettlement } from '../src/lib/engine/settle.js';
 
 const conserved = (r, total, msg) => assert.equal(r.total, total, msg || 'chips conserved');
 
