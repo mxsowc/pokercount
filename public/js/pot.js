@@ -7,12 +7,13 @@ import { onnxRecognizer } from '/js/cardscan-onnx.js';
 const root = document.getElementById('pot-app');
 
 // SPIKE: scan setup.
-//   default      → try real on-device recognition (ONNX Runtime Web + a YOLOv8
-//                  model at /models/cards-yolov8.onnx); fall back to the mock if
-//                  the model/runtime can't load, so the flow still demos.
+//   default      → OFF (no Scan buttons) — the feature isn't ready for the site.
+//   ?scan=on     → real on-device recognition (ONNX Runtime Web + a YOLOv8 model
+//                  at /models/cards-yolov8.onnx); falls back to the mock if the
+//                  model/runtime can't load, so the flow still demos.
 //   ?scan=mock   → force the placeholder recognizer (ignores the photo).
-//   ?scan=off    → disable scanning entirely (graceful "tap to enter" fallback).
 const scanMode = new URLSearchParams(location.search).get('scan');
+const SCAN_ENABLED = scanMode === 'on' || scanMode === 'mock'; // off unless asked
 let usedMockFallback = false; // true once we've had to drop to placeholder cards
 let mockNoteShown = false;
 // Auto-fill floor: a guess below this confidence is dropped (slot left empty for
@@ -21,7 +22,7 @@ const SCAN_TRUST = 0.45;
 if (scanMode === 'mock') {
   setCardRecognizer(mockRecognizer());
   usedMockFallback = true;
-} else if (scanMode !== 'off') {
+} else if (scanMode === 'on') {
   // Run inference at high resolution — card pips are tiny, and the model has a
   // dynamic input, so this is the biggest free accuracy lever (slower on WASM,
   // fast on WebGPU). Drop to 960 if it's too slow on your device.
@@ -122,7 +123,7 @@ function boardInputs() {
       html += `<label>${label}</label>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
           ${cardSlots('board:' + key)}
-          <button type="button" class="ghost small" data-scan="board:${key}">📷 Scan</button>
+          ${SCAN_ENABLED ? `<button type="button" class="ghost small" data-scan="board:${key}">📷 Scan</button>` : ''}
         </div>`;
     }
   }
