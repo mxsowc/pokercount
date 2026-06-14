@@ -21,6 +21,7 @@ const expanded = new Set(); // player ids whose history panel is open
 let editingSettlement = false; // "adjust who pays who" mode
 let draft = null; // draft transfer plan while editing: [{from,to,amount}]
 let myAccount = null; // signed-in user, or null (anonymous)
+let amHost = false; // set each render — gates host-only controls (e.g. kicking a player)
 let identityDismissed = localStorage.getItem('pc_idban_' + id); // hide "You are X" banner
 
 if (!id) location.href = '/';
@@ -71,7 +72,7 @@ function render() {
   // as 0, which would show misleading transfers — so we hold it back.
   const allEntered = game.players.length > 0 && game.players.every((p) => game.finalStacks[p.id] != null);
   const me = getActor().name;
-  const amHost = !game.hostId
+  amHost = !game.hostId
     || !!getHostToken(id) // the device that opened it holds the signed host token
     || game.hostId === getActor().id
     || (myAccount && (game.ownerId === myAccount.id || game.hostId === 'user:' + myAccount.id));
@@ -215,7 +216,9 @@ function historyPanel(p, unit) {
           ${describe(e, unit)}<br>
           <span class="muted">by ${esc(e.actorName)} · ${time(e.at)}</span>
         </div>`).join('') : '<p class="muted small">No changes recorded yet.</p>'}
-      <button class="danger small" data-remove="${p.id}" style="width:100%; margin-top:10px">Remove ${esc(p.name)} and all transactions</button>
+      ${amHost ? `<div style="text-align:right; margin-top:10px">
+        <button class="ghost small" data-remove="${p.id}" style="color:var(--danger)">Remove player</button>
+      </div>` : ''}
     </div>`;
 }
 
@@ -298,7 +301,8 @@ function wire() {
     b.addEventListener('click', () => openMoneyModal(b.dataset.add, b.dataset.name)));
   app.querySelectorAll('[data-remove]').forEach((b) =>
     b.addEventListener('click', guarded(async () => {
-      if (confirm('Remove this player and their transactions?')) {
+      const who = (game.players.find((p) => p.id === b.dataset.remove) || {}).name || 'this player';
+      if (confirm(`Remove ${who} from the game?\n\nThis deletes their buy-ins and top-ups and can't be undone.`)) {
         game = await api.removePlayer(id, b.dataset.remove);
         render();
       }
@@ -710,7 +714,7 @@ modal.querySelector('#modal-amount').addEventListener('keydown', (e) => {
 // ---- share -------------------------------------------------------------------
 async function shareLink() {
   const url = `${location.origin}/game?g=${id}`;
-  const data = { title: 'pokercount', text: `Join the game (code #${id})`, url };
+  const data = { title: 'potcount', text: `Join the game (code #${id})`, url };
   if (navigator.share) { try { await navigator.share(data); return; } catch {} }
   try { await navigator.clipboard.writeText(url); toast('Link copied'); }
   catch { prompt('Copy this link:', url); }

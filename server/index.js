@@ -666,6 +666,9 @@ async function handleApi(req, res, path, method) {
 
   if (sub === 'players' && parts[4] && method === 'DELETE') {
     if (blockIfClosed()) return;
+    // Kicking is host-only: removing a player deletes their buy-ins, so don't let
+    // a random joiner (or the unwanted person themselves) do it.
+    if (!isHost(getGame(id))) return sendJson(res, 403, { error: 'Only the host can remove players' });
     const pid = parts[4];
     const game = mutate(id, (g) => {
       const nm = pname(g, pid);
@@ -767,7 +770,7 @@ export function start(port = PORT) {
     server.listen(port, () => {
       const actual = server.address().port;
       console.log(
-        `pokercount running on http://localhost:${actual}  ` +
+        `potcount running on http://localhost:${actual}  ` +
         `(${loaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s) loaded` +
         `${GOOGLE_CLIENT_ID ? ', Google sign-in ON' : ''})`,
       );
