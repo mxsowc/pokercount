@@ -1,4 +1,5 @@
 import { getGame, onChange } from '$lib/server/store.js';
+import { withProfiles } from '$lib/server/helpers.js';
 
 export function GET({ params }) {
   const id = params.id.toUpperCase();
@@ -19,10 +20,10 @@ export function GET({ params }) {
         catch { cleanup(); }
       };
 
-      send(getGame(id));
+      send(withProfiles(getGame(id)));
 
       unsub = onChange((game: any) => {
-        if (game.id === id) send(game);
+        if (game.id === id) send(withProfiles(game));
       });
 
       hb = setInterval(() => {

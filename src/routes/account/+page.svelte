@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
   import { onMount } from 'svelte';
@@ -20,13 +20,21 @@
   let signupPin2 = $state('');
   let handlePreview = $derived(signupName.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
 
+  // After a successful sign-in, return to wherever we were sent from (e.g. a game
+  // page that wants you to claim your seat). Only local paths are honoured.
+  async function afterAuth(msg: string) {
+    await invalidateAll();
+    toast(msg);
+    const next = $page.url.searchParams.get('next');
+    if (next && next.startsWith('/')) await goto(next);
+  }
+
   async function doLogin() {
     try {
       const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: loginHandle.trim(), pin: loginPin }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Login failed'); return; }
-      await invalidateAll();
-      toast('Logged in');
+      await afterAuth('Logged in');
     } catch (e: any) { toast(e.message); }
   }
 
@@ -38,8 +46,7 @@
       const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Signup failed'); return; }
-      await invalidateAll();
-      toast('Account created');
+      await afterAuth('Account created');
     } catch (e: any) { toast(e.message); }
   }
 

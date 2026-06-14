@@ -5,9 +5,11 @@
   import { money } from '$lib/utils/money';
   import { ago } from '$lib/utils/time';
   import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
 
   type View = 'intro' | 'open' | 'join';
   let view = $state<View>('intro');
+  let user = $derived($page.data?.user ?? null);
 
   // Device identity (localStorage-backed)
   function getActor() {
@@ -35,6 +37,35 @@
 
   let games = $state(listMyGames());
   let actor = $state(getActor());
+
+  // For a signed-in user, fold in games their account is seated in (any device,
+  // even ones never opened here) so ongoing sessions surface on login.
+  async function loadAccountGames() {
+    if (!browser || !user) return;
+    try {
+      const res = await fetch('/api/me/games');
+      if (!res.ok) return;
+      const { games: server } = await res.json();
+      const byId = new Map<string, any>();
+      for (const g of listMyGames()) byId.set(g.id, { ...g });
+      for (const sg of server) {
+        const prev = byId.get(sg.id) || {};
+        byId.set(sg.id, {
+          id: sg.id, name: sg.name, unit: sg.unit,
+          you: sg.seatName || prev.you,
+          players: sg.players, status: sg.status,
+          at: prev.at ?? sg.at,   // keep local recency if we have it
+          linked: true,           // account-linked: removed by "leaving" the game, not a local ✕
+        });
+      }
+      const rank = (s: string) => (s === 'active' ? 0 : s === 'ended' ? 1 : 2);
+      games = [...byId.values()].sort(
+        (a, b) => rank(a.status) - rank(b.status) || (new Date(b.at).getTime() || 0) - (new Date(a.at).getTime() || 0)
+      );
+    } catch {}
+  }
+
+  onMount(loadAccountGames);
 
   // Open game form
   let openName = $state('');
@@ -130,7 +161,9 @@
               </div>
               <div class="flex items-center gap-2">
                 <span class="pill {g.status === 'ended' || g.status === 'settled' ? '' : 'pill-win'}">{g.status === 'ended' || g.status === 'settled' ? 'View →' : 'Continue →'}</span>
-                <button class="btn-small btn-danger" onclick={(e) => { e.preventDefault(); if (confirm(`Remove "${g.name || 'Home Game'}" from your list?`)) forgetGame(g.id); }}>✕</button>
+                {#if !g.linked}
+                  <button class="btn-small btn-danger" onclick={(e) => { e.preventDefault(); if (confirm(`Remove "${g.name || 'Home Game'}" from your list?`)) forgetGame(g.id); }}>✕</button>
+                {/if}
               </div>
             </a>
           {/each}

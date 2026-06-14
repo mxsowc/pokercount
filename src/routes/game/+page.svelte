@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { toast } from '$lib/stores/toast';
   import { money } from '$lib/utils/money';
@@ -38,8 +39,16 @@
   // Bulk buy-in
   let bulkAmount = $state('20');
 
-  // New player input
+  // New player input + connection autocomplete
   let newPlayerName = $state('');
+  let suggestions = $state<any[]>([]);
+  let showSuggest = $state(false);
+  let suggestActive = $state(-1);
+  let pickedUserId = $state<string | null>(null); // set when a suggestion is chosen
+  let suggestTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Claim-your-seat
+  let claimOpen = $state(false);
 
   const gameId = $derived($page.url.searchParams.get('g')?.replace(/[^0-9A-Za-z]/g, '') || '');
   const isNew = $derived($page.url.searchParams.get('new') === '1');
@@ -79,9 +88,24 @@
 
   // ---- derived values -------------------------------------------------------
   const myId = () => browser ? localStorage.getItem('pc_me_' + gameId) : null;
+  // A seated player who linked an account exposes a `handle` (added server-side);
+  // used to highlight their name and link straight to their public profile.
+  const playerHandle = (pid: string): string | undefined =>
+    game?.players?.find((p: any) => p.id === pid)?.handle;
   const iAmSeated = () => game?.players?.some((p: any) => p.id === myId());
   const invested = (pid: string) => (game?.transactions ?? []).filter((t: any) => t.playerId === pid).reduce((s: number, t: any) => s + t.amount, 0);
   const unit = $derived(game?.unit || '€');
+
+  // Account ↔ seat linkage (for claim / leave)
+  const mySeat = $derived(myAccount && game ? game.players.find((p: any) => p.userId === myAccount.id) ?? null : null);
+  const unclaimedSeats = $derived(game ? game.players.filter((p: any) => !p.userId) : []);
+  const seatedUserIds = $derived(new Set((game?.players ?? []).map((p: any) => p.userId).filter(Boolean)));
+  // If an unclaimed seat name matches my account name, it's probably mine — pre-offer it.
+  const suggestedClaim = $derived.by(() => {
+    if (!myAccount) return null;
+    const dn = (myAccount.displayName || '').trim().toLowerCase();
+    return unclaimedSeats.find((p: any) => p.name.trim().toLowerCase() === dn) ?? null;
+  });
   const totalIn = $derived(game ? game.transactions.reduce((s: number, t: any) => s + t.amount, 0) : 0);
 
   // Live settlement computation for the active game view
@@ -141,7 +165,15 @@
     });
     unsub = () => es.close();
 
-    if (!iAmSeated() && game.status === 'active') {
+    // Returned here from sign-in to claim a seat → open the picker.
+    if ($page.url.searchParams.get('claim') === '1' && myAccount && !mySeat) {
+      claimOpen = true;
+    }
+
+    // Auto-prompt to join — but a signed-in user with an unclaimed seat to grab
+    // should claim it (via the banner) rather than create a duplicate.
+    const canClaimInstead = myAccount && (mySeat || unclaimedSeats.length > 0);
+    if (!iAmSeated() && game.status === 'active' && !canClaimInstead) {
       joinNameVal = getActor().name;
       joinOpen = true;
     }
@@ -186,9 +218,70 @@
   // ---- actions --------------------------------------------------------------
   async function addPlayer() {
     const name = newPlayerName.trim();
-    if (!name) return;
-    newPlayerName = '';
-    game = await api('POST', `/api/games/${gameId}/players`, { name });
+    if (!name && !pickedUserId) return;
+    const body: any = {};
+    if (name) body.name = name;
+    if (pickedUserId) body.userId = pickedUserId; // auto-link this seat to a connection's account
+    try {
+      game = await api('POST', `/api/games/${gameId}/players`, body);
+    } catch (e: any) { toast(e.message); return; }
+    newPlayerName = ''; pickedUserId = null;
+    suggestions = []; showSuggest = false; suggestActive = -1;
+  }
+
+  // Suggest people from your followers/following as you type (signed-in hosts only).
+  function onPlayerInput() {
+    pickedUserId = null; // typing invalidates any prior pick
+    if (!myAccount) { showSuggest = false; return; }
+    const q = newPlayerName.trim();
+    if (suggestTimer) clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/me/connections?q=${encodeURIComponent(q)}`);
+        if (!res.ok) { suggestions = []; showSuggest = false; return; }
+        const { connections } = await res.json();
+        suggestions = connections.filter((c: any) => !seatedUserIds.has(c.id)).slice(0, 6);
+        showSuggest = suggestions.length > 0;
+        suggestActive = -1;
+      } catch { suggestions = []; showSuggest = false; }
+    }, 150);
+  }
+
+  function pickSuggestion(c: any) {
+    newPlayerName = c.displayName;
+    pickedUserId = c.id;
+    showSuggest = false; suggestions = []; suggestActive = -1;
+  }
+
+  function onPlayerKey(e: KeyboardEvent) {
+    if (showSuggest && suggestions.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); suggestActive = (suggestActive + 1) % suggestions.length; return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); suggestActive = (suggestActive - 1 + suggestions.length) % suggestions.length; return; }
+      if (e.key === 'Enter' && suggestActive >= 0) { e.preventDefault(); pickSuggestion(suggestions[suggestActive]); return; }
+      if (e.key === 'Escape') { showSuggest = false; return; }
+    }
+    if (e.key === 'Enter') addPlayer();
+  }
+
+  // ---- claim / leave a seat -------------------------------------------------
+  async function claimSeat(playerId: string) {
+    try {
+      game = await api('POST', `/api/games/${gameId}/claim`, { playerId });
+      claimOpen = false;
+      toast('Seat claimed — it’s linked to your account');
+    } catch (e: any) { toast(e.message); }
+  }
+
+  async function leaveSeat() {
+    if (!confirm('Unlink this seat from your account? The seat and its buy-ins stay in the game.')) return;
+    try {
+      game = await api('DELETE', `/api/games/${gameId}/claim`);
+      toast('Left the seat');
+    } catch (e: any) { toast(e.message); }
+  }
+
+  function signInToClaim() {
+    goto(`/account?next=${encodeURIComponent(`/game?g=${gameId}&claim=1`)}`);
   }
 
   function openMoneyModal(pid: string, name: string) {
@@ -382,6 +475,46 @@
     <p><a href="/">← Back home</a></p>
   {:else if game}
 
+    <!-- Claim / leave your seat — link a seat to your account, or unlink one a
+         host auto-connected to you. Shared by the active and summary views. -->
+    {#snippet claimBanner()}
+      {#if mySeat}
+        <div class="text-xs text-muted mt-3 flex items-center gap-2 flex-wrap">
+          <span>✓ Linked to your account as <b class="text-text">{mySeat.name}</b>.</span>
+          <button class="underline hover:text-text" onclick={leaveSeat}>Not you? Leave</button>
+        </div>
+      {:else if myAccount && unclaimedSeats.length > 0}
+        <div class="banner banner-info mt-3">
+          {#if claimOpen}
+            <div class="font-semibold mb-1.5">Which seat are you?</div>
+            <div class="flex flex-wrap gap-1.5">
+              {#each unclaimedSeats as p (p.id)}
+                <button class="btn-small {suggestedClaim?.id === p.id ? 'btn' : 'btn-secondary'}" onclick={() => claimSeat(p.id)}>{p.name}{suggestedClaim?.id === p.id ? ' (you?)' : ''}</button>
+              {/each}
+            </div>
+            <button class="btn-small btn-ghost mt-2" onclick={() => { claimOpen = false; if (game.status === 'active') { joinNameVal = getActor().name; joinOpen = true; } }}>I'm not listed</button>
+          {:else if suggestedClaim}
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span>Are you <b>{suggestedClaim.name}</b>? Link this seat to your account.</span>
+              <span class="flex gap-1.5">
+                <button class="btn-small btn" onclick={() => claimSeat(suggestedClaim.id)}>Yes, that's me</button>
+                <button class="btn-small btn-secondary" onclick={() => claimOpen = true}>Pick another</button>
+              </span>
+            </div>
+          {:else}
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span>Played in this game? Claim your seat to track it on your profile.</span>
+              <button class="btn-small btn" onclick={() => claimOpen = true}>Claim your seat</button>
+            </div>
+          {/if}
+        </div>
+      {:else if !myAccount}
+        <div class="text-xs text-muted mt-3">
+          Played in this game? <button class="underline hover:text-text" onclick={signInToClaim}>Sign in to claim your seat</button>.
+        </div>
+      {/if}
+    {/snippet}
+
     {#if game.status === 'active'}
       <!-- ═══════════════════ ACTIVE GAME ═══════════════════ -->
 
@@ -416,6 +549,8 @@
         </div>
       {/if}
 
+      {@render claimBanner()}
+
       <!-- Players heading + cash-out jump -->
       <div class="flex items-center justify-between mt-6 mb-3">
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Players</h2>
@@ -434,6 +569,7 @@
           <div>
             <div class="font-semibold">
               {p.name}
+              {#if p.handle}<a href="/u/{p.handle}" class="text-info text-xs no-underline hover:underline ml-1" title="Linked to @{p.handle}">@{p.handle}</a>{/if}
               {#if p.id === myId()}<span class="pill pill-info ml-1">you</span>{/if}
               {#if final_ != null}<span class="pill ml-1 {net >= 0 ? 'pill-win' : 'pill-lose'}">{net >= 0 ? '+' : ''}{money(net, unit)}</span>{/if}
             </div>
@@ -464,9 +600,33 @@
         <p class="text-muted">No players yet.</p>
       {/each}
 
-      <!-- Add player -->
-      <div class="flex gap-2 mt-2">
-        <input class="input flex-1" placeholder="Add player name" bind:value={newPlayerName} onkeydown={(e) => { if (e.key === 'Enter') addPlayer(); }} />
+      <!-- Add player (with follower/following autocomplete for signed-in hosts) -->
+      <div class="flex gap-2 mt-2 relative">
+        <div class="flex-1 relative">
+          <input class="input w-full" placeholder={myAccount ? 'Add player — type to find friends' : 'Add player name'}
+                 bind:value={newPlayerName} autocomplete="off"
+                 oninput={onPlayerInput} onkeydown={onPlayerKey}
+                 onfocus={() => { if (myAccount && newPlayerName.trim() === '' ) onPlayerInput(); }}
+                 onblur={() => setTimeout(() => showSuggest = false, 150)} />
+          {#if pickedUserId}
+            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-info text-xs font-semibold" title="Will be linked to their account">↗ linked</span>
+          {/if}
+          {#if showSuggest && suggestions.length}
+            <div class="absolute left-0 right-0 top-full mt-1 z-30 card !p-1 max-h-64 overflow-auto shadow-xl">
+              {#each suggestions as c, i (c.id)}
+                <button type="button"
+                        class="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-lg {i === suggestActive ? 'bg-surface-2' : 'hover:bg-surface-2'} transition-colors"
+                        onmousedown={(e) => { e.preventDefault(); pickSuggestion(c); }}>
+                  <span class="w-7 h-7 shrink-0 rounded-full bg-accent/15 text-accent grid place-items-center text-sm font-bold">{(c.displayName || '?').charAt(0).toUpperCase()}</span>
+                  <span class="min-w-0">
+                    <span class="block font-semibold truncate">{c.displayName}</span>
+                    <span class="block text-muted text-xs truncate">@{c.handle}</span>
+                  </span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <button class="btn" onclick={addPlayer}>Add</button>
       </div>
 
@@ -567,6 +727,17 @@
       {@const allSettled = game.status === 'settled'}
       {@const bal = myBalance()}
 
+      <!-- Player name: a profile link (highlighted) if they linked an account,
+           otherwise plain text for players who played without one. -->
+      {#snippet playerName(line: any, cls = '')}
+        {@const handle = playerHandle(line.playerId)}
+        {#if handle}
+          <a href="/u/{handle}" class="text-info font-semibold no-underline hover:underline {cls}" title="View {line.name}'s profile">{line.name}<span class="text-info/60 text-[0.7em] align-super ml-px">↗</span></a>
+        {:else}
+          <span class={cls}>{line.name}</span>
+        {/if}
+      {/snippet}
+
       <div>
         <h1 class="text-2xl font-bold">{game.name}</h1>
         <div class="text-muted text-sm">
@@ -576,6 +747,8 @@
           </span>
         </div>
       </div>
+
+      {@render claimBanner()}
 
       <!-- My balance callout -->
       {#if bal}
@@ -609,7 +782,7 @@
               <div class="w-full rounded-t-xl border border-border-soft border-b-0 flex flex-col items-center pt-3 gap-0.5 bg-surface-2" style="height:{height}px">
                 <span class="text-[1.7rem]">{medal}</span>
               </div>
-              <div class="mt-2 font-semibold text-sm break-words">{l.name}</div>
+              <div class="mt-2 text-sm break-words">{@render playerName(l, 'font-semibold')}</div>
             </div>
           {/each}
         </div>
@@ -620,7 +793,7 @@
       <div class="card">
         {#each standings as l, idx}
           <div class="flex items-center justify-between mb-1.5">
-            <span>{idx + 1}. {l.name} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
+            <span>{idx + 1}. {@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
             <span class="font-bold tabular-nums {l.net >= 0 ? 'text-accent' : 'text-danger'}">{l.net >= 0 ? '+' : ''}{money(l.net, unit)}</span>
           </div>
         {/each}
@@ -669,7 +842,7 @@
       {:else if s.transfers.length === 0}
         <div class="banner banner-ok">Everyone broke even — nothing to settle.</div>
       {:else}
-        <p class="text-muted text-xs mb-2">Tap an amount to copy it for Venmo / Cash App. Use <b>Adjust</b> to change who pays who.</p>
+        <p class="text-muted text-xs mb-2">Tap an amount to copy it. Use <b>Adjust</b> to change who pays who.</p>
         {#each s.transfers as t (t.id)}
           <div class="transfer-row {t.paid ? 'opacity-50' : ''}">
             <span class="font-semibold {t.paid ? 'line-through' : ''}">{t.fromName}</span>

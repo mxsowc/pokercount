@@ -216,7 +216,7 @@
       // Showdown visualization
       html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Showdown</h3>';
       const winners: Record<string, Set<string>> = {};
-      for (const seg of r.breakdown) {
+      for (const seg of r.breakdown as any[]) {
         const k = `${seg.board}-${seg.run}`;
         if (!winners[k]) winners[k] = new Set();
         [...(seg.highWinners || []), ...(seg.lowWinners || [])].forEach((id: string) => winners[k].add(id));

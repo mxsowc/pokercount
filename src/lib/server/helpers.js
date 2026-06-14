@@ -2,6 +2,7 @@
 import { sessionUid, verifyGameToken } from './auth.js';
 import { getUser } from './users.js';
 import { uid } from './store.js';
+import { isFollowing } from './social.js';
 
 /** @typedef {import('../types').Game} Game */
 /** @typedef {import('../types').User} User */
@@ -38,6 +39,32 @@ export function getActor(request) {
  * @param {Actor} actor @param {string} action @param {Record<string, unknown>} [extra] @returns {LogEntry} */
 export function logEntry(actor, action, extra = {}) {
   return { id: uid(8), at: new Date().toISOString(), actorId: actor.id, actorName: actor.name, action, ...extra };
+}
+
+/** Are two users connected — i.e. does either follow the other? Used to gate
+ *  auto-linking a seat to someone's account: a host can only attach the account
+ *  of a person they have a follow relationship with.
+ * @param {string} a @param {string} b @returns {boolean} */
+export function areConnected(a, b) {
+  if (!a || !b || a === b) return false;
+  return isFollowing(a, b) || isFollowing(b, a);
+}
+
+/** Attach public profile info (handle) to seated players who have linked an
+ *  account, so the client can highlight them and link straight to their profile.
+ *  Returns a shallow copy — never mutates the stored game. Passes through a
+ *  null/non-game value unchanged (callers may hand us a `mutate()` result).
+ * @param {Game | null} game @returns {Game | null} */
+export function withProfiles(game) {
+  if (!game || !Array.isArray(game.players)) return game;
+  return {
+    ...game,
+    players: game.players.map((p) => {
+      if (!p.userId) return p;
+      const u = getUser(p.userId);
+      return u ? { ...p, handle: u.handle, displayName: u.displayName } : p;
+    }),
+  };
 }
 
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
