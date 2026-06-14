@@ -5,6 +5,7 @@
   import { money } from '$lib/utils/money';
   import { ago, shortDate } from '$lib/utils/time';
   import { haptic, celebrate } from '$lib/utils/fx';
+  import { computeSettlement } from '$lib/engine/settle.js';
   import { onMount, onDestroy, tick } from 'svelte';
 
   // ---- state ----------------------------------------------------------------
@@ -82,6 +83,16 @@
   const invested = (pid: string) => (game?.transactions ?? []).filter((t: any) => t.playerId === pid).reduce((s: number, t: any) => s + t.amount, 0);
   const unit = $derived(game?.unit || '€');
   const totalIn = $derived(game ? game.transactions.reduce((s: number, t: any) => s + t.amount, 0) : 0);
+
+  // Live settlement computation for the active game view
+  let settlement = $derived.by(() => {
+    if (!game || game.status !== 'active') return null;
+    try {
+      return computeSettlement(game.players, game.transactions, game.finalStacks);
+    } catch { return null; }
+  });
+  const allEntered = $derived(game ? game.players.length > 0 && game.players.every((p: any) => game.finalStacks[p.id] != null) : false);
+
   const amHost = $derived.by(() => {
     if (!game) return false;
     if (!game.hostId) return true;
@@ -475,6 +486,7 @@
 
       <!-- Cash-out section -->
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3" id="cashout">Cash-out & settle</h2>
+      <p class="text-muted text-xs mb-2">Enter how much each player has left at the end. {settlement ? `${money(settlement.totalFinal, unit)} counted of ${money(totalIn, unit)} bought in.` : ''}</p>
       <div class="card">
         {#each game.players as p (p.id)}
           {@const isOut = game.finalStacks[p.id] === 0}
@@ -493,6 +505,36 @@
           <button class="btn-small btn-ghost w-full mt-1" onclick={markRestOut}>Mark everyone left as out (0)</button>
         {/if}
       </div>
+
+      <!-- Balance banner -->
+      {#if settlement && settlement.totalFinal > 0}
+        {#if settlement.balanced}
+          <div class="banner banner-ok">Books balance. Total in = total out = {money(settlement.totalInvested, unit)}.</div>
+        {:else}
+          {@const diff = settlement.discrepancy}
+          <div class="banner banner-warn">
+            Off by {money(Math.abs(diff), unit)} — counted {money(settlement.totalFinal, unit)} but {money(settlement.totalInvested, unit)} was bought in.
+            {diff > 0 ? 'Too many chips counted' : 'Missing chips'} — recount before paying out.
+          </div>
+        {/if}
+      {/if}
+
+      <!-- Who pays who (preview) -->
+      {#if !allEntered}
+        <p class="text-muted text-sm">Enter every player's cash-out to see who pays who.</p>
+      {:else if settlement && settlement.transfers.length > 0}
+        <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Who pays who</h3>
+        {#each settlement.transfers as t}
+          <div class="transfer-row">
+            <span class="font-semibold">{t.fromName}</span>
+            <span class="text-accent font-extrabold">→</span>
+            <span class="font-semibold">{t.toName}</span>
+            <span class="ml-auto font-bold tabular-nums">{money(t.amount, unit)}</span>
+          </div>
+        {/each}
+      {:else if allEntered}
+        <p class="text-muted text-sm">No payments needed — everyone's even.</p>
+      {/if}
 
       <!-- End game -->
       {#if amHost}
