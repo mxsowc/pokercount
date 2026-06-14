@@ -190,6 +190,29 @@
         html += `<div class="banner banner-info">Uncalled bet of <b>${fmt(r.returned.amount)}</b> returned to ${esc(name(r.returned.id))}.</div>`;
       }
 
+      const potLabel = (i: number) => (i === 0 ? 'Main pot' : `Side pot ${i}`);
+
+      // ---- "Why these amounts?" — plain-English notes for the situations in THIS hand ----
+      const why: string[] = [];
+      if (r.pots.length > 1) {
+        why.push(`Players put in different amounts, so the money splits into ${r.pots.length} pots — you can only win the pots you fully matched.`);
+        builtPlayers.filter(p => !p.folded).forEach(p => {
+          const inPots = r.pots.map((pt: any, i: number) => (pt.eligible.includes(p.id) ? i : -1)).filter((i: number) => i >= 0);
+          const top = inPots[inPots.length - 1];
+          if (top != null && top < r.pots.length - 1) {
+            why.push(`<b>${esc(name(p.id))}</b> only put in ${fmt(p.contributed)}, so even with the best hand the most they can win is the ${potLabel(top).toLowerCase()} — the bigger side pot${r.pots.length - top > 2 ? 's go' : ' goes'} to whoever put in more.`);
+          }
+        });
+      }
+      if (r.returned) why.push(`<b>${esc(name(r.returned.id))}</b> bet ${fmt(r.returned.amount)} more than anyone matched, so it's returned — uncalled money is never won.`);
+      if (builtPlayers.some(p => p.folded)) why.push(`Folded players' chips stay in the pots, but they can't win any of it.`);
+      if (boardCount > 1) why.push(`Double board: every pot is split evenly across both boards.`);
+      else if (runCount > 1) why.push(`Run ${runCount === 2 ? 'twice' : runCount + ' times'}: every pot is split evenly across the runs.`);
+      if (hiLo) why.push(`Hi-Lo: each pot is halved — best high hand takes one half, best qualifying 8-or-better low takes the other.`);
+      if (why.length) {
+        html += `<details class="bg-surface-2 rounded-[10px] p-3 mt-4 mb-1"><summary class="cursor-pointer font-semibold select-none">Why these amounts?</summary><ul class="mt-2 space-y-1.5 text-muted text-sm list-disc pl-4">${why.map(w => `<li>${w}</li>`).join('')}</ul></details>`;
+      }
+
       // Showdown visualization
       html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Showdown</h3>';
       const winners: Record<string, Set<string>> = {};
@@ -228,30 +251,29 @@
         }
       }
 
-      // Pots
-      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Pots</h3>';
+      // ---- Each pot: amount + who won it (per board) ----
+      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Each pot</h3>';
+      const byPot: Record<number, any[]> = {};
+      r.breakdown.forEach((seg: any) => { if (seg.amount !== 0) (byPot[seg.pot] ||= []).push(seg); });
       r.pots.forEach((pot: any, i: number) => {
-        const label = i === 0 ? 'Main pot' : `Side pot ${i}`;
-        html += `<div class="bg-surface-2 border-l-[3px] border-info p-3 rounded-r-[9px] mb-2 text-sm"><b>${label}: ${fmt(pot.amount)}</b><br><span class="text-muted text-xs">contested by ${pot.eligible.map((id: string) => esc(name(id))).join(', ')}</span></div>`;
-      });
-
-      // How each pot was won
-      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">How each pot was won</h3>';
-      r.breakdown.forEach((seg: any) => {
-        if (seg.amount === 0) return;
-        const where = (r.pots.length > 1 ? (seg.pot === 0 ? 'Main pot' : `Side pot ${seg.pot}`) : 'Pot')
-          + (boardCount > 1 ? ` · Board ${seg.board + 1}` : '')
-          + (runCount > 1 ? ` · Run ${seg.run + 1}` : '');
-        let line: string;
-        if (seg.walkover) {
-          line = `${esc(name(seg.highWinners[0]))} takes ${fmt(seg.amount)} uncontested`;
-        } else if (seg.lowWinners?.length) {
-          line = `<span class="font-semibold">High ½:</span> ${seg.highWinners.map((id: string) => esc(name(id))).join(' & ')} (${seg.highHand})<br><span class="font-semibold">Low ½:</span> ${seg.lowWinners.map((id: string) => esc(name(id))).join(' & ')} (${seg.lowHand})`;
-        } else {
-          const who = seg.highWinners.map((id: string) => esc(name(id))).join(' & ');
-          line = `${who} win${seg.highWinners.length > 1 ? ' (split)' : 's'} ${fmt(seg.amount)}${seg.highHand && seg.highHand !== 'uncontested' ? ` with ${seg.highHand}` : ''}${seg.scoop ? ' — scoops (no qualifying low)' : ''}`;
-        }
-        html += `<div class="bg-surface-2 border-l-[3px] border-info p-3 rounded-r-[9px] mb-2 text-sm"><div class="text-muted text-xs">${where} · ${fmt(seg.amount)}</div>${line}</div>`;
+        html += `<div class="bg-surface-2 rounded-[10px] p-3 mb-2 border-l-[3px] border-border">`;
+        html += `<div class="flex items-baseline justify-between gap-2"><b>${potLabel(i)}</b><span class="font-bold tabular-nums" style="font-family:var(--font-display)">${fmt(pot.amount)}</span></div>`;
+        // Side pots: a plain, compact note of who's actually in it (no chip grid).
+        if (i > 0) html += `<div class="text-muted text-xs mt-0.5">${pot.eligible.map((id: string) => esc(name(id))).join(', ')} only</div>`;
+        (byPot[i] || []).forEach((seg: any) => {
+          const board = boardCount > 1 ? `Board ${seg.board + 1}` : (runCount > 1 ? `Run ${seg.run + 1}` : '');
+          let who: string, hand = '';
+          if (seg.walkover) {
+            who = esc(name(seg.highWinners[0]));
+          } else if (seg.lowWinners?.length) {
+            who = `${seg.highWinners.map((id: string) => esc(name(id))).join(' & ')} (high) / ${seg.lowWinners.map((id: string) => esc(name(id))).join(' & ')} (low)`;
+          } else {
+            who = `${seg.highWinners.map((id: string) => esc(name(id))).join(' & ')}${seg.highWinners.length > 1 ? ' (split)' : ''}`;
+            if (seg.highHand && seg.highHand !== 'uncontested') hand = ` <span class="text-muted">· ${esc(seg.highHand)}</span>`;
+          }
+          html += `<div class="flex items-baseline gap-2 text-sm mt-1.5 pt-1.5 border-t border-border-soft">${board ? `<span class="text-muted text-xs w-16 shrink-0">${board}</span>` : ''}<span class="flex-1"><b>${who}</b>${hand}</span><span class="font-semibold tabular-nums shrink-0">${fmt(seg.amount)}</span></div>`;
+        });
+        html += `</div>`;
       });
 
       // Each player collects
