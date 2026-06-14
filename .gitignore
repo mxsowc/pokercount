@@ -1,2 +1,9 @@
 data/
 node_modules/
+public/models/*.onnx
+# Training data & artifacts (scripts are tracked, data/weights are not)
+training/dataset/
+training/runs/
+training/cards/
+training/backgrounds/
+*.pt

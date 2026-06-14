@@ -1,0 +1,9 @@
+# Dataset generation only (light — runs anywhere, no GPU):
+opencv-python-headless>=4.8
+numpy>=1.24
+
+# Training + export (heavy — needs a GPU to be practical; Colab has one):
+ultralytics>=8.2
+onnx>=1.15
+onnxslim>=0.1.40
+onnxruntime>=1.17

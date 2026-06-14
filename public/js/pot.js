@@ -1,8 +1,44 @@
 import { resolve } from '/src/index.js';
 import { equityAt } from '/src/equity.js';
 import { haptic } from '/js/fx.js';
+import { capturePhoto, recognizeCards, hasRecognizer, setCardRecognizer, mockRecognizer } from '/js/cardscan.js';
+import { onnxRecognizer } from '/js/cardscan-onnx.js';
 
 const root = document.getElementById('pot-app');
+
+// SPIKE: scan setup.
+//   default      → try real on-device recognition (ONNX Runtime Web + a YOLOv8
+//                  model at /models/cards-yolov8.onnx); fall back to the mock if
+//                  the model/runtime can't load, so the flow still demos.
+//   ?scan=mock   → force the placeholder recognizer (ignores the photo).
+//   ?scan=off    → disable scanning entirely (graceful "tap to enter" fallback).
+const scanMode = new URLSearchParams(location.search).get('scan');
+let usedMockFallback = false; // true once we've had to drop to placeholder cards
+let mockNoteShown = false;
+// Auto-fill floor: a guess below this confidence is dropped (slot left empty for
+// the user) rather than shown as a confident-looking wrong card.
+const SCAN_TRUST = 0.45;
+if (scanMode === 'mock') {
+  setCardRecognizer(mockRecognizer());
+  usedMockFallback = true;
+} else if (scanMode !== 'off') {
+  // Run inference at high resolution — card pips are tiny, and the model has a
+  // dynamic input, so this is the biggest free accuracy lever (slower on WASM,
+  // fast on WebGPU). Drop to 960 if it's too slow on your device.
+  const real = onnxRecognizer({ size: 1280 });
+  const mock = mockRecognizer();
+  setCardRecognizer(async (bitmap, opts) => {
+    try {
+      return await real(bitmap, opts);
+    } catch (e) {
+      if (e.code === 'model-unavailable' || e.message === 'ort-load-failed') {
+        usedMockFallback = true; // no model installed — demo with placeholders
+        return mock(bitmap, opts);
+      }
+      throw e; // a genuine inference error: let scanField surface it
+    }
+  });
+}
 
 const state = {
   game: 'holdem',
@@ -83,7 +119,11 @@ function boardInputs() {
       const label =
         (state.boards > 1 ? `Board ${b + 1}` : 'Board') +
         (state.runs > 1 ? ` · Run ${r + 1}` : '');
-      html += `<label>${label}</label>${cardSlots('board:' + key)}`;
+      html += `<label>${label}</label>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          ${cardSlots('board:' + key)}
+          <button type="button" class="ghost small" data-scan="board:${key}">📷 Scan</button>
+        </div>`;
     }
   }
   return html;
@@ -126,6 +166,9 @@ function wire() {
 
   root.querySelectorAll('[data-slot]').forEach((b) =>
     b.addEventListener('click', () => { syncFromDOM(); openPicker(b.dataset.slot, +b.dataset.idx); }));
+
+  root.querySelectorAll('[data-scan]').forEach((b) =>
+    b.addEventListener('click', () => scanField(b.dataset.scan, b)));
 
   root.querySelector('[data-act="add-player"]')?.addEventListener('click', () => {
     syncFromDOM();
@@ -424,6 +467,73 @@ function usedCards(exRef, exIdx) {
   Object.entries(state.runouts).forEach(([k, v]) =>
     parseTokens(v).forEach((t, idx) => { if (!(exRef === `board:${k}` && idx === exIdx)) set.add(t); }));
   return set;
+}
+
+// ---- scan a field from a photo (SPIKE) ----
+// Snap → recognizer guesses → we drop them into the field as a DRAFT through the
+// same validation the manual picker uses (canonicalize, drop dupes/already-placed
+// cards, cap at the field's card count). The user then fixes any wrong card with
+// the existing tap picker. The scan is an accelerator, never the source of truth.
+async function scanField(ref, btn) {
+  if (!hasRecognizer()) {
+    alert('Card scanning is turned off (?scan=off) — tap each slot to pick cards.');
+    return;
+  }
+  syncFromDOM();
+  const file = await capturePhoto();
+  if (!file) return; // cancelled
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; } // model + wasm load on first run
+
+  let results;
+  try {
+    results = await recognizeCards(file, { count: fieldCount(ref), kind: ref.split(':')[0] });
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📷 Scan'; }
+    if (e && e.code === 'bad-classes') {
+      alert('The recognition model’s card list looks wrong (' + e.message + '). '
+        + 'Every card would be mislabelled — fix /models/cards-classes.json to match the model before scanning.');
+    } else {
+      alert('Couldn’t read that photo. Try again with the cards flat, spread out and well lit — '
+        + 'or tap each slot to enter them.');
+    }
+    return;
+  }
+
+  setFieldValue(ref, ''); // replacing this field — free its cards for dedupe
+  const used = usedCards(ref, -1);
+  const want = fieldCount(ref);
+  const seen = new Set();
+  const tokens = [];
+  for (const r of results) {
+    if (r && r.confidence != null && r.confidence < SCAN_TRUST) continue; // too shaky to auto-fill
+    const card = normCard(r && r.card);
+    if (!card || seen.has(card) || used.has(card)) continue; // invalid / duplicate / used elsewhere
+    seen.add(card);
+    tokens.push(card);
+    if (tokens.length >= want) break;
+  }
+  setFieldValue(ref, tokens.join(' '));
+  haptic(12);
+  render(); // slots update; user can tap any wrong card to fix it
+
+  if (usedMockFallback && !mockNoteShown) {
+    mockNoteShown = true;
+    alert('No recognition model is installed (/models/cards-yolov8.onnx), so these are '
+      + 'PLACEHOLDER cards — not read from your photo. The flow is real; the model is the '
+      + 'missing piece (see /models/README.md). Tap any slot to correct a card.');
+  } else if (!usedMockFallback) {
+    if (tokens.length === 0) {
+      alert('No cards recognized confidently. Try flatter, well-lit, non-overlapping cards — '
+        + 'or tap each slot to enter them.');
+    } else if (tokens.length < want) {
+      alert(`Filled ${tokens.length} of ${want} cards I’m confident about — tap the empty slots `
+        + 'to add the rest. (Low-confidence guesses are left blank on purpose.)');
+    }
+    // else: full confident read — the user just reviews the slots.
+  }
+  // Phase 2: surface low-confidence cards (results[i].confidence) so the user
+  // knows which to double-check, instead of treating every guess as equal.
 }
 
 // ---- the picker (bottom sheet) ----
