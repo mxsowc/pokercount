@@ -1,4 +1,4 @@
-# pokercount
+# potcount
 
 Two tools for poker home games, in one small web app:
 

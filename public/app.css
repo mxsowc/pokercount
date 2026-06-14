@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600;700&display=swap');
 
 /* ============================================================================
-   pokercount — "felt & neon" design system
+   potcount — "felt & neon" design system
    Dark, tactile, poker-night feel: emerald felt + warm gold, layered depth,
    ambient glow + grain, springy micro-interactions. Mobile-first.
    ========================================================================== */
@@ -464,7 +464,7 @@ dialog::backdrop { background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(3p
   opacity: 0; transform: translateY(8px); animation: rise .55s var(--ease) .12s forwards; }
 /* Hero wordmark — the product name as the headline, echoing the top-bar logo. */
 #view-intro h1.wordmark { font-size: clamp(2.8rem, 11vw, 4.2rem); letter-spacing: -0.04em; font-weight: 700;
-  margin-bottom: 10px; }
+  margin-bottom: 8px; }
 #view-intro h1.wordmark b { color: var(--accent); font-weight: 700; }
 #view-intro > p.muted { font-size: 1.05rem; max-width: 48ch;
   opacity: 0; transform: translateY(8px); animation: rise .55s var(--ease) .2s forwards; }
@@ -480,6 +480,16 @@ dialog::backdrop { background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(3p
   #view-intro > p.muted { margin-left: auto; margin-right: auto; max-width: 52ch; }
   .wrap { padding-left: 24px; padding-right: 24px; }
   .topbar { padding-left: clamp(22px, 5vw, 48px); padding-right: clamp(22px, 5vw, 48px); }
+
+  /* Vertically centre the welcome hero so it doesn't hug the top on tall screens. */
+  #view-intro {
+    min-height: calc(80vh - 60px); /* 60px ≈ topbar height */
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding-top: 0;
+  }
+  /* Keep child widths sane inside the flex column. */
+  #view-intro > * { width: 100%; }
+  #view-intro > .stack { max-width: 400px; margin-left: auto; margin-right: auto; }
 }
 /* Wider iPads / landscape — expand the content column slightly. */
 @media (min-width: 900px) {

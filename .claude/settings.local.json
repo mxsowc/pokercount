@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Skill(deep-research)",
+      "Skill(deep-research:*)",
+      "Workflow(deep-research)",
+      "WebFetch(domain:www.revenuecat.com)",
+      "WebFetch(domain:aventis-advisors.com)",
+      "WebFetch(domain:www.businessofapps.com)",
+      "WebFetch(domain:valueaddvc.com)",
+      "WebFetch(domain:www.crazyegg.com)",
+      "WebFetch(domain:www.poker.org)",
+      "WebFetch(domain:apps.apple.com)",
+      "WebFetch(domain:www.pokersplit.org)",
+      "WebFetch(domain:webcache.googleusercontent.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

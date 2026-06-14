@@ -1,4 +1,4 @@
-# Deploying pokercount on a TransIP VPS
+# Deploying potcount on a TransIP VPS
 
 You'll buy a small VPS, point your TransIP domain at it, upload the code, and run
 one script. Caddy then gives you HTTPS automatically. ~15 minutes.
@@ -36,7 +36,7 @@ From your computer, in the project folder:
 
 ```bash
 # replace USER and the IP with your VPS login (root works on a fresh TransIP VPS)
-rsync -av --exclude node_modules --exclude data ./ USER@YOUR_VPS_IP:/opt/pokercount/
+rsync -av --exclude node_modules --exclude data ./ USER@YOUR_VPS_IP:/opt/potcount/
 ```
 
 (Or `scp -r` the folder, or `git clone` if you push it to a repo.)
@@ -47,7 +47,7 @@ SSH in and run it once, passing your domain:
 
 ```bash
 ssh USER@YOUR_VPS_IP
-cd /opt/pokercount
+cd /opt/potcount
 sudo bash deploy/setup.sh your-domain.com
 ```
 
@@ -59,26 +59,26 @@ When it finishes, open **https://your-domain.com** — done.
 ## Day-to-day
 
 ```bash
-systemctl status pokercount       # is it running?
-journalctl -u pokercount -f       # live app logs
-systemctl restart pokercount      # after uploading new code
+systemctl status potcount       # is it running?
+journalctl -u potcount -f       # live app logs
+systemctl restart potcount      # after uploading new code
 journalctl -u caddy -f            # HTTPS / certificate logs
 ```
 
 **Updating:** re-run the `rsync` from step 3, then `sudo systemctl restart
-pokercount`.
+potcount`.
 
 **Backups:** the only thing to back up is the `data/` folder, e.g.
-`rsync -av USER@YOUR_VPS_IP:/opt/pokercount/data ./backup/`.
+`rsync -av USER@YOUR_VPS_IP:/opt/potcount/data ./backup/`.
 
 ## Optional: enable "Sign in with Google"
 
 1. Google Cloud Console → **Credentials** → **OAuth client ID** → **Web
    application**. Add `https://your-domain.com` as an *Authorized JavaScript
    origin*.
-2. On the VPS, edit `/etc/systemd/system/pokercount.service`, uncomment the
+2. On the VPS, edit `/etc/systemd/system/potcount.service`, uncomment the
    `GOOGLE_CLIENT_ID=` line and paste your client id.
-3. `sudo systemctl daemon-reload && sudo systemctl restart pokercount`.
+3. `sudo systemctl daemon-reload && sudo systemctl restart potcount`.
 
 The button appears automatically and tokens are verified server-side.
 

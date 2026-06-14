@@ -1,5 +1,5 @@
 {
-  "name": "pokercount",
+  "name": "potcount",
   "version": "0.1.0",
   "description": "Poker pot-resolution engine: side pots, hi-lo, run-it-twice, double board.",
   "type": "module",

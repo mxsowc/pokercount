@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# pokercount — one-shot VPS setup (Ubuntu/Debian).
+# potcount — one-shot VPS setup (Ubuntu/Debian).
 #
 # Installs Node + Caddy, runs the app as a systemd service, and serves it over
 # HTTPS on your domain with an auto-renewing Let's Encrypt certificate.
@@ -74,10 +74,10 @@ chmod 700 "$APP_DIR/data"
 [ -f "$APP_DIR/data/users.json" ] && chmod 600 "$APP_DIR/data/users.json"
 
 # --- systemd service -------------------------------------------------------
-echo "==> Writing /etc/systemd/system/pokercount.service"
-cat > /etc/systemd/system/pokercount.service <<EOF
+echo "==> Writing /etc/systemd/system/potcount.service"
+cat > /etc/systemd/system/potcount.service <<EOF
 [Unit]
-Description=pokercount
+Description=potcount
 After=network.target
 
 [Service]
@@ -87,7 +87,7 @@ WorkingDirectory=$APP_DIR
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
 Environment=COOKIE_SECURE=1
-# To enable Google sign-in later, add your client id and 'systemctl restart pokercount':
+# To enable Google sign-in later, add your client id and 'systemctl restart potcount':
 # Environment=GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 ExecStart=$(command -v node) server/index.js
 Restart=always
@@ -99,8 +99,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now pokercount
-systemctl restart pokercount
+systemctl enable --now potcount
+systemctl restart potcount
 
 # --- Caddy site config -----------------------------------------------------
 echo "==> Writing /etc/caddy/Caddyfile"
@@ -119,8 +119,8 @@ echo " Done. Once DNS for $DOMAIN points to this server, open:"
 echo "     https://$DOMAIN"
 echo
 echo " Useful commands:"
-echo "   systemctl status pokercount      # app status"
-echo "   journalctl -u pokercount -f       # live app logs"
-echo "   systemctl restart pokercount      # after pulling new code"
+echo "   systemctl status potcount      # app status"
+echo "   journalctl -u potcount -f       # live app logs"
+echo "   systemctl restart potcount      # after pulling new code"
 echo "   journalctl -u caddy -f            # HTTPS / cert logs"
 echo "============================================================"
