@@ -166,6 +166,7 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
   };
   index(u);
   persist();
+  console.log(`[user] new local account @${u.handle} — ${byId.size} total`);
   return u;
 }
 
@@ -210,6 +211,7 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
   };
   index(u);
   persist();
+  console.log(`[user] new ${provider} account @${u.handle} — ${byId.size} total`);
   return u;
 }
 

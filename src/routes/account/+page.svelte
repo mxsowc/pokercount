@@ -87,37 +87,92 @@
 
   // Resize+compress an image entirely in the browser to a small square-ish JPEG
   // data URL so we can store it inline without any upload/blob storage.
-  function resizeImage(file: File, max = 256): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const scale = Math.min(1, max / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('no canvas'));
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad image')); };
-      img.src = url;
-    });
+  // ---- crop/position picker -------------------------------------------------
+  const CROP_V = 260; // on-screen viewport size (px)
+  const CROP_OUT = 256; // exported square size (px)
+  let cropOpen = $state(false);
+  let cropImg = $state<HTMLImageElement | null>(null);
+  let cropSrc = $state('');
+  let cropScale = $state(1); // zoom multiplier ≥ 1 on top of "cover"
+  let cropX = $state(0), cropY = $state(0); // image top-left within the viewport
+  let cropDrag: { x: number; y: number; px: number; py: number } | null = null;
+
+  const coverScale = () => cropImg ? Math.max(CROP_V / cropImg.naturalWidth, CROP_V / cropImg.naturalHeight) : 1;
+  const dispScale = () => coverScale() * cropScale;
+  function clampCrop() {
+    if (!cropImg) return;
+    const ds = dispScale();
+    const w = cropImg.naturalWidth * ds, h = cropImg.naturalHeight * ds;
+    cropX = Math.min(0, Math.max(CROP_V - w, cropX));
+    cropY = Math.min(0, Math.max(CROP_V - h, cropY));
+  }
+  function centerCrop() {
+    if (!cropImg) return;
+    const ds = dispScale();
+    cropX = (CROP_V - cropImg.naturalWidth * ds) / 2;
+    cropY = (CROP_V - cropImg.naturalHeight * ds) / 2;
+    clampCrop();
   }
 
-  async function onAvatarFile(e: Event) {
+  function onAvatarFile(e: Event) {
     const inp = e.target as HTMLInputElement;
     const file = inp.files?.[0];
     inp.value = '';
     if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      cropImg = img; cropSrc = url; cropScale = 1;
+      centerCrop();
+      cropOpen = true;
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast("Couldn't read that image"); };
+    img.src = url;
+  }
+
+  function cropPointerDown(e: PointerEvent) {
+    cropDrag = { x: e.clientX, y: e.clientY, px: cropX, py: cropY };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function cropPointerMove(e: PointerEvent) {
+    if (!cropDrag) return;
+    cropX = cropDrag.px + (e.clientX - cropDrag.x);
+    cropY = cropDrag.py + (e.clientY - cropDrag.y);
+    clampCrop();
+  }
+  function cropPointerUp() { cropDrag = null; }
+
+  function onZoom(next: number) {
+    // zoom around the viewport centre so it stays put
+    const c = CROP_V / 2;
+    const old = dispScale();
+    const sx = (c - cropX) / old, sy = (c - cropY) / old;
+    cropScale = next;
+    const ds = dispScale();
+    cropX = c - sx * ds; cropY = c - sy * ds;
+    clampCrop();
+  }
+
+  function closeCrop() {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    cropOpen = false; cropImg = null; cropSrc = '';
+  }
+
+  async function confirmCrop() {
+    if (!cropImg) return;
     avatarBusy = true;
     try {
-      const dataUrl = await resizeImage(file, 256);
-      await putMe({ avatar: dataUrl }, 'Photo updated');
-    } catch { toast("Couldn't read that image"); }
+      const ds = dispScale();
+      const sW = CROP_V / ds, sH = CROP_V / ds;   // source rect (image px) shown in the viewport
+      const sx = -cropX / ds, sy = -cropY / ds;
+      const canvas = document.createElement('canvas');
+      canvas.width = CROP_OUT; canvas.height = CROP_OUT;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas');
+      ctx.drawImage(cropImg, sx, sy, sW, sH, 0, 0, CROP_OUT, CROP_OUT);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      if (await putMe({ avatar: dataUrl }, 'Photo updated')) closeCrop();
+    } catch { toast("Couldn't process that image"); }
     finally { avatarBusy = false; }
   }
 

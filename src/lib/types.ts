@@ -99,8 +99,8 @@ export interface User {
   avatarCustom?: boolean;
   /** Last photo from the OAuth provider, kept so "use my Google photo" can restore it. */
   oauthAvatar?: string | null;
-  /** Who can see this profile/stats. Defaults 'public'. */
-  privacy?: 'public' | 'members' | 'private';
+  /** Who can see this profile/stats: 'public' | 'members' | 'private'. Defaults 'public'. */
+  privacy?: string;
   provider: string;
   providerSub: string | null;
   pinHash: string | null;
@@ -126,7 +126,7 @@ export interface PublicUser {
   avatar: string | null;
   provider: string;
   /** Who can see this profile/stats: 'public' | 'members' | 'private'. */
-  privacy?: 'public' | 'members' | 'private';
+  privacy?: string;
   needsHandle: boolean;
   /** Whether onboarding has been completed/skipped (so the client can prompt once). */
   onboarded?: boolean;

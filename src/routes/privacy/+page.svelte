@@ -41,7 +41,7 @@
   </ul>
   <p class="mb-4">
     For any of the above, or any privacy question, email
-    <a href="mailto:hello@potcount.com">hello@potcount.com</a>.
+    <a href="mailto:info@fatcloud.nl">info@fatcloud.nl</a>.
   </p>
 
   <p class="text-muted text-sm mt-8">

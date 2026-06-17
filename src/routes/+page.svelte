@@ -72,7 +72,34 @@
   let openGameName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
-  let openUnit = $state('€');
+
+  // Currency: searchable, with custom entry. `unitInput` is what's used as the
+  // game's unit — pick from the list or just type your own (e.g. "BTC", "chips").
+  const CURRENCIES = [
+    { s: '€', n: 'Euro' }, { s: '$', n: 'US Dollar' }, { s: '£', n: 'British Pound' },
+    { s: 'zł', n: 'Polish Złoty' }, { s: 'CHF', n: 'Swiss Franc' }, { s: '¥', n: 'Japanese Yen / Chinese Yuan' },
+    { s: '₹', n: 'Indian Rupee' }, { s: 'kr', n: 'Scandinavian Krone/Krona' }, { s: 'C$', n: 'Canadian Dollar' },
+    { s: 'A$', n: 'Australian Dollar' }, { s: '₺', n: 'Turkish Lira' }, { s: 'R$', n: 'Brazilian Real' },
+    { s: '₽', n: 'Russian Ruble' }, { s: '₩', n: 'Korean Won' }, { s: '₪', n: 'Israeli Shekel' },
+    { s: 'Kč', n: 'Czech Koruna' }, { s: 'Ft', n: 'Hungarian Forint' }, { s: '฿', n: 'Thai Baht' },
+    { s: 'R', n: 'South African Rand' }, { s: '₿', n: 'Bitcoin' }, { s: 'chips', n: 'Chips (no money)' },
+  ];
+  let unitInput = $state('€');
+  let showUnits = $state(false);
+  let unitActive = $state(-1);
+  let unitMatches = $derived.by(() => {
+    const q = unitInput.trim().toLowerCase();
+    if (!q) return CURRENCIES;
+    return CURRENCIES.filter((c) => c.s.toLowerCase().includes(q) || c.n.toLowerCase().includes(q));
+  });
+  function pickUnit(c: { s: string; n: string }) { unitInput = c.s; showUnits = false; unitActive = -1; }
+  function onUnitKey(e: KeyboardEvent) {
+    if (!showUnits || !unitMatches.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); unitActive = (unitActive + 1) % unitMatches.length; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); unitActive = (unitActive - 1 + unitMatches.length) % unitMatches.length; }
+    else if (e.key === 'Enter' && unitActive >= 0) { e.preventDefault(); pickUnit(unitMatches[unitActive]); }
+    else if (e.key === 'Escape') { showUnits = false; }
+  }
 
   // Join game form
   let joinCode = $state('');
@@ -84,14 +111,23 @@
     setActorName(you);
     const players = [{ name: you }];
     for (let i = 0; i < openSeats; i++) players.push({ name: `Player ${i + 2}` });
+    const code = openCode.replace(/[^0-9]/g, '');
     try {
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: openGameName.trim() || undefined, unit: openUnit, players, code: openCode.replace(/[^0-9]/g, '') || undefined })
+        body: JSON.stringify({ name: openGameName.trim() || undefined, unit: unitInput.trim() || '€', players, code: code || undefined })
       });
       const game = await res.json();
-      if (!res.ok) { toast(game.error || 'Failed'); return; }
+      if (!res.ok) {
+        // A custom code that's already in use → a game with it already exists.
+        if (res.status === 409 && code) {
+          toast(`A game with code #${code} is already running — pick another code or leave it blank.`);
+        } else {
+          toast(game.error || 'Failed');
+        }
+        return;
+      }
       localStorage.setItem('pc_me_' + game.id, game.players[0].id);
       if (game.hostToken) localStorage.setItem('pc_host_' + game.id, game.hostToken);
       rememberGame(game);
@@ -189,17 +225,33 @@
       <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" />
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Game name</label>
       <input class="input" bind:value={openGameName} placeholder="Friday Night PLO" />
-      <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
-      <select class="input" bind:value={openUnit}>
-        <option value="€">€ — Euro</option>
-        <option value="$">$ — Dollar</option>
-        <option value="£">£ — Pound</option>
-        <option value="zł">zł — Złoty</option>
-        <option value="CHF">CHF — Franc</option>
-      </select>
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
-        <div class="flex gap-2.5 mt-2">
+
+        <!-- Currency: searchable + custom -->
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
+        <div class="relative">
+          <input class="input w-full" bind:value={unitInput} placeholder="€, $, zł, BTC, chips…" autocomplete="off"
+                 oninput={() => { showUnits = true; unitActive = -1; }}
+                 onfocus={() => { showUnits = true; }}
+                 onkeydown={onUnitKey}
+                 onblur={() => setTimeout(() => showUnits = false, 150)} />
+          {#if showUnits && unitMatches.length}
+            <div class="absolute left-0 right-0 top-full mt-1 z-30 card !p-1 max-h-56 overflow-auto shadow-xl">
+              {#each unitMatches as c, i (c.s)}
+                <button type="button"
+                        class="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-lg {i === unitActive ? 'bg-surface-2' : 'hover:bg-surface-2'} transition-colors"
+                        onmousedown={(e) => { e.preventDefault(); pickUnit(c); }}>
+                  <span class="w-9 shrink-0 font-bold tabular-nums">{c.s}</span>
+                  <span class="text-muted text-sm truncate">{c.n}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <p class="text-muted text-xs mt-1">Pick one or type your own.</p>
+
+        <div class="flex gap-2.5 mt-3">
           <div class="flex-1">
             <label class="block text-xs text-muted font-medium mb-1">Custom code (optional)</label>
             <input class="input" bind:value={openCode} inputmode="numeric" placeholder="auto e.g. 2137" maxlength="6" />
