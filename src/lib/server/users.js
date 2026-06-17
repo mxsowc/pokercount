@@ -256,8 +256,8 @@ const MAX_AVATAR_BYTES = 200 * 1024; // cap inline data-URL avatars to keep user
 // (normalized, unique) handle. `avatar` is a data:image/* URL (custom upload) or
 // null/'' to reset to their OAuth photo. `privacy` is one of PRIVACY_LEVELS.
 // Each field is optional — only provided ones change. Editable any time.
-/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string }} input @returns {User} */
-export function updateProfile(userId, { name, avatar, privacy } = {}) {
+/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean }} input @returns {User} */
+export function updateProfile(userId, { name, avatar, privacy, newsletter } = {}) {
   const u = byId.get(userId);
   if (!u) fail('not signed in', 401);
 
@@ -290,6 +290,10 @@ export function updateProfile(userId, { name, avatar, privacy } = {}) {
   if (privacy !== undefined) {
     if (!PRIVACY_LEVELS.has(privacy)) fail('invalid privacy setting', 400);
     u.privacy = privacy;
+  }
+
+  if (newsletter !== undefined) {
+    u.newsletter = !!newsletter; // marketing opt-in, toggleable any time
   }
 
   persist();

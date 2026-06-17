@@ -176,10 +176,20 @@
     finally { avatarBusy = false; }
   }
 
-  async function resetAvatar() {
-    avatarBusy = true;
-    try { await putMe({ avatar: null }, user?.provider === 'google' ? 'Using your Google photo' : 'Photo removed'); }
-    finally { avatarBusy = false; }
+  // Newsletter opt-in (toggleable any time, incl. returning OAuth users). It's
+  // private (not in publicUser), so load it for ourselves from GET /api/me.
+  let newsletterPref = $state(false);
+  let hasEmail = $state(false);
+  $effect(() => {
+    if (!user) return;
+    fetch('/api/me').then((r) => r.json()).then((d) => {
+      newsletterPref = !!d.newsletter; hasEmail = !!d.hasEmail;
+    }).catch(() => {});
+  });
+  async function setNewsletter(on: boolean) {
+    const prev = newsletterPref;
+    newsletterPref = on; // optimistic; the effect reconciles from the server after
+    if (!(await putMe({ newsletter: on }, on ? 'Subscribed to updates' : 'Unsubscribed'))) newsletterPref = prev;
   }
 
   let showPrivacy = $state(false);
@@ -319,13 +329,6 @@
         <button class="btn-small btn-danger shrink-0" onclick={doLogout}>Log out</button>
       </div>
 
-      <div class="flex gap-2 mt-2.5">
-        <button class="btn-small btn-secondary" disabled={avatarBusy} onclick={() => fileEl?.click()}>Upload photo</button>
-        {#if user.avatar}
-          <button class="btn-small btn-ghost" disabled={avatarBusy} onclick={resetAvatar}>{user.provider === 'google' ? 'Use Google photo' : 'Remove photo'}</button>
-        {/if}
-      </div>
-
       <!-- Display name / handle -->
       <label class="block text-xs text-muted font-medium mb-1 mt-4">Name</label>
       <div class="flex gap-2">
@@ -340,7 +343,7 @@
         <div class="flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="text-xs text-muted font-medium">Profile privacy</div>
-            <div class="font-semibold capitalize">{user.privacy || 'public'}</div>
+            <div class="font-semibold">{PRIVACY_LABELS[user.privacy || 'public']}</div>
           </div>
           <button class="btn-small btn-ghost shrink-0" onclick={() => showPrivacy = !showPrivacy}>
             {showPrivacy ? 'Done' : 'Change privacy settings'}
@@ -355,6 +358,18 @@
               </button>
             {/each}
           </div>
+        {/if}
+      </div>
+
+      <!-- Newsletter opt-in -->
+      <div class="mt-4 pt-4 border-t border-border-soft">
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" class="accent-accent w-4 h-4 shrink-0" checked={newsletterPref}
+                 onchange={(e) => setNewsletter((e.target as HTMLInputElement).checked)} />
+          <span class="text-sm">Email me occasional updates <span class="text-muted">(opt out anytime)</span></span>
+        </label>
+        {#if newsletterPref && !hasEmail}
+          <p class="text-muted text-xs mt-1">We don't have an email for your account yet, so there's nowhere to send it.</p>
         {/if}
       </div>
 

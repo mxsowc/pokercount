@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c1512"/>
+      <stop offset="1" stop-color="#06140f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="1200" fill="url(#bg)"/>
+  <circle cx="980" cy="600" r="380" fill="url(#glow)"/>
+
+  <!-- suit accents (subtle, dark-on-dark) -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="120" font-weight="700" fill="#173329">
+    <text x="945" y="500">♠</text>
+    <text x="1050" y="610">♥</text>
+    <text x="905" y="700">♣</text>
+    <text x="1015" y="800">♦</text>
+  </g>
+
+  <!-- wordmark (centered in the middle 630 band: y 285–915) -->
+  <text x="96" y="560" font-family="Helvetica, Arial, sans-serif" font-size="150" font-weight="800" letter-spacing="-5" fill="#ffffff">pot<tspan fill="#34d399">count</tspan></text>
+
+  <!-- tagline -->
+  <text x="100" y="650" font-family="Helvetica, Arial, sans-serif" font-size="44" fill="#a7b6b0">Track buy-ins at your poker night —</text>
+  <text x="100" y="708" font-family="Helvetica, Arial, sans-serif" font-size="44" fill="#a7b6b0">it works out who pays who.</text>
+
+  <!-- url -->
+  <text x="100" y="820" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="700" fill="#34d399">potcount.com</text>
+</svg>
