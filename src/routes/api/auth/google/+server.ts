@@ -6,7 +6,7 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
 
 export async function POST({ request }) {
   if (!GOOGLE_CLIENT_ID) return json({ error: 'Google sign-in is not configured' }, { status: 501 });
-  const { credential } = await request.json();
+  const { credential, newsletter } = await request.json();
   let payload;
   try { payload = await verifyGoogleIdToken(credential, GOOGLE_CLIENT_ID); }
   catch (e: any) { return json({ error: 'Google sign-in failed: ' + e.message }, { status: 401 }); }
@@ -15,6 +15,8 @@ export async function POST({ request }) {
     displayName: payload.name || payload.email,
     avatar: payload.picture,
     handleHint: (payload.email || '').split('@')[0],
+    email: payload.email,
+    newsletter: !!newsletter,
   });
   return json({ user: publicUser(u) }, {
     headers: { 'Set-Cookie': sessionCookie(u.id, request) }

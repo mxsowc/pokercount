@@ -7,7 +7,7 @@ const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || null;
 
 export async function POST({ request }) {
   if (!APPLE_CLIENT_ID) return json({ error: 'Apple sign-in is not configured' }, { status: 501 });
-  const { idToken, name } = await request.json();
+  const { idToken, name, newsletter } = await request.json();
   let payload;
   try { payload = await verifyAppleIdToken(idToken, APPLE_CLIENT_ID); }
   catch (e: any) { return json({ error: 'Apple sign-in failed: ' + e.message }, { status: 401 }); }
@@ -22,6 +22,8 @@ export async function POST({ request }) {
     sub: payload.sub,
     displayName: display,
     handleHint: email ? email.split('@')[0] : 'player',
+    email,
+    newsletter: !!newsletter,
   });
   return json({ user: publicUser(u) }, {
     headers: { 'Set-Cookie': sessionCookie(u.id, request) },

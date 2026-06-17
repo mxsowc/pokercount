@@ -19,6 +19,8 @@
   let signupName = $state('');
   let signupPin = $state('');
   let signupPin2 = $state('');
+  let signupEmail = $state('');
+  let wantNewsletter = $state(false);
   let handlePreview = $derived(signupName.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
 
   // After a successful sign-in, return to wherever we were sent from (e.g. a game
@@ -44,7 +46,7 @@
     if (signupPin.length < 4) { toast('Passcode must be at least 4 characters'); return; }
     if (signupPin !== signupPin2) { toast("Passcodes don't match"); return; }
     try {
-      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin }) });
+      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin, email: signupEmail.trim() || undefined, newsletter: wantNewsletter }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Signup failed'); return; }
       await afterAuth('Account created');
@@ -84,7 +86,7 @@
     try {
       const res = await fetch('/api/auth/google', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: resp.credential }),
+        body: JSON.stringify({ credential: resp.credential, newsletter: wantNewsletter }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Google sign-in failed'); return; }
@@ -116,7 +118,7 @@
       const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
       const res = await fetch('/api/auth/apple', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, name: nm }),
+        body: JSON.stringify({ idToken, name: nm, newsletter: wantNewsletter }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
@@ -211,6 +213,12 @@
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Confirm passcode</label>
         <input class="input" type="password" bind:value={signupPin2} placeholder="re-enter passcode" autocomplete="new-password"
           onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Email <span class="text-muted">(optional)</span></label>
+        <input class="input" type="email" bind:value={signupEmail} placeholder="you@example.com" autocomplete="email" autocapitalize="none" inputmode="email" />
+        <label class="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer">
+          <input type="checkbox" bind:checked={wantNewsletter} class="accent-accent w-4 h-4 shrink-0" />
+          Email me occasional updates (you can opt out anytime)
+        </label>
         <button class="btn w-full mt-4" onclick={doSignup}>Create account</button>
       {/if}
 
@@ -218,6 +226,12 @@
         <div class="flex items-center gap-3 my-4 text-muted text-xs">
           <span class="h-px bg-border flex-1"></span> or <span class="h-px bg-border flex-1"></span>
         </div>
+        {#if tab === 'login'}
+          <label class="flex items-center gap-2 mb-2 text-sm text-muted cursor-pointer">
+            <input type="checkbox" bind:checked={wantNewsletter} class="accent-accent w-4 h-4 shrink-0" />
+            Email me occasional updates (you can opt out anytime)
+          </label>
+        {/if}
         <div class="flex flex-col items-stretch gap-2">
           {#if config.googleClientId}
             <div id="google-btn" class="flex justify-center"></div>

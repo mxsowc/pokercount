@@ -97,6 +97,13 @@ export function searchUsers(query, excludeId, limit = 20) {
   return results;
 }
 
+/** Normalize/validate an email; returns a clean lowercase address or null.
+ * @param {string | null | undefined} raw @returns {string | null} */
+function cleanEmail(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) ? s.slice(0, 200) : null;
+}
+
 const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
 /** @param {string | null | undefined} raw @returns {string} */
 export function normalizeHandle(raw) {
@@ -133,12 +140,13 @@ function checkPin(pin, stored) {
 function fail(message, status) { throw Object.assign(new Error(message), { status }); }
 
 // ---- account creation / auth -------------------------------------------------
-/** @param {{ handle?: string, displayName?: string, pin?: string }} input @returns {User} */
-export function createLocal({ handle, displayName, pin }) {
+/** @param {{ handle?: string, displayName?: string, pin?: string, email?: string, newsletter?: boolean }} input @returns {User} */
+export function createLocal({ handle, displayName, pin, email, newsletter }) {
   const h = normalizeHandle(handle);
   if (!HANDLE_RE.test(h)) fail('name must be 3–20 letters, numbers or _', 400);
   if (handleIndex.has(h)) fail('that name is taken', 409);
   if (String(pin || '').length < 4) fail('Passcode must be at least 4 characters', 400);
+  const mail = cleanEmail(email);
   const u = {
     id: uid(),
     handle: h,
@@ -147,6 +155,8 @@ export function createLocal({ handle, displayName, pin }) {
     providerSub: null,
     pinHash: hashPin(pin),
     avatar: null,
+    email: mail,
+    newsletter: !!newsletter && !!mail, // opt-in only counts if we actually have an email
     createdAt: now(),
   };
   index(u);
@@ -162,11 +172,17 @@ export function loginLocal({ handle, pin }) {
 }
 
 // Find or create an OAuth-backed account.
-/** @param {{ provider: string, sub: string, displayName?: string, avatar?: string|null, handleHint?: string }} input @returns {User} */
-export function upsertOAuth({ provider, sub, displayName, avatar, handleHint }) {
+/** @param {{ provider: string, sub: string, displayName?: string, avatar?: string|null, handleHint?: string, email?: string, newsletter?: boolean }} input @returns {User} */
+export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, email, newsletter }) {
+  const mail = cleanEmail(email);
   let u = getByProvider(provider, sub);
   if (u) {
-    if (avatar && avatar !== u.avatar) { u.avatar = avatar; persist(); }
+    // Returning user: refresh avatar/email, but preserve their stored newsletter
+    // choice (the opt-in checkbox only applies at first sign-up).
+    let changed = false;
+    if (avatar && avatar !== u.avatar) { u.avatar = avatar; changed = true; }
+    if (mail && mail !== u.email) { u.email = mail; changed = true; }
+    if (changed) persist();
     return u;
   }
   u = {
@@ -177,6 +193,8 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint }) 
     providerSub: sub,
     pinHash: null,
     avatar: avatar || null,
+    email: mail,
+    newsletter: !!newsletter && !!mail,
     needsHandle: true, // they get a suggested handle but choose their own on first sign-in
     createdAt: now(),
   };

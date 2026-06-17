@@ -99,6 +99,10 @@ export interface User {
   providerSub: string | null;
   pinHash: string | null;
   needsHandle?: boolean;
+  /** Stored privately (never in PublicUser); used for account contact + opt-in newsletter. */
+  email?: string | null;
+  /** Explicit opt-in to receive newsletter/marketing email. Defaults false. */
+  newsletter?: boolean;
   createdAt: string;
 }
 
