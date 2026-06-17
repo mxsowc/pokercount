@@ -115,6 +115,8 @@ export interface User {
   heardFrom?: string | null;
   /** Set once the user completes or skips onboarding, so it isn't shown again. */
   onboardedAt?: string | null;
+  /** Last time we saw this user signed in (throttled), for the active-users metric. */
+  lastSeenAt?: string | null;
   createdAt: string;
 }
 

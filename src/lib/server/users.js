@@ -60,6 +60,19 @@ function index(u) {
 export function getUser(id) { return id ? byId.get(id) || null : null; }
 /** @returns {User[]} Every user (raw — callers must strip sensitive fields like pinHash). */
 export function allUsers() { return [...byId.values()]; }
+
+/** Record that a signed-in user is active, at most once an hour (for the
+ *  active-users metric). Cheap no-op when called more often.
+ *  @param {string | null | undefined} userId */
+export function touchLastSeen(userId) {
+  if (!userId) return;
+  const u = byId.get(userId);
+  if (!u) return;
+  const last = u.lastSeenAt ? Date.parse(u.lastSeenAt) : 0;
+  if (Date.now() - last < 3600_000) return; // throttle disk writes to ≤ 1/hour/user
+  u.lastSeenAt = now();
+  persist();
+}
 /** @param {string | null | undefined} handle @returns {User | null} */
 export function getByHandle(handle) {
   return handle ? byId.get(handleIndex.get(normalizeHandle(handle)) || '') || null : null;
@@ -164,6 +177,7 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
     privacy: 'public',
     email: mail,
     newsletter: !!newsletter && !!mail, // opt-in only counts if we actually have an email
+    lastSeenAt: now(),
     createdAt: now(),
   };
   index(u);
@@ -176,6 +190,8 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
 export function loginLocal({ handle, pin }) {
   const u = getByHandle(handle);
   if (!u || u.provider !== 'local' || !checkPin(pin, u.pinHash)) fail('Wrong name or passcode', 401);
+  u.lastSeenAt = now();
+  persist();
   return u;
 }
 
@@ -188,11 +204,11 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
     // Returning user: refresh email and the cached OAuth photo, but NEVER clobber
     // a picture the user uploaded themselves (avatarCustom). Preserve their stored
     // newsletter choice (the opt-in checkbox only applies at first sign-up).
-    let changed = false;
-    if (avatar && avatar !== u.oauthAvatar) { u.oauthAvatar = avatar; changed = true; }
-    if (avatar && !u.avatarCustom && avatar !== u.avatar) { u.avatar = avatar; changed = true; }
-    if (mail && mail !== u.email) { u.email = mail; changed = true; }
-    if (changed) persist();
+    if (avatar && avatar !== u.oauthAvatar) u.oauthAvatar = avatar;
+    if (avatar && !u.avatarCustom && avatar !== u.avatar) u.avatar = avatar;
+    if (mail && mail !== u.email) u.email = mail;
+    u.lastSeenAt = now(); // sign-in event — always persist
+    persist();
     return u;
   }
   u = {
@@ -209,6 +225,7 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
     email: mail,
     newsletter: !!newsletter && !!mail,
     needsHandle: true, // they get a suggested handle but choose their own on first sign-in
+    lastSeenAt: now(),
     createdAt: now(),
   };
   index(u);

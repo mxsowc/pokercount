@@ -1,5 +1,5 @@
 import { sessionUid } from '$lib/server/auth.js';
-import { getUser, publicUser } from '$lib/server/users.js';
+import { getUser, publicUser, touchLastSeen } from '$lib/server/users.js';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = ({ request }) => {
@@ -12,6 +12,7 @@ export const load: LayoutServerLoad = ({ request }) => {
     cookies[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
   }
   const uid = cookies['pc_session'] ? sessionUid({ headers: { cookie: cookieHeader } } as any) : null;
+  if (uid) touchLastSeen(uid); // mark activity (throttled) for the active-users metric
   const user = uid ? publicUser(getUser(uid)) : null;
   return { user };
 };
