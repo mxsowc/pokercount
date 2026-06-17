@@ -135,7 +135,7 @@
   });
 </script>
 
-<svelte:head><title>pokercount — account</title></svelte:head>
+<svelte:head><title>potcount — account</title></svelte:head>
 
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-4">Account</h1>

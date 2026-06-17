@@ -440,7 +440,7 @@
 
   function shareLink() {
     const url = `${location.origin}/game?g=${gameId}`;
-    if (navigator.share) { navigator.share({ title: 'pokercount', text: `Join game #${gameId}`, url }).catch(() => {}); }
+    if (navigator.share) { navigator.share({ title: 'potcount', text: `Join game #${gameId}`, url }).catch(() => {}); }
     else { navigator.clipboard.writeText(url).then(() => toast('Link copied')).catch(() => {}); }
   }
 
@@ -479,7 +479,7 @@
 </script>
 
 <svelte:head>
-  <title>{game ? `pokercount — ${game.name} #${game.id}` : 'pokercount — game'}</title>
+  <title>{game ? `potcount — ${game.name} #${game.id}` : 'potcount — game'}</title>
 </svelte:head>
 
 <div class="wrap">

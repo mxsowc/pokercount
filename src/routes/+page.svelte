@@ -136,7 +136,7 @@
 </script>
 
 <svelte:head>
-  <title>pokercount — home game tracker</title>
+  <title>potcount — home game tracker</title>
 </svelte:head>
 
 <div class="wrap">

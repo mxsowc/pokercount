@@ -63,7 +63,7 @@
   }
 </script>
 
-<svelte:head><title>pokercount — {handle}</title></svelte:head>
+<svelte:head><title>potcount — {handle}</title></svelte:head>
 
 <div class="wrap">
   {#if loading}

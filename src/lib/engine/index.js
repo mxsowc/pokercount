@@ -1,4 +1,4 @@
-// pokercount — poker pot-resolution engine.
+// potcount — poker pot-resolution engine.
 //
 // Public entry point. The one function you usually need is resolve(); the rest
 // are exported for testing and for building higher-level tooling.

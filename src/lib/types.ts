@@ -1,4 +1,4 @@
-// Shared domain types for pokercount. Referenced from the server `.js` modules via
+// Shared domain types for potcount. Referenced from the server `.js` modules via
 // JSDoc (`@typedef {import('../types').Game} Game`) so the untyped data/auth/money
 // layer is type-checked without converting every file to TypeScript.
 

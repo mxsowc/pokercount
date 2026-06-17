@@ -9,7 +9,7 @@
 </script>
 
 <svelte:head>
-  <title>pokercount</title>
+  <title>potcount</title>
 </svelte:head>
 
 <!-- Topbar -->
