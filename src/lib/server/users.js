@@ -77,7 +77,9 @@ export function publicUser(u) {
     displayName: u.displayName,
     avatar: u.avatar || null,
     provider: u.provider,
+    privacy: u.privacy || 'public', // who can see this profile/stats: public | members | private
     needsHandle: !!u.needsHandle, // true until an OAuth user has chosen their name
+    onboarded: !!u.onboardedAt,   // whether to prompt the one-time onboarding questions
   };
 }
 
@@ -155,6 +157,9 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
     providerSub: null,
     pinHash: hashPin(pin),
     avatar: null,
+    avatarCustom: false,
+    oauthAvatar: null,
+    privacy: 'public',
     email: mail,
     newsletter: !!newsletter && !!mail, // opt-in only counts if we actually have an email
     createdAt: now(),
@@ -177,10 +182,12 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
   const mail = cleanEmail(email);
   let u = getByProvider(provider, sub);
   if (u) {
-    // Returning user: refresh avatar/email, but preserve their stored newsletter
-    // choice (the opt-in checkbox only applies at first sign-up).
+    // Returning user: refresh email and the cached OAuth photo, but NEVER clobber
+    // a picture the user uploaded themselves (avatarCustom). Preserve their stored
+    // newsletter choice (the opt-in checkbox only applies at first sign-up).
     let changed = false;
-    if (avatar && avatar !== u.avatar) { u.avatar = avatar; changed = true; }
+    if (avatar && avatar !== u.oauthAvatar) { u.oauthAvatar = avatar; changed = true; }
+    if (avatar && !u.avatarCustom && avatar !== u.avatar) { u.avatar = avatar; changed = true; }
     if (mail && mail !== u.email) { u.email = mail; changed = true; }
     if (changed) persist();
     return u;
@@ -193,6 +200,9 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
     providerSub: sub,
     pinHash: null,
     avatar: avatar || null,
+    avatarCustom: false,
+    oauthAvatar: avatar || null,
+    privacy: 'public',
     email: mail,
     newsletter: !!newsletter && !!mail,
     needsHandle: true, // they get a suggested handle but choose their own on first sign-in
@@ -203,21 +213,64 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
   return u;
 }
 
-// Change a user's name. The single name is both their display name and their
-// (normalized, unique) handle — consistent with local signup. Editable any time.
-/** @param {string} userId @param {{ name?: string }} input @returns {User} */
-export function updateProfile(userId, { name }) {
+// Save (optional) onboarding answers and mark onboarding done so it isn't shown
+// again. All fields are optional — a "skip" just sets onboardedAt with no data.
+/** @param {string} userId @param {{ ageRange?: string, country?: string, heardFrom?: string }} input @returns {User} */
+export function saveOnboarding(userId, { ageRange, country, heardFrom }) {
   const u = byId.get(userId);
   if (!u) fail('not signed in', 401);
-  const h = normalizeHandle(name);
-  if (!HANDLE_RE.test(h)) fail('name must be 3–20 letters, numbers or _', 400);
-  const owner = handleIndex.get(h);
-  if (owner && owner !== userId) fail('that name is taken', 409);
-  handleIndex.delete(u.handle.toLowerCase());
-  u.handle = h;
-  u.displayName = String(name).trim().slice(0, 40) || h;
-  u.needsHandle = false;
-  handleIndex.set(h, userId);
+  const clip = (/** @type {unknown} */ s) => { const v = String(s == null ? '' : s).trim().slice(0, 60); return v || null; };
+  if (ageRange !== undefined) u.ageRange = clip(ageRange);
+  if (country !== undefined) u.country = clip(country);
+  if (heardFrom !== undefined) u.heardFrom = clip(heardFrom);
+  u.onboardedAt = now();
+  persist();
+  return u;
+}
+
+const PRIVACY_LEVELS = new Set(['public', 'members', 'private']);
+const MAX_AVATAR_BYTES = 200 * 1024; // cap inline data-URL avatars to keep users.json small
+
+// Update a user's profile. `name` is both their display name and their
+// (normalized, unique) handle. `avatar` is a data:image/* URL (custom upload) or
+// null/'' to reset to their OAuth photo. `privacy` is one of PRIVACY_LEVELS.
+// Each field is optional — only provided ones change. Editable any time.
+/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string }} input @returns {User} */
+export function updateProfile(userId, { name, avatar, privacy } = {}) {
+  const u = byId.get(userId);
+  if (!u) fail('not signed in', 401);
+
+  if (name !== undefined) {
+    const h = normalizeHandle(name);
+    if (!HANDLE_RE.test(h)) fail('name must be 3–20 letters, numbers or _', 400);
+    const owner = handleIndex.get(h);
+    if (owner && owner !== userId) fail('that name is taken', 409);
+    handleIndex.delete(u.handle.toLowerCase());
+    u.handle = h;
+    u.displayName = String(name).trim().slice(0, 40) || h;
+    u.needsHandle = false;
+    handleIndex.set(h, userId);
+  }
+
+  if (avatar !== undefined) {
+    if (avatar) {
+      const s = String(avatar);
+      if (!s.startsWith('data:image/')) fail('avatar must be an image', 400);
+      if (s.length > MAX_AVATAR_BYTES) fail('image too large — pick a smaller one', 413);
+      u.avatar = s;
+      u.avatarCustom = true;
+    } else {
+      // reset to the OAuth photo (or nothing → initial badge)
+      u.avatar = u.oauthAvatar || null;
+      u.avatarCustom = false;
+    }
+  }
+
+  if (privacy !== undefined) {
+    if (!PRIVACY_LEVELS.has(privacy)) fail('invalid privacy setting', 400);
+    u.privacy = privacy;
+  }
+
   persist();
   return u;
 }

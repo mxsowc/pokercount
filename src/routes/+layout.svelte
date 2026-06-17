@@ -34,10 +34,15 @@
     </a>
     {#if user}
       <a href="/account" class="pill gap-2 pl-1 no-underline hover:text-text transition-colors" title="@{user.handle}">
-        <span class="relative w-6 h-6 rounded-full grid place-items-center text-[.72rem] font-extrabold text-accent-ink shrink-0"
-              style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #66f0bf, var(--color-accent) 60%, #13a276); box-shadow: inset 0 0 0 2px rgba(6,40,28,.38), 0 0 0 1px rgba(0,0,0,.28), 0 0 10px rgba(52,211,153,.42);">
-          {initial}
-        </span>
+        {#if user.avatar}
+          <img src={user.avatar} alt="" referrerpolicy="no-referrer"
+               class="w-6 h-6 rounded-full object-cover shrink-0" style="box-shadow: 0 0 0 1px rgba(0,0,0,.28);" />
+        {:else}
+          <span class="relative w-6 h-6 rounded-full grid place-items-center text-[.72rem] font-extrabold text-accent-ink shrink-0"
+                style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #66f0bf, var(--color-accent) 60%, #13a276); box-shadow: inset 0 0 0 2px rgba(6,40,28,.38), 0 0 0 1px rgba(0,0,0,.28), 0 0 10px rgba(52,211,153,.42);">
+            {initial}
+          </span>
+        {/if}
         {user.displayName}
       </a>
     {:else}

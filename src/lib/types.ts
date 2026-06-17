@@ -95,6 +95,12 @@ export interface User {
   handle: string;
   displayName: string;
   avatar: string | null;
+  /** True once the user uploads a custom photo, so OAuth sign-in won't overwrite it. */
+  avatarCustom?: boolean;
+  /** Last photo from the OAuth provider, kept so "use my Google photo" can restore it. */
+  oauthAvatar?: string | null;
+  /** Who can see this profile/stats. Defaults 'public'. */
+  privacy?: 'public' | 'members' | 'private';
   provider: string;
   providerSub: string | null;
   pinHash: string | null;
@@ -103,6 +109,12 @@ export interface User {
   email?: string | null;
   /** Explicit opt-in to receive newsletter/marketing email. Defaults false. */
   newsletter?: boolean;
+  // Optional onboarding answers (private — never in PublicUser).
+  ageRange?: string | null;
+  country?: string | null;
+  heardFrom?: string | null;
+  /** Set once the user completes or skips onboarding, so it isn't shown again. */
+  onboardedAt?: string | null;
   createdAt: string;
 }
 
@@ -113,7 +125,11 @@ export interface PublicUser {
   displayName: string;
   avatar: string | null;
   provider: string;
+  /** Who can see this profile/stats: 'public' | 'members' | 'private'. */
+  privacy?: 'public' | 'members' | 'private';
   needsHandle: boolean;
+  /** Whether onboarding has been completed/skipped (so the client can prompt once). */
+  onboarded?: boolean;
 }
 
 /** Who made a change — a signed-in account or an anonymous device. */

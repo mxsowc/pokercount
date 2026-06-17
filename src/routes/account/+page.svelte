@@ -59,6 +59,79 @@
     toast('Logged out');
   }
 
+  // ---- profile editing ------------------------------------------------------
+  let nameInput = $state('');
+  let savingName = $state(false);
+  let avatarBusy = $state(false);
+  let fileEl = $state<HTMLInputElement | null>(null);
+  // keep the name field in sync with the loaded user (and after saves)
+  $effect(() => { if (user) nameInput = user.displayName; });
+
+  async function putMe(body: any, okMsg: string) {
+    const res = await fetch('/api/me', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || 'Could not save'); return false; }
+    await invalidateAll();
+    toast(okMsg);
+    return true;
+  }
+
+  async function saveName() {
+    const name = nameInput.trim();
+    if (!name || name === user.displayName) return;
+    savingName = true;
+    try { await putMe({ name }, 'Name updated'); } finally { savingName = false; }
+  }
+
+  // Resize+compress an image entirely in the browser to a small square-ish JPEG
+  // data URL so we can store it inline without any upload/blob storage.
+  function resizeImage(file: File, max = 256): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('no canvas'));
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad image')); };
+      img.src = url;
+    });
+  }
+
+  async function onAvatarFile(e: Event) {
+    const inp = e.target as HTMLInputElement;
+    const file = inp.files?.[0];
+    inp.value = '';
+    if (!file) return;
+    avatarBusy = true;
+    try {
+      const dataUrl = await resizeImage(file, 256);
+      await putMe({ avatar: dataUrl }, 'Photo updated');
+    } catch { toast("Couldn't read that image"); }
+    finally { avatarBusy = false; }
+  }
+
+  async function resetAvatar() {
+    avatarBusy = true;
+    try { await putMe({ avatar: null }, user?.provider === 'google' ? 'Using your Google photo' : 'Photo removed'); }
+    finally { avatarBusy = false; }
+  }
+
+  async function setPrivacy(level: string) {
+    if (user.privacy === level) return;
+    await putMe({ privacy: level }, 'Privacy updated');
+  }
+
   async function loadStats() {
     if (!user) return;
     try {
@@ -135,6 +208,25 @@
     if (config.googleClientId) initGoogle();
     if (config.appleClientId) initApple();
   });
+
+  // ---- one-time onboarding questions ----------------------------------------
+  let obAge = $state('');
+  let obCountry = $state('');
+  let obHeard = $state('');
+  let obSaving = $state(false);
+
+  async function submitOnboarding(skip = false) {
+    obSaving = true;
+    try {
+      await fetch('/api/me/onboarding', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(skip ? {} : { ageRange: obAge, country: obCountry, heardFrom: obHeard }),
+      });
+      await invalidateAll();
+      if (!skip) toast('Thanks!');
+    } catch (e: any) { toast(e.message); }
+    finally { obSaving = false; }
+  }
 </script>
 
 <svelte:head><title>potcount — account</title></svelte:head>
@@ -144,16 +236,88 @@
 
   {#if user}
     <!-- Logged in -->
+    <input type="file" accept="image/*" class="hidden" bind:this={fileEl} onchange={onAvatarFile} />
     <div class="card">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-bold m-0">{user.displayName}</h2>
-          <div class="text-muted text-sm">@{user.handle} · {user.provider}</div>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Avatar (click to change) -->
+          <button class="relative w-14 h-14 shrink-0 rounded-full overflow-hidden grid place-items-center bg-accent/15 text-accent text-xl font-bold disabled:opacity-60"
+                  title="Change photo" disabled={avatarBusy} onclick={() => fileEl?.click()}>
+            {#if user.avatar}
+              <img src={user.avatar} alt="" class="w-full h-full object-cover" referrerpolicy="no-referrer" />
+            {:else}
+              {(user.displayName || '?').charAt(0).toUpperCase()}
+            {/if}
+            <span class="absolute inset-x-0 bottom-0 text-[9px] leading-tight bg-black/55 text-white py-0.5 text-center">{avatarBusy ? '…' : 'Edit'}</span>
+          </button>
+          <div class="min-w-0">
+            <h2 class="text-xl font-bold m-0 truncate">{user.displayName}</h2>
+            <div class="text-muted text-sm truncate">@{user.handle} · {user.provider}</div>
+          </div>
         </div>
-        <button class="btn-small btn-danger" onclick={doLogout}>Log out</button>
+        <button class="btn-small btn-danger shrink-0" onclick={doLogout}>Log out</button>
       </div>
-      <p class="mt-3"><a href="/u/{user.handle}">View your public profile →</a></p>
+
+      <div class="flex gap-2 mt-2.5">
+        <button class="btn-small btn-secondary" disabled={avatarBusy} onclick={() => fileEl?.click()}>Upload photo</button>
+        {#if user.avatar}
+          <button class="btn-small btn-ghost" disabled={avatarBusy} onclick={resetAvatar}>{user.provider === 'google' ? 'Use Google photo' : 'Remove photo'}</button>
+        {/if}
+      </div>
+
+      <!-- Display name / handle -->
+      <label class="block text-xs text-muted font-medium mb-1 mt-4">Name</label>
+      <div class="flex gap-2">
+        <input class="input flex-1" bind:value={nameInput} maxlength="40" autocapitalize="none"
+               onkeydown={(e) => { if (e.key === 'Enter') saveName(); }} />
+        <button class="btn-small btn" disabled={savingName || !nameInput.trim() || nameInput.trim() === user.displayName} onclick={saveName}>Save</button>
+      </div>
+      <p class="text-muted text-xs mt-1">Your profile lives at /u/{nameInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || '…'}</p>
+
+      <!-- Privacy -->
+      <label class="block text-xs text-muted font-medium mb-1 mt-4">Profile privacy</label>
+      <div class="flex gap-1.5">
+        {#each [['public', 'Public', 'Anyone'], ['members', 'Members', 'Signed-in only'], ['private', 'Private', 'Only me']] as [val, label, desc]}
+          <button class="btn-small flex-1 flex-col !py-2 {(user.privacy || 'public') === val ? 'btn' : 'btn-secondary'}" onclick={() => setPrivacy(val)}>
+            <span class="font-semibold">{label}</span>
+            <span class="text-[11px] opacity-70 font-normal">{desc}</span>
+          </button>
+        {/each}
+      </div>
+
+      <p class="mt-4"><a href="/u/{user.handle}">View your public profile →</a></p>
     </div>
+
+    {#if user.onboarded === false}
+      <div class="card mt-4 !border-accent/40">
+        <h2 class="text-lg font-bold mb-1">Welcome to potcount 👋</h2>
+        <p class="text-muted text-sm mb-3">A couple of quick questions (all optional) — it just helps us understand who's playing. See our <a href="/privacy">privacy policy</a>.</p>
+        <label class="block text-xs text-muted font-medium mb-1">Age range</label>
+        <select class="input" bind:value={obAge}>
+          <option value="">Prefer not to say</option>
+          <option value="under 18">Under 18</option>
+          <option value="18-24">18–24</option>
+          <option value="25-34">25–34</option>
+          <option value="35-44">35–44</option>
+          <option value="45-54">45–54</option>
+          <option value="55+">55+</option>
+        </select>
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Where are you from?</label>
+        <input class="input" bind:value={obCountry} placeholder="e.g. Poland" maxlength="60" autocapitalize="words" />
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">How did you hear about potcount?</label>
+        <select class="input" bind:value={obHeard}>
+          <option value="">Prefer not to say</option>
+          <option value="friend">A friend</option>
+          <option value="social">Social media</option>
+          <option value="search">Search engine</option>
+          <option value="other">Other</option>
+        </select>
+        <div class="flex gap-2 mt-4">
+          <button class="btn flex-1" onclick={() => submitOnboarding(false)} disabled={obSaving}>Save</button>
+          <button class="btn btn-secondary" onclick={() => submitOnboarding(true)} disabled={obSaving}>Skip</button>
+        </div>
+      </div>
+    {/if}
 
     {#if stats}
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Your stats</h2>
@@ -250,5 +414,6 @@
     </div>
     <p class="text-center mt-4"><a href="/">Continue without an account →</a></p>
     <p class="text-muted text-xs text-center mt-1">An account just lets you follow your stats over time.</p>
+    <p class="text-muted text-xs text-center mt-1">By creating an account you agree to our <a href="/privacy">privacy policy</a>.</p>
   {/if}
 </div>
