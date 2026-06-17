@@ -72,6 +72,7 @@
   let openGameName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
+  let openUnit = $state('€');
 
   // Join game form
   let joinCode = $state('');
@@ -87,7 +88,7 @@
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: openGameName.trim() || undefined, players, code: openCode.replace(/[^0-9]/g, '') || undefined })
+        body: JSON.stringify({ name: openGameName.trim() || undefined, unit: openUnit, players, code: openCode.replace(/[^0-9]/g, '') || undefined })
       });
       const game = await res.json();
       if (!res.ok) { toast(game.error || 'Failed'); return; }
@@ -144,7 +145,7 @@
     <section class="min-h-[calc(80vh-60px)] flex flex-col items-center justify-center max-md:block max-md:min-h-0 max-md:pt-3.5">
       <h1 class="text-[clamp(2.8rem,11vw,4.2rem)] font-bold tracking-tight leading-tight mb-2 text-center max-md:text-left"
           style="font-family: var(--font-display); letter-spacing: -0.04em;">
-        poker<span class="text-accent font-bold">count</span>
+        pot<span class="text-accent font-bold">count</span>
       </h1>
       <p class="text-muted text-[1.05rem] max-w-[48ch] text-center max-md:text-left mb-5 w-full">
         Track buy-ins and top-ups. At the end it works out who pays who — and who had the best night.
@@ -188,6 +189,14 @@
       <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" />
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Game name</label>
       <input class="input" bind:value={openGameName} placeholder="Friday Night PLO" />
+      <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
+      <select class="input" bind:value={openUnit}>
+        <option value="€">€ — Euro</option>
+        <option value="$">$ — Dollar</option>
+        <option value="£">£ — Pound</option>
+        <option value="zł">zł — Złoty</option>
+        <option value="CHF">CHF — Franc</option>
+      </select>
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
         <div class="flex gap-2.5 mt-2">
