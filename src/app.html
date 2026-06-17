@@ -12,6 +12,29 @@
     <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="%sveltekit.assets%/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" sizes="180x180" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <!-- TEMP DEBUG: surface any JS error on-screen (mobile has no console). Remove after diagnosing. -->
+    <script>
+      (function () {
+        function box() {
+          var d = document.getElementById('__pcerr');
+          if (!d) {
+            d = document.createElement('div');
+            d.id = '__pcerr';
+            d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#b00020;color:#fff;font:12px/1.45 ui-monospace,monospace;padding:10px;white-space:pre-wrap;max-height:55vh;overflow:auto';
+            (document.body || document.documentElement).appendChild(d);
+          }
+          return d;
+        }
+        function show(m) { try { box().textContent += m + '\n\n'; } catch (e) {} }
+        window.addEventListener('error', function (e) {
+          show('ERROR: ' + (e.message || (e.error && e.error.message) || e.error || 'unknown') +
+               (e.filename ? '\n@ ' + e.filename + ':' + e.lineno + ':' + e.colno : ''));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          show('PROMISE REJECTION: ' + (e.reason && (e.reason.stack || e.reason.message || e.reason)));
+        });
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
