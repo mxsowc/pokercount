@@ -58,6 +58,8 @@ function index(u) {
 
 /** @param {string | null | undefined} id @returns {User | null} */
 export function getUser(id) { return id ? byId.get(id) || null : null; }
+/** @returns {User[]} Every user (raw — callers must strip sensitive fields like pinHash). */
+export function allUsers() { return [...byId.values()]; }
 /** @param {string | null | undefined} handle @returns {User | null} */
 export function getByHandle(handle) {
   return handle ? byId.get(handleIndex.get(normalizeHandle(handle)) || '') || null : null;

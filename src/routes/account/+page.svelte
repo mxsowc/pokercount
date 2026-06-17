@@ -182,8 +182,14 @@
     finally { avatarBusy = false; }
   }
 
+  let showPrivacy = $state(false);
+  const PRIVACY_LABELS: Record<string, string> = {
+    public: 'Public · anyone can see it',
+    members: 'Members · signed-in users only',
+    private: 'Private · only you',
+  };
   async function setPrivacy(level: string) {
-    if (user.privacy === level) return;
+    if ((user.privacy || 'public') === level) return;
     await putMe({ privacy: level }, 'Privacy updated');
   }
 
@@ -329,15 +335,27 @@
       </div>
       <p class="text-muted text-xs mt-1">Your profile lives at /u/{nameInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || '…'}</p>
 
-      <!-- Privacy -->
-      <label class="block text-xs text-muted font-medium mb-1 mt-4">Profile privacy</label>
-      <div class="flex gap-1.5">
-        {#each [['public', 'Public', 'Anyone'], ['members', 'Members', 'Signed-in only'], ['private', 'Private', 'Only me']] as [val, label, desc]}
-          <button class="btn-small flex-1 flex-col !py-2 {(user.privacy || 'public') === val ? 'btn' : 'btn-secondary'}" onclick={() => setPrivacy(val)}>
-            <span class="font-semibold">{label}</span>
-            <span class="text-[11px] opacity-70 font-normal">{desc}</span>
+      <!-- Privacy (collapsed summary + reveal) -->
+      <div class="mt-4 pt-4 border-t border-border-soft">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs text-muted font-medium">Profile privacy</div>
+            <div class="font-semibold capitalize">{user.privacy || 'public'}</div>
+          </div>
+          <button class="btn-small btn-ghost shrink-0" onclick={() => showPrivacy = !showPrivacy}>
+            {showPrivacy ? 'Done' : 'Change privacy settings'}
           </button>
-        {/each}
+        </div>
+        {#if showPrivacy}
+          <div class="flex gap-1.5 mt-3">
+            {#each [['public', 'Public', 'Anyone'], ['members', 'Members', 'Signed-in only'], ['private', 'Private', 'Only me']] as [val, label, desc]}
+              <button class="btn-small flex-1 flex-col !py-2 {(user.privacy || 'public') === val ? 'btn' : 'btn-secondary'}" onclick={() => setPrivacy(val)}>
+                <span class="font-semibold">{label}</span>
+                <span class="text-[11px] opacity-70 font-normal">{desc}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       <p class="mt-4"><a href="/u/{user.handle}">View your public profile →</a></p>
@@ -472,3 +490,29 @@
     <p class="text-muted text-xs text-center mt-1">By creating an account you agree to our <a href="/privacy">privacy policy</a>.</p>
   {/if}
 </div>
+
+<!-- Avatar crop / position modal -->
+{#if cropOpen}
+  <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+       onclick={(e) => { if (e.target === e.currentTarget) closeCrop(); }}>
+    <div class="card max-w-sm w-full" onclick={(e) => e.stopPropagation()}>
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Position your photo</h3>
+      <p class="text-muted text-xs mb-3">Drag to move · slider to zoom. The circle is what others see.</p>
+      <div class="relative mx-auto overflow-hidden rounded-full bg-surface-2 touch-none select-none cursor-grab active:cursor-grabbing"
+           style="width:{CROP_V}px;height:{CROP_V}px;max-width:100%"
+           onpointerdown={cropPointerDown} onpointermove={cropPointerMove} onpointerup={cropPointerUp} onpointercancel={cropPointerUp}>
+        {#if cropImg}
+          <img src={cropSrc} alt="" draggable="false"
+               style="position:absolute;left:{cropX}px;top:{cropY}px;width:{cropImg.naturalWidth * dispScale()}px;height:{cropImg.naturalHeight * dispScale()}px;max-width:none;" />
+        {/if}
+        <div class="pointer-events-none absolute inset-0 rounded-full" style="box-shadow:inset 0 0 0 2px rgba(255,255,255,.25);"></div>
+      </div>
+      <input type="range" min="1" max="4" step="0.01" class="w-full mt-3" value={cropScale}
+             oninput={(e) => onZoom(parseFloat((e.target as HTMLInputElement).value))} />
+      <div class="flex gap-2 mt-2">
+        <button class="btn flex-1" disabled={avatarBusy} onclick={confirmCrop}>{avatarBusy ? 'Saving…' : 'Save photo'}</button>
+        <button class="btn-small btn-secondary" disabled={avatarBusy} onclick={closeCrop}>Cancel</button>
+      </div>
+    </div>
+  </div>
+{/if}
