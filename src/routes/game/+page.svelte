@@ -351,6 +351,26 @@
     game = await api('POST', `/api/games/${gameId}/reopen`);
   }
 
+  // Remove this game from *your* view only: unlink your account seat (so it drops
+  // out of "My games") and forget it on this device. Anyone else who's linked
+  // keeps the game and their access — the game itself is not destroyed.
+  async function deleteGameForMe() {
+    if (!confirm('Remove this game from your games? Anyone else linked to it keeps their access.')) return;
+    if (myAccount && mySeat) {
+      try { await api('DELETE', `/api/games/${gameId}/claim`); } catch (e: any) { toast(e.message); return; }
+    }
+    if (browser) {
+      try {
+        const list = JSON.parse(localStorage.getItem('pc_games') || '[]').filter((g: any) => g.id !== gameId);
+        localStorage.setItem('pc_games', JSON.stringify(list));
+      } catch {}
+      localStorage.removeItem('pc_me_' + gameId);
+      localStorage.removeItem('pc_host_' + gameId);
+    }
+    toast('Removed from your games');
+    goto('/');
+  }
+
   async function removePlayer(pid: string) {
     if (!confirm('Remove this player and their transactions?')) return;
     game = await api('DELETE', `/api/games/${gameId}/players/${pid}`);
@@ -738,6 +758,10 @@
         {/if}
       </div>
 
+      <div class="mt-6 text-center">
+        <button class="btn-small btn-ghost text-danger hover:!border-danger/45" onclick={deleteGameForMe}>Delete game</button>
+      </div>
+
     {:else}
       <!-- ═══════════════════ SUMMARY (ended/settled) ═══════════════════ -->
       {@const s = game.settlement || { transfers: [], lines: [], balanced: true }}
@@ -898,6 +922,10 @@
           {/each}
         </div>
       {/if}
+
+      <div class="mt-6 text-center">
+        <button class="btn-small btn-ghost text-danger hover:!border-danger/45" onclick={deleteGameForMe}>Delete game</button>
+      </div>
     {/if}
   {/if}
 </div>

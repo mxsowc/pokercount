@@ -131,7 +131,9 @@ export async function verifyGoogleIdToken(credential, clientId) {
   const jwk = (await googleKeys()).find((k) => k.kid === header.kid);
   if (!jwk) throw new Error('unknown signing key');
   const pub = createPublicKey({ key: jwk, format: 'jwk' });
-  const ok = cryptoVerify('RS256', Buffer.from(`${h}.${p}`), pub, fromB64url(s));
+  // 'sha256' is the OpenSSL digest name for RS256 (RSASSA-PKCS1-v1.5 + SHA-256).
+  // Passing 'RS256' here throws "Invalid digest: RS256".
+  const ok = cryptoVerify('sha256', Buffer.from(`${h}.${p}`), pub, fromB64url(s));
   if (!ok) throw new Error('bad signature');
   const payload = JSON.parse(fromB64url(p).toString());
   if (payload.iss !== 'accounts.google.com' && payload.iss !== 'https://accounts.google.com') throw new Error('bad issuer');
@@ -164,7 +166,9 @@ export async function verifyAppleIdToken(idToken, clientId) {
   const jwk = (await appleKeys()).find((k) => k.kid === header.kid);
   if (!jwk) throw new Error('unknown signing key');
   const pub = createPublicKey({ key: jwk, format: 'jwk' });
-  const ok = cryptoVerify('RS256', Buffer.from(`${h}.${p}`), pub, fromB64url(s));
+  // 'sha256' is the OpenSSL digest name for RS256 (RSASSA-PKCS1-v1.5 + SHA-256).
+  // Passing 'RS256' here throws "Invalid digest: RS256".
+  const ok = cryptoVerify('sha256', Buffer.from(`${h}.${p}`), pub, fromB64url(s));
   if (!ok) throw new Error('bad signature');
   const payload = JSON.parse(fromB64url(p).toString());
   if (payload.iss !== 'https://appleid.apple.com') throw new Error('bad issuer');
