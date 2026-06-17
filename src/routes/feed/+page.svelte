@@ -81,7 +81,7 @@
   }
 </script>
 
-<svelte:head><title>potcount — feed</title></svelte:head>
+<svelte:head><title>pokercount — feed</title></svelte:head>
 
 {#snippet avatar(name: string, size: string)}
   <span class="{size} rounded-full grid place-items-center font-extrabold text-accent-ink shrink-0"

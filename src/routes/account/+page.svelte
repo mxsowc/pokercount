@@ -9,6 +9,7 @@
   let user = $derived($page.data?.user ?? null);
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
+  let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
 
   // Login form
   let loginHandle = $state('');
@@ -66,9 +67,75 @@
   }
 
   $effect(() => { if (user) loadStats(); });
+
+  // ---- Social sign-in (Google / Apple) --------------------------------------
+  function loadScript(src: string) {
+    return new Promise<void>((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) return resolve();
+      const el = document.createElement('script');
+      el.src = src; el.async = true;
+      el.onload = () => resolve();
+      el.onerror = () => reject(new Error('failed to load ' + src));
+      document.head.appendChild(el);
+    });
+  }
+
+  async function onGoogle(resp: any) {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: resp.credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Google sign-in failed'); return; }
+      await afterAuth('Signed in with Google');
+    } catch (e: any) { toast(e.message); }
+  }
+
+  async function initGoogle() {
+    try {
+      await loadScript('https://accounts.google.com/gsi/client');
+      const google = (window as any).google;
+      google.accounts.id.initialize({ client_id: config.googleClientId, callback: onGoogle });
+      const el = document.getElementById('google-btn');
+      if (el) google.accounts.id.renderButton(el, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280 });
+    } catch (e: any) { /* button just won't appear */ }
+  }
+
+  async function initApple() {
+    try {
+      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+      (window as any).AppleID.auth.init({ clientId: config.appleClientId, scope: 'name email', redirectURI: window.location.origin, usePopup: true });
+    } catch (e: any) { /* button just won't work; handled on click */ }
+  }
+
+  async function onApple() {
+    try {
+      const resp = await (window as any).AppleID.auth.signIn();
+      const idToken = resp?.authorization?.id_token;
+      const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
+      const res = await fetch('/api/auth/apple', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, name: nm }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
+      await afterAuth('Signed in with Apple');
+    } catch (e: any) {
+      // The user closing the Apple popup throws — don't nag them about it.
+      if (e?.error && e.error !== 'popup_closed_by_user') toast('Apple sign-in failed');
+    }
+  }
+
+  onMount(async () => {
+    if (!browser) return;
+    try { config = await (await fetch('/api/config')).json(); } catch {}
+    if (config.googleClientId) initGoogle();
+    if (config.appleClientId) initApple();
+  });
 </script>
 
-<svelte:head><title>potcount — account</title></svelte:head>
+<svelte:head><title>pokercount — account</title></svelte:head>
 
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-4">Account</h1>
@@ -145,6 +212,26 @@
         <input class="input" type="password" bind:value={signupPin2} placeholder="re-enter passcode" autocomplete="new-password"
           onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
         <button class="btn w-full mt-4" onclick={doSignup}>Create account</button>
+      {/if}
+
+      {#if config.googleClientId || config.appleClientId}
+        <div class="flex items-center gap-3 my-4 text-muted text-xs">
+          <span class="h-px bg-border flex-1"></span> or <span class="h-px bg-border flex-1"></span>
+        </div>
+        <div class="flex flex-col items-stretch gap-2">
+          {#if config.googleClientId}
+            <div id="google-btn" class="flex justify-center"></div>
+          {/if}
+          {#if config.appleClientId}
+            <button onclick={onApple}
+              class="btn w-full !bg-black !text-white !border-black hover:opacity-90 flex items-center justify-center gap-2">
+              <svg width="15" height="18" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
+                <path d="M11.7 9.02c-.02-1.86 1.52-2.75 1.59-2.8-.87-1.27-2.22-1.44-2.7-1.46-1.15-.12-2.24.67-2.82.67-.58 0-1.48-.66-2.43-.64-1.25.02-2.4.73-3.05 1.84-1.3 2.26-.33 5.6.93 7.43.62.9 1.36 1.9 2.32 1.87.93-.04 1.28-.6 2.41-.6 1.12 0 1.44.6 2.42.58 1-.02 1.63-.91 2.24-1.81.71-1.04 1-2.05 1.02-2.1-.02-.01-1.95-.75-1.96-2.98zM9.86 3.3c.51-.62.86-1.49.76-2.35-.74.03-1.63.49-2.16 1.11-.47.55-.89 1.43-.78 2.27.82.07 1.67-.42 2.18-1.03z"/>
+              </svg>
+              Continue with Apple
+            </button>
+          {/if}
+        </div>
       {/if}
     </div>
     <p class="text-center mt-4"><a href="/">Continue without an account →</a></p>

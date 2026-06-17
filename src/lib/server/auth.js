@@ -139,3 +139,38 @@ export async function verifyGoogleIdToken(credential, clientId) {
   if (payload.exp * 1000 < Date.now()) throw new Error('token expired');
   return payload; // { sub, name, email, picture, ... }
 }
+
+// ---- Apple ID token verification --------------------------------------------
+// Same shape as Google: the browser's Sign in with Apple JS popup returns an
+// identity token (a JWT) we verify against Apple's public keys. No private key
+// or rotating client secret is needed for verify-only sign-in.
+/** @type {{ keys: any[], at: number }} */
+let appleJwks = { keys: [], at: 0 };
+async function appleKeys() {
+  if (appleJwks.keys.length && Date.now() - appleJwks.at < 3600e3) return appleJwks.keys;
+  const res = await fetch('https://appleid.apple.com/auth/keys');
+  const json = await res.json();
+  appleJwks = { keys: json.keys || [], at: Date.now() };
+  return appleJwks.keys;
+}
+
+/** Verify a Sign in with Apple identity token (JWT). Returns the payload.
+ * @param {string} idToken @param {string | null} clientId @returns {Promise<any>} */
+export async function verifyAppleIdToken(idToken, clientId) {
+  const parts = String(idToken || '').split('.');
+  if (parts.length !== 3) throw new Error('malformed token');
+  const [h, p, s] = parts;
+  const header = JSON.parse(fromB64url(h).toString());
+  const jwk = (await appleKeys()).find((k) => k.kid === header.kid);
+  if (!jwk) throw new Error('unknown signing key');
+  const pub = createPublicKey({ key: jwk, format: 'jwk' });
+  const ok = cryptoVerify('RS256', Buffer.from(`${h}.${p}`), pub, fromB64url(s));
+  if (!ok) throw new Error('bad signature');
+  const payload = JSON.parse(fromB64url(p).toString());
+  if (payload.iss !== 'https://appleid.apple.com') throw new Error('bad issuer');
+  // aud is normally the Services ID string, but can be an array.
+  const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  if (clientId && !aud.includes(clientId)) throw new Error('token not for this app');
+  if (payload.exp * 1000 < Date.now()) throw new Error('token expired');
+  return payload; // { sub, email, ... }  (no name — that arrives separately on first sign-in)
+}

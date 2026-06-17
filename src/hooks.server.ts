@@ -1,9 +1,11 @@
 import { ensureInit } from '$lib/server/init.js';
+import { startBackupScheduler } from '$lib/server/backup.js';
 import { rateLimit, clientIp } from '$lib/server/ratelimit.js';
 import { json } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
 
 ensureInit();
+startBackupScheduler();
 
 export const handle: Handle = async ({ event, resolve }) => {
   // Throttle game traffic per IP so the short, shareable game codes can't be

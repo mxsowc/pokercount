@@ -353,7 +353,7 @@
   }
 </script>
 
-<svelte:head><title>potcount — pot splitter</title></svelte:head>
+<svelte:head><title>pokercount — pot splitter</title></svelte:head>
 
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-1">Pot splitter</h1>

@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-/* ── potcount design tokens ─────────────────────────────────────────────── */
+/* ── pokercount design tokens ─────────────────────────────────────────────── */
 @theme {
   --color-bg: #0a0f0d;
   --color-bg-2: #0d1411;

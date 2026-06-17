@@ -440,7 +440,7 @@
 
   function shareLink() {
     const url = `${location.origin}/game?g=${gameId}`;
-    if (navigator.share) { navigator.share({ title: 'potcount', text: `Join game #${gameId}`, url }).catch(() => {}); }
+    if (navigator.share) { navigator.share({ title: 'pokercount', text: `Join game #${gameId}`, url }).catch(() => {}); }
     else { navigator.clipboard.writeText(url).then(() => toast('Link copied')).catch(() => {}); }
   }
 
@@ -449,6 +449,21 @@
     const name = el.textContent?.trim();
     if (name && name !== game.name) {
       game = await api('PUT', `/api/games/${gameId}/meta`, { name });
+    }
+  }
+
+  // Inline-rename a seat (e.g. the auto-generated "Player 2" → a real name).
+  async function renamePlayer(pid: string, e: Event) {
+    const el = e.target as HTMLElement;
+    const name = (el.textContent || '').trim();
+    const p = game.players.find((x: any) => x.id === pid);
+    if (!p) return;
+    if (!name || name === p.name) { el.textContent = p.name; return; } // revert empty / no-op
+    try {
+      game = await api('PATCH', `/api/games/${gameId}/players/${pid}`, { name });
+    } catch (err: any) {
+      toast(err.message);
+      el.textContent = p.name; // restore on failure (e.g. duplicate name)
     }
   }
 
@@ -464,7 +479,7 @@
 </script>
 
 <svelte:head>
-  <title>{game ? `potcount — ${game.name} #${game.id}` : 'potcount — game'}</title>
+  <title>{game ? `pokercount — ${game.name} #${game.id}` : 'pokercount — game'}</title>
 </svelte:head>
 
 <div class="wrap">
@@ -568,7 +583,10 @@
         <div class="player-row">
           <div>
             <div class="font-semibold">
-              {p.name}
+              <span class="cursor-text rounded px-0.5 -mx-0.5 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none" contenteditable="true" spellcheck="false"
+                    title="Tap to rename"
+                    onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                    onblur={(e) => renamePlayer(p.id, e)}>{p.name}</span>
               {#if p.handle}<a href="/u/{p.handle}" class="text-info text-xs no-underline hover:underline ml-1" title="Linked to @{p.handle}">@{p.handle}</a>{/if}
               {#if p.id === myId()}<span class="pill pill-info ml-1">you</span>{/if}
               {#if final_ != null}<span class="pill ml-1 {net >= 0 ? 'pill-win' : 'pill-lose'}">{net >= 0 ? '+' : ''}{money(net, unit)}</span>{/if}

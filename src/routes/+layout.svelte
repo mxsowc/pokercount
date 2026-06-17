@@ -9,13 +9,13 @@
 </script>
 
 <svelte:head>
-  <title>potcount</title>
+  <title>pokercount</title>
 </svelte:head>
 
 <!-- Topbar -->
 <nav class="topbar">
   <a href="/" class="font-bold text-[1.15rem] tracking-tight no-underline text-text" style="font-family: var(--font-display)">
-    pot<span class="text-accent">count</span>
+    poker<span class="text-accent">count</span>
   </a>
   <div class="flex items-center gap-2">
     <a href="/pot" class="pill gap-[7px] pl-[9px] hover:text-accent hover:border-accent/45 no-underline transition-colors">

@@ -16,6 +16,6 @@ export function ensureInit() {
   const reactionsLoaded = initReactions();
   const commentsLoaded = initComments();
   const gamesLoaded = initStore();
-  console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
+  console.log(`pokercount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
   done = true;
 }

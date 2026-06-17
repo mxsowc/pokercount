@@ -136,7 +136,7 @@
 </script>
 
 <svelte:head>
-  <title>potcount — home game tracker</title>
+  <title>pokercount — home game tracker</title>
 </svelte:head>
 
 <div class="wrap">
@@ -144,7 +144,7 @@
     <section class="min-h-[calc(80vh-60px)] flex flex-col items-center justify-center max-md:block max-md:min-h-0 max-md:pt-3.5">
       <h1 class="text-[clamp(2.8rem,11vw,4.2rem)] font-bold tracking-tight leading-tight mb-2 text-center max-md:text-left"
           style="font-family: var(--font-display); letter-spacing: -0.04em;">
-        pot<span class="text-accent font-bold">count</span>
+        poker<span class="text-accent font-bold">count</span>
       </h1>
       <p class="text-muted text-[1.05rem] max-w-[48ch] text-center max-md:text-left mb-5 w-full">
         Track buy-ins and top-ups. At the end it works out who pays who — and who had the best night.
