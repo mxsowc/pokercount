@@ -82,7 +82,8 @@
     { s: 'A$', n: 'Australian Dollar' }, { s: '₺', n: 'Turkish Lira' }, { s: 'R$', n: 'Brazilian Real' },
     { s: '₽', n: 'Russian Ruble' }, { s: '₩', n: 'Korean Won' }, { s: '₪', n: 'Israeli Shekel' },
     { s: 'Kč', n: 'Czech Koruna' }, { s: 'Ft', n: 'Hungarian Forint' }, { s: '฿', n: 'Thai Baht' },
-    { s: 'R', n: 'South African Rand' }, { s: '₿', n: 'Bitcoin' }, { s: 'chips', n: 'Chips (no money)' },
+    { s: 'R', n: 'South African Rand' }, { s: '₿', n: 'Bitcoin' },
+    { s: 'BB', n: 'Big blinds' }, { s: 'chips', n: 'Chips (no money)' },
   ];
   let unitInput = $state('€');
   let showUnits = $state(false);
@@ -231,7 +232,7 @@
         <!-- Currency: searchable + custom -->
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
         <div class="relative">
-          <input class="input w-full" bind:value={unitInput} placeholder="€, $, zł, BTC, chips…" autocomplete="off"
+          <input class="input w-full" bind:value={unitInput} placeholder="€, $, zł, BB, chips…" autocomplete="off"
                  oninput={() => { showUnits = true; unitActive = -1; }}
                  onfocus={() => { showUnits = true; }}
                  onkeydown={onUnitKey}
@@ -249,7 +250,7 @@
             </div>
           {/if}
         </div>
-        <p class="text-muted text-xs mt-1">Pick one or type your own.</p>
+        <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be “big blinds”, “chips”, anything.</p>
 
         <div class="flex gap-2.5 mt-3">
           <div class="flex-1">

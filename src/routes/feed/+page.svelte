@@ -128,7 +128,12 @@
       {#if loading}
         <p class="text-muted">Loading...</p>
       {:else if items.length === 0}
-        <div class="banner banner-info">No activity yet. Search for players above and follow them to see their results here.</div>
+        <div class="banner banner-info">
+          <p class="font-semibold mb-1">Your feed is empty</p>
+          <p class="mb-2">Once you follow some players, this is where their poker nights show up — who won, who lost, and how much — plus 👏 / 🖕 reactions and comments you can leave on each result.</p>
+          <p class="mb-2">Use the <b>search box above</b> to find players by name and follow them. Their finished games then appear here automatically.</p>
+          <p class="text-sm opacity-80">Your own results work the same way, and you're in control: set your profile to <b>private</b> on your <a href="/account">account</a> page if you'd rather not share your games and stats.</p>
+        </div>
       {:else}
         {#each items as item (item.game.id + item.user.id)}
           {@const even = item.net === 0}
@@ -189,7 +194,12 @@
       {#if boardLoading}
         <p class="text-muted">Loading...</p>
       {:else if board.length === 0}
-        <div class="banner banner-info">No finished games yet.</div>
+        <div class="banner banner-info">
+          <p class="font-semibold mb-1">Nothing to rank yet</p>
+          <p class="mb-2">The leaderboard ranks <b>you and the players you follow</b> by all-time profit, with profit-per-game alongside. It fills in once you've played some games and followed a few people.</p>
+          <p class="mb-2">Head to the <b>Feed</b> tab and use its search to find and follow players — they'll show up here as soon as they have finished games.</p>
+          <p class="text-sm opacity-80">Don't want to appear on others' leaderboards? Set your profile to <b>private</b> on your <a href="/account">account</a> page.</p>
+        </div>
       {:else}
         {#each board as row, i (row.user.id)}
           <a href="/u/{row.user.handle}" class="player-row no-underline text-text hover:border-border mb-2 {row.you ? '!border-accent' : ''}">
