@@ -5,10 +5,10 @@
 
 import { computeSettlement } from './settle.js';
 
-const round2 = (n) => Math.round(n * 100) / 100;
+const round2 = (/** @type {number} */ n) => Math.round(n * 100) / 100;
 
 /**
- * @param {Array<object>} games  every game in the system
+ * @param {Array<import('../types').Game>} games  every game in the system
  * @param {string} userId
  */
 export function computeUserStats(games, userId) {

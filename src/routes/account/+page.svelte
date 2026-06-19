@@ -18,9 +18,7 @@
   // Signup form
   let signupName = $state('');
   let signupPin = $state('');
-  let signupPin2 = $state('');
-  let signupEmail = $state('');
-  let wantNewsletter = $state(false);
+  let showPin = $state(false);
   let handlePreview = $derived(signupName.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
 
   // After a successful sign-in, return to wherever we were sent from (e.g. a game
@@ -44,9 +42,8 @@
   async function doSignup() {
     if (handlePreview.length < 3 || handlePreview.length > 20) { toast('Name must be 3-20 characters'); return; }
     if (signupPin.length < 4) { toast('Passcode must be at least 4 characters'); return; }
-    if (signupPin !== signupPin2) { toast("Passcodes don't match"); return; }
     try {
-      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin, email: signupEmail.trim() || undefined, newsletter: wantNewsletter }) });
+      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Signup failed'); return; }
       await afterAuth('Account created');
@@ -176,21 +173,6 @@
     finally { avatarBusy = false; }
   }
 
-  // Newsletter opt-in (toggleable any time, incl. returning OAuth users). It's
-  // private (not in publicUser), so load it for ourselves from GET /api/me.
-  let newsletterPref = $state(false);
-  let hasEmail = $state(false);
-  $effect(() => {
-    if (!user) return;
-    fetch('/api/me').then((r) => r.json()).then((d) => {
-      newsletterPref = !!d.newsletter; hasEmail = !!d.hasEmail;
-    }).catch(() => {});
-  });
-  async function setNewsletter(on: boolean) {
-    const prev = newsletterPref;
-    newsletterPref = on; // optimistic; the effect reconciles from the server after
-    if (!(await putMe({ newsletter: on }, on ? 'Subscribed to updates' : 'Unsubscribed'))) newsletterPref = prev;
-  }
 
   let showPrivacy = $state(false);
   const PRIVACY_LABELS: Record<string, string> = {
@@ -230,7 +212,7 @@
     try {
       const res = await fetch('/api/auth/google', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: resp.credential, newsletter: wantNewsletter }),
+        body: JSON.stringify({ credential: resp.credential }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Google sign-in failed'); return; }
@@ -262,7 +244,7 @@
       const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
       const res = await fetch('/api/auth/apple', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, name: nm, newsletter: wantNewsletter }),
+        body: JSON.stringify({ idToken, name: nm }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
@@ -361,17 +343,6 @@
         {/if}
       </div>
 
-      <!-- Newsletter opt-in -->
-      <div class="mt-4 pt-4 border-t border-border-soft">
-        <label class="flex items-center gap-2.5 cursor-pointer">
-          <input type="checkbox" class="accent-accent w-4 h-4 shrink-0" checked={newsletterPref}
-                 onchange={(e) => setNewsletter((e.target as HTMLInputElement).checked)} />
-          <span class="text-sm">Email me occasional updates <span class="text-muted">(opt out anytime)</span></span>
-        </label>
-        {#if newsletterPref && !hasEmail}
-          <p class="text-muted text-xs mt-1">We don't have an email for your account yet, so there's nowhere to send it.</p>
-        {/if}
-      </div>
 
       <p class="mt-4"><a href="/u/{user.handle}">View your public profile →</a></p>
     </div>
@@ -461,16 +432,11 @@
           </p>
         {/if}
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Passcode <span class="text-muted">(you'll use it to log in)</span></label>
-        <input class="input" type="password" bind:value={signupPin} placeholder="at least 4 characters" autocomplete="new-password" />
-        <label class="block text-xs text-muted font-medium mb-1 mt-3">Confirm passcode</label>
-        <input class="input" type="password" bind:value={signupPin2} placeholder="re-enter passcode" autocomplete="new-password"
-          onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
-        <label class="block text-xs text-muted font-medium mb-1 mt-3">Email <span class="text-muted">(optional)</span></label>
-        <input class="input" type="email" bind:value={signupEmail} placeholder="you@example.com" autocomplete="email" autocapitalize="none" inputmode="email" />
-        <label class="flex items-center gap-2 mt-3 text-sm text-muted cursor-pointer">
-          <input type="checkbox" bind:checked={wantNewsletter} class="accent-accent w-4 h-4 shrink-0" />
-          Email me occasional updates (you can opt out anytime)
-        </label>
+        <div class="relative">
+          <input class="input w-full !pr-16" type={showPin ? 'text' : 'password'} bind:value={signupPin} placeholder="at least 4 characters" autocomplete="new-password"
+            onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
+          <button type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-text" onclick={() => showPin = !showPin}>{showPin ? 'Hide' : 'Show'}</button>
+        </div>
         <button class="btn w-full mt-4" onclick={doSignup}>Create account</button>
       {/if}
 
@@ -478,12 +444,6 @@
         <div class="flex items-center gap-3 my-4 text-muted text-xs">
           <span class="h-px bg-border flex-1"></span> or <span class="h-px bg-border flex-1"></span>
         </div>
-        {#if tab === 'login'}
-          <label class="flex items-center gap-2 mb-2 text-sm text-muted cursor-pointer">
-            <input type="checkbox" bind:checked={wantNewsletter} class="accent-accent w-4 h-4 shrink-0" />
-            Email me occasional updates (you can opt out anytime)
-          </label>
-        {/if}
         <div class="flex flex-col items-stretch gap-2">
           {#if config.googleClientId}
             <div id="google-btn" class="flex justify-center"></div>

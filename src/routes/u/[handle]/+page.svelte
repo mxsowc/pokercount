@@ -4,7 +4,7 @@
   import { money, fmtSigned } from '$lib/utils/money';
   import { onMount } from 'svelte';
 
-  let handle = $derived($page.params.handle);
+  let handle = $derived($page.params.handle ?? '');
   let me = $derived($page.data?.user ?? null);
 
   let profileUser = $state<any>(null);

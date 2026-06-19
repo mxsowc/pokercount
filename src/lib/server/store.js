@@ -130,7 +130,7 @@ export function createGame({ name, unit, players, code }) {
   const game = {
     id,
     name: (name || 'Home Game').toString().slice(0, 80),
-    unit: (unit || '€').toString().slice(0, 4),
+    unit: (unit || '€').toString().slice(0, 16), // allow words like "chips" / "big blinds"
     status: 'active',
     createdAt: now(),
     updatedAt: now(),

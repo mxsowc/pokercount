@@ -65,7 +65,7 @@
     } catch {}
   }
 
-  onMount(loadAccountGames);
+  onMount(() => { unitInput = detectCurrencySymbol(); loadAccountGames(); });
 
   // Open game form
   let openName = $state('');
@@ -86,6 +86,18 @@
     { s: 'BB', n: 'Big blinds' }, { s: 'chips', n: 'Chips (no money)' },
   ];
   let unitInput = $state('€');
+  // Default the currency to the visitor's region (still changeable in More options).
+  function detectCurrencySymbol(): string {
+    try {
+      const region = (navigator.language.split('-')[1] || '').toUpperCase();
+      const map: Record<string, string> = {
+        US: '$', GB: '£', CA: 'C$', AU: 'A$', NZ: '$', PL: 'zł', CH: 'CHF', JP: '¥',
+        CN: '¥', IN: '₹', BR: 'R$', RU: '₽', KR: '₩', IL: '₪', CZ: 'Kč', HU: 'Ft',
+        TH: '฿', ZA: 'R', TR: '₺', SE: 'kr', NO: 'kr', DK: 'kr',
+      };
+      return map[region] || '€';
+    } catch { return '€'; }
+  }
   let showUnits = $state(false);
   let unitActive = $state(-1);
   let unitMatches = $derived.by(() => {

@@ -50,6 +50,13 @@
   // Claim-your-seat
   let claimOpen = $state(false);
 
+  // Themed confirm dialog (replaces native confirm() — un-themeable & jarring on mobile)
+  let confirmState = $state<{ message: string; label: string; danger: boolean; resolve: (v: boolean) => void } | null>(null);
+  function askConfirm(message: string, label = 'Confirm', danger = false): Promise<boolean> {
+    return new Promise((resolve) => { confirmState = { message, label, danger, resolve }; });
+  }
+  function answerConfirm(v: boolean) { confirmState?.resolve(v); confirmState = null; }
+
   const gameId = $derived($page.url.searchParams.get('g')?.replace(/[^0-9A-Za-z]/g, '') || '');
   const isNew = $derived($page.url.searchParams.get('new') === '1');
 
@@ -169,14 +176,8 @@
     if ($page.url.searchParams.get('claim') === '1' && myAccount && !mySeat) {
       claimOpen = true;
     }
-
-    // Auto-prompt to join — but a signed-in user with an unclaimed seat to grab
-    // should claim it (via the banner) rather than create a duplicate.
-    const canClaimInstead = myAccount && (mySeat || unclaimedSeats.length > 0);
-    if (!iAmSeated() && game.status === 'active' && !canClaimInstead) {
-      joinNameVal = getActor().name;
-      joinOpen = true;
-    }
+    // Note: we no longer auto-pop the join modal. Viewing a shared game shouldn't
+    // hit a name-entry wall — people opt in via the "Take a seat" button instead.
   });
   onDestroy(() => unsub?.());
 
@@ -273,7 +274,7 @@
   }
 
   async function leaveSeat() {
-    if (!confirm('Unlink this seat from your account? The seat and its buy-ins stay in the game.')) return;
+    if (!(await askConfirm('Unlink this seat from your account? The seat and its buy-ins stay in the game.', 'Leave seat', true))) return;
     try {
       game = await api('DELETE', `/api/games/${gameId}/claim`);
       toast('Left the seat');
@@ -284,12 +285,30 @@
     goto(`/account?next=${encodeURIComponent(`/game?g=${gameId}&claim=1`)}`);
   }
 
+  // The table's standard buy-in, used for the one-tap quick button (and the bulk
+  // tool). Defaults from localStorage; kept in `bulkAmount`.
+  const quickAmt = $derived(Number(bulkAmount) > 0 ? Number(bulkAmount) : 20);
+
+  // One tap = book the standard buy-in (or top-up if they're already in) — no
+  // modal. This is the most common action of the night, so it shouldn't cost a
+  // full-screen context switch.
+  async function quickBuyIn(pid: string, name: string) {
+    if (browser) localStorage.setItem('pc_default_buyin', String(quickAmt));
+    const hasPrior = game.transactions.some((t: any) => t.playerId === pid);
+    try {
+      game = await api('POST', `/api/games/${gameId}/transactions`, { playerId: pid, amount: quickAmt, type: hasPrior ? 'topup' : 'buyin' });
+      haptic(12);
+      toast(`${name} ${hasPrior ? 'topped up' : 'bought in'} ${money(quickAmt, unit)}`);
+    } catch (e: any) { toast(e.message); }
+  }
+
   function openMoneyModal(pid: string, name: string) {
     modalTarget = pid;
     modalName = name;
     const hasPrior = game.transactions.some((t: any) => t.playerId === pid);
     modalType = hasPrior ? 'topup' : 'buyin';
-    modalAmount = (browser && localStorage.getItem('pc_default_buyin')) || '20';
+    modalAmount = ''; // start empty so "tap chips to stack" is honest (no pre-filled value to add onto)
+    editTxId = null;
     modalOpen = true;
   }
 
@@ -297,10 +316,41 @@
     const amount = Number(modalAmount);
     if (!(amount > 0)) { toast('Enter an amount'); return; }
     try {
-      game = await api('POST', `/api/games/${gameId}/transactions`, { playerId: modalTarget, amount, type: modalType });
+      if (editTxId) {
+        game = await api('PATCH', `/api/games/${gameId}/transactions/${editTxId}`, { amount });
+      } else {
+        game = await api('POST', `/api/games/${gameId}/transactions`, { playerId: modalTarget, amount, type: modalType });
+      }
       haptic(14);
-      modalOpen = false;
+      closeMoneyModal();
     } catch (e: any) { toast(e.message); }
+  }
+
+  function closeMoneyModal() { modalOpen = false; editTxId = null; }
+
+  function toggleExpand(pid: string) {
+    expanded.has(pid) ? expanded.delete(pid) : expanded.add(pid);
+    expanded = new Set(expanded);
+  }
+
+  // Remove a single buy-in/top-up entered by mistake (server keeps an audit log).
+  async function delTx(t: any) {
+    try {
+      game = await api('DELETE', `/api/games/${gameId}/transactions/${t.id}`);
+      haptic(9);
+      toast(`Removed ${t.type === 'topup' ? 'top-up' : 'buy-in'} of ${money(t.amount, unit)} · kept in activity log`);
+    } catch (e: any) { toast(e.message); }
+  }
+
+  // Correct the amount of an existing entry (prefilled in the money modal).
+  let editTxId = $state<string | null>(null);
+  function editTx(t: any) {
+    editTxId = t.id;
+    modalTarget = t.playerId;
+    modalName = game.players.find((p: any) => p.id === t.playerId)?.name || '';
+    modalType = t.type === 'topup' ? 'topup' : 'buyin';
+    modalAmount = String(t.amount);
+    modalOpen = true;
   }
 
   function addChip(val: number | 'clear') {
@@ -320,13 +370,11 @@
   }
 
   async function markRestOut() {
-    if (!confirm('Mark all remaining players as out (0)?')) return;
-    for (const p of game.players) {
-      if (game.finalStacks[p.id] == null) {
-        game = await api('PUT', `/api/games/${gameId}/final`, { playerId: p.id, amount: 0 });
-      }
-    }
-    haptic(12);
+    if (!(await askConfirm('Mark all remaining players as out (0)?', 'Mark out'))) return;
+    const updates = game.players.filter((p: any) => game.finalStacks[p.id] == null).map((p: any) => ({ playerId: p.id, amount: 0 }));
+    if (!updates.length) return;
+    try { game = await api('PUT', `/api/games/${gameId}/final`, { updates }); haptic(12); }
+    catch (e: any) { toast(e.message); }
   }
 
   async function bulkBuyIn() {
@@ -335,27 +383,34 @@
     if (browser) localStorage.setItem('pc_default_buyin', String(amt));
     const targets = game.players.filter((p: any) => !game.transactions.some((t: any) => t.playerId === p.id));
     if (!targets.length) { toast('Everyone has bought in already'); return; }
-    for (const p of targets) game = await api('POST', `/api/games/${gameId}/transactions`, { playerId: p.id, amount: amt, type: 'buyin' });
-    haptic([10, 30, 10]);
-    toast(`Bought in ${targets.length} player${targets.length > 1 ? 's' : ''} for ${money(amt, unit)}`);
+    const entries = targets.map((p: any) => ({ playerId: p.id, amount: amt, type: 'buyin' }));
+    try {
+      game = await api('POST', `/api/games/${gameId}/transactions`, { entries });
+      haptic([10, 30, 10]);
+      toast(`Bought in ${targets.length} player${targets.length > 1 ? 's' : ''} for ${money(amt, unit)}`);
+    } catch (e: any) { toast(e.message); }
   }
 
   async function closeGame() {
-    if (!confirm('End the game and show the summary?')) return;
-    game = await api('POST', `/api/games/${gameId}/close`);
-    showShareBanner = false;
+    if (!(await askConfirm('End the game and show the summary?', 'End game'))) return;
+    try {
+      game = await api('POST', `/api/games/${gameId}/close`);
+      showShareBanner = false;
+    } catch (e: any) { toast(e.message); }
   }
 
   async function reopenGame() {
-    if (!confirm('Reopen the game? This clears paid marks.')) return;
-    game = await api('POST', `/api/games/${gameId}/reopen`);
+    if (!(await askConfirm('Reopen the game? This clears paid marks.', 'Reopen'))) return;
+    try {
+      game = await api('POST', `/api/games/${gameId}/reopen`);
+    } catch (e: any) { toast(e.message); }
   }
 
   // Remove this game from *your* view only: unlink your account seat (so it drops
   // out of "My games") and forget it on this device. Anyone else who's linked
   // keeps the game and their access — the game itself is not destroyed.
   async function deleteGameForMe() {
-    if (!confirm('Remove this game from your games? Anyone else linked to it keeps their access.')) return;
+    if (!(await askConfirm('Remove this game from your games? Anyone else linked to it keeps their access.', 'Delete', true))) return;
     if (myAccount && mySeat) {
       try { await api('DELETE', `/api/games/${gameId}/claim`); } catch (e: any) { toast(e.message); return; }
     }
@@ -372,7 +427,7 @@
   }
 
   async function removePlayer(pid: string) {
-    if (!confirm('Remove this player and their transactions?')) return;
+    if (!(await askConfirm('Remove this player and their transactions?', 'Remove', true))) return;
     game = await api('DELETE', `/api/games/${gameId}/players/${pid}`);
   }
 
@@ -487,6 +542,19 @@
     }
   }
 
+  // Select the whole name on focus so a tap-to-edit replaces cleanly (mobile
+  // contenteditable caret placement is otherwise fiddly).
+  function selectAllText(e: Event) {
+    const el = e.target as HTMLElement;
+    const r = document.createRange(); r.selectNodeContents(el);
+    const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
+  }
+  // The pencil button focuses its sibling editable name.
+  function focusName(e: Event) {
+    const span = (e.currentTarget as HTMLElement).parentElement?.querySelector('[contenteditable]') as HTMLElement | null;
+    span?.focus();
+  }
+
   function dismissIdentity() {
     identityDismissed = true;
     if (browser) localStorage.setItem('pc_idban_' + gameId, '1');
@@ -556,7 +624,7 @@
       <!-- Header -->
       <div class="flex items-center justify-between gap-2.5">
         <div>
-          <h1 class="text-2xl font-bold cursor-text" contenteditable="true" onblur={updateGameName}>{game.name}</h1>
+          <h1 class="text-2xl font-bold cursor-text" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
           <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {game.players.length} players · {money(totalIn, unit)} in play</div>
         </div>
         <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
@@ -573,25 +641,28 @@
         </div>
       {/if}
 
-      <!-- Identity banner -->
+      {@render claimBanner()}
+
+      <!-- Identity: a thin line, not a full banner (only once you're seated/editing) -->
       {#if !identityDismissed}
-        <div class="banner banner-info flex items-center justify-between mt-2.5">
-          <span>You are <b>{getActor().name || 'unknown'}</b> — every edit is logged under this name.</span>
-          <div class="flex gap-1.5">
-            <button class="btn-small btn-ghost" onclick={promptName}>Change</button>
-            <button class="btn-small btn-ghost" onclick={dismissIdentity}>✕</button>
-          </div>
+        <div class="text-xs text-muted mt-2.5 flex items-center gap-2 flex-wrap">
+          <span>Editing as <b class="text-text">{getActor().name || 'unknown'}</b> · changes are logged under this name.</span>
+          <button class="underline hover:text-text" onclick={promptName}>Change</button>
+          <button class="hover:text-text" title="Dismiss" onclick={dismissIdentity}>✕</button>
         </div>
       {/if}
 
-      {@render claimBanner()}
-
-      <!-- Players heading + cash-out jump -->
-      <div class="flex items-center justify-between mt-6 mb-3">
+      <!-- Players heading + take-a-seat / cash-out jump -->
+      <div class="flex items-center justify-between mt-6 mb-3 gap-2">
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Players</h2>
-        {#if totalIn > 0}
-          <button class="btn-small btn-ghost" onclick={() => document.getElementById('cashout')?.scrollIntoView({ behavior: 'smooth' })}>↓ Cash out</button>
-        {/if}
+        <div class="flex gap-1.5">
+          {#if !iAmSeated() && !mySeat}
+            <button class="btn-small btn" onclick={() => { joinNameVal = getActor().name; joinOpen = true; }}>+ Take a seat</button>
+          {/if}
+          {#if totalIn > 0}
+            <button class="btn-small btn-ghost" onclick={() => document.getElementById('cashout')?.scrollIntoView({ behavior: 'smooth' })}>↓ Cash out</button>
+          {/if}
+        </div>
       </div>
 
       <!-- Player rows -->
@@ -603,33 +674,42 @@
         <div class="player-row">
           <div>
             <div class="font-semibold">
-              <span class="cursor-text rounded px-0.5 -mx-0.5 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none" contenteditable="true" spellcheck="false"
+              <span class="cursor-text rounded px-1 -mx-1 hover:bg-surface-2 focus:bg-surface-2 focus:outline-none focus:ring-1 focus:ring-accent/40" contenteditable="true" spellcheck="false"
                     title="Tap to rename"
+                    onfocus={selectAllText}
                     onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
                     onblur={(e) => renamePlayer(p.id, e)}>{p.name}</span>
+              <button class="text-muted hover:text-text text-xs align-middle ml-0.5" title="Rename" onclick={focusName}>✎</button>
               {#if p.handle}<a href="/u/{p.handle}" class="text-info text-xs no-underline hover:underline ml-1" title="Linked to @{p.handle}">@{p.handle}</a>{/if}
               {#if p.id === myId()}<span class="pill pill-info ml-1">you</span>{/if}
               {#if final_ != null}<span class="pill ml-1 {net >= 0 ? 'pill-win' : 'pill-lose'}">{net >= 0 ? '+' : ''}{money(net, unit)}</span>{/if}
             </div>
-            <div class="text-muted text-xs mt-0.5">in {money(inv, unit)}{final_ != null ? ` · out ${money(final_, unit)}` : ''}</div>
+            <button class="text-muted text-xs mt-0.5 hover:text-text {inv > 0 ? 'cursor-pointer underline decoration-dotted decoration-border underline-offset-2' : ''}"
+                    onclick={() => { if (inv > 0) toggleExpand(p.id); }} title={inv > 0 ? 'Edit or remove buy-ins' : ''}>
+              in {money(inv, unit)}{final_ != null ? ` · out ${money(final_, unit)}` : ''}
+            </button>
           </div>
-          <div class="flex gap-2 shrink-0">
-            <button class="btn-small btn-secondary" onclick={() => openMoneyModal(p.id, p.name)}>+ Money</button>
-            <button class="btn-small btn-ghost" onclick={() => { expanded.has(p.id) ? expanded.delete(p.id) : expanded.add(p.id); expanded = new Set(expanded); }}>
-              {isExpanded ? '▾' : '▸'} log
+          <div class="flex gap-1.5 shrink-0">
+            <button class="btn-small btn" onclick={() => quickBuyIn(p.id, p.name)} title="Quick {invested(p.id) > 0 ? 'top-up' : 'buy-in'} of {money(quickAmt, unit)}">+{money(quickAmt, unit)}</button>
+            <button class="btn-small btn-secondary !px-2.5" onclick={() => openMoneyModal(p.id, p.name)} title="Other amount / top-up">⋯</button>
+            <button class="btn-small btn-ghost !px-2.5" title="History" onclick={() => { expanded.has(p.id) ? expanded.delete(p.id) : expanded.add(p.id); expanded = new Set(expanded); }}>
+              {isExpanded ? '▾' : '▸'}
             </button>
           </div>
         </div>
         {#if isExpanded}
           <div class="card !bg-surface-2 -mt-1 mb-2.5">
-            <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Transactions</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Buy-ins & top-ups · tap to edit, ✕ to remove</h3>
             {#each game.transactions.filter((t: any) => t.playerId === p.id) as t (t.id)}
-              <div class="flex items-center justify-between text-sm mb-1.5">
-                <span>{t.type === 'topup' ? 'top-up' : 'buy-in'} <span class="text-muted">{shortDate(t.at)}</span></span>
-                <span class="font-semibold">{money(t.amount, unit)}</span>
+              <div class="flex items-center justify-between gap-2 text-sm mb-1.5">
+                <span class="text-muted">{t.type === 'topup' ? 'top-up' : 'buy-in'} · {shortDate(t.at)}</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button class="font-semibold tabular-nums hover:text-accent" title="Edit amount" onclick={() => editTx(t)}>{money(t.amount, unit)}</button>
+                  <button class="btn-small btn-ghost !px-2 !py-1 text-danger" title="Remove this entry" onclick={() => delTx(t)}>✕</button>
+                </div>
               </div>
             {:else}
-              <p class="text-muted text-sm">No buy-ins yet — use "+ Money".</p>
+              <p class="text-muted text-sm">No buy-ins yet — use the +{money(quickAmt, unit)} button.</p>
             {/each}
             <button class="btn-small btn-danger w-full mt-3" onclick={() => removePlayer(p.id)}>Remove {p.name} and all transactions</button>
           </div>
@@ -683,17 +763,28 @@
       {/if}
 
       <!-- Cash-out section -->
+      {@const entered = game.players.filter((p: any) => game.finalStacks[p.id] != null).length}
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3" id="cashout">Cash-out & settle</h2>
-      <p class="text-muted text-xs mb-2">Enter how much each player has left at the end. {settlement ? `${money(settlement.totalFinal, unit)} counted of ${money(totalIn, unit)} bought in.` : ''}</p>
+      <p class="text-muted text-xs mb-2">Enter how much each player has left at the end. Press <b>Enter</b> to jump to the next player.</p>
       <div class="card">
-        {#each game.players as p (p.id)}
+        <!-- live reconciliation, kept right by the inputs so it's visible while typing -->
+        <div class="flex items-center justify-between text-xs mb-3 pb-2 border-b border-border-soft">
+          <span class="text-muted">{entered}/{game.players.length} entered</span>
+          <span class="tabular-nums {allEntered && settlement && !settlement.balanced ? 'text-danger font-semibold' : 'text-muted'}">
+            {money(settlement?.totalFinal ?? 0, unit)} counted of {money(totalIn, unit)}
+          </span>
+        </div>
+        {#each game.players as p, i (p.id)}
           {@const isOut = game.finalStacks[p.id] === 0}
           <div class="flex items-center justify-between mb-2 gap-2">
-            <span class="font-medium">{p.name}</span>
-            <div class="flex items-center gap-1.5">
+            <span class="font-medium truncate">{p.name}</span>
+            <div class="flex items-center gap-1.5 shrink-0">
               <button class="btn-small btn-ghost {isOut ? '!bg-accent !text-accent-ink !border-transparent' : ''}" onclick={() => setOut(p.id)} title="Busted — nothing left">Out</button>
               <input class="input !w-[120px] !py-2 !px-3" type="number" inputmode="decimal" step="any" min="0" placeholder="left ({unit})"
-                value={game.finalStacks[p.id] ?? ''} onchange={(e) => setFinal(p.id, (e.target as HTMLInputElement).value)} />
+                enterkeyhint={i < game.players.length - 1 ? 'next' : 'done'} data-cashidx={i}
+                value={game.finalStacks[p.id] ?? ''}
+                onchange={(e) => setFinal(p.id, (e.target as HTMLInputElement).value)}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinal(p.id, el.value); const next = document.querySelector(`[data-cashidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
             </div>
           </div>
         {:else}
@@ -950,28 +1041,46 @@
 
 <!-- Money Modal -->
 {#if modalOpen}
-  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) modalOpen = false }}>
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) closeMoneyModal(); }}>
     <div class="card max-w-sm w-full" onclick={(e) => e.stopPropagation()}>
-      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">{modalType === 'buyin' ? 'Buy in' : 'Top up'} — {modalName}</h3>
-      <div class="flex gap-2 mb-3">
-        <button class="btn-small flex-1 {modalType === 'buyin' ? 'btn' : 'btn-secondary'}" onclick={() => modalType = 'buyin'}>Buy-in</button>
-        <button class="btn-small flex-1 {modalType === 'topup' ? 'btn' : 'btn-secondary'}" onclick={() => modalType = 'topup'}>Top-up</button>
-      </div>
-      <label class="block text-xs text-muted font-medium mb-2">Amount — tap chips to stack</label>
-      <div class="flex flex-wrap gap-2 mb-3">
-        {#each [5, 10, 25, 50, 100] as v}
-          <button class="w-[52px] h-[52px] rounded-full font-extrabold text-[.95rem] text-white border-[3px] border-dashed border-white/60 grid place-items-center cursor-pointer active:scale-90 transition-transform"
-            style="background: {v === 5 ? '#d64545' : v === 10 ? '#3a78d6' : v === 25 ? '#2f9e6e' : v === 50 ? '#e08a2b' : '#1c1c1c'}; {v === 100 ? 'color: var(--color-gold); border-color: rgba(244,196,81,.6);' : ''}"
-            onclick={() => addChip(v)}>{v}</button>
-        {/each}
-        <button class="w-[52px] h-[52px] rounded-full font-extrabold text-[.95rem] text-muted bg-surface-3 border border-border grid place-items-center cursor-pointer active:scale-90 transition-transform"
-          onclick={() => addChip('clear')}>C</button>
-      </div>
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">{editTxId ? 'Edit' : (modalType === 'buyin' ? 'Buy in' : 'Top up')} — {modalName}</h3>
+      {#if !editTxId}
+        <div class="flex gap-2 mb-3">
+          <button class="btn-small flex-1 {modalType === 'buyin' ? 'btn' : 'btn-secondary'}" onclick={() => modalType = 'buyin'}>Buy-in</button>
+          <button class="btn-small flex-1 {modalType === 'topup' ? 'btn' : 'btn-secondary'}" onclick={() => modalType = 'topup'}>Top-up</button>
+        </div>
+      {/if}
+      <label class="block text-xs text-muted font-medium mb-2">{editTxId ? 'New amount' : 'Amount — tap chips to stack'}</label>
+      {#if !editTxId}
+        <div class="flex flex-wrap gap-2 mb-3">
+          {#each [5, 10, 25, 50, 100] as v}
+            <button class="w-[52px] h-[52px] rounded-full font-extrabold text-[.95rem] text-white border-[3px] border-dashed border-white/60 grid place-items-center cursor-pointer active:scale-90 transition-transform"
+              style="background: {v === 5 ? '#d64545' : v === 10 ? '#3a78d6' : v === 25 ? '#2f9e6e' : v === 50 ? '#e08a2b' : '#1c1c1c'}; {v === 100 ? 'color: var(--color-gold); border-color: rgba(244,196,81,.6);' : ''}"
+              onclick={() => addChip(v)}>{v}</button>
+          {/each}
+          <button class="w-[52px] h-[52px] rounded-full font-extrabold text-[.95rem] text-muted bg-surface-3 border border-border grid place-items-center cursor-pointer active:scale-90 transition-transform"
+            onclick={() => addChip('clear')}>C</button>
+        </div>
+      {/if}
       <input class="input mb-3" type="number" inputmode="decimal" step="any" min="0" bind:value={modalAmount}
         onkeydown={(e) => { if (e.key === 'Enter') addMoney(); }} />
       <div class="flex gap-2">
-        <button class="btn-small btn-secondary flex-1" onclick={() => modalOpen = false}>Cancel</button>
-        <button class="btn flex-1" onclick={addMoney}>Add</button>
+        <button class="btn-small btn-secondary flex-1" onclick={closeMoneyModal}>Cancel</button>
+        <button class="btn flex-1" onclick={addMoney}>{editTxId ? 'Save' : 'Add'}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Themed confirm dialog -->
+{#if confirmState}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+       onclick={(e) => { if (e.target === e.currentTarget) answerConfirm(false); }}>
+    <div class="card max-w-xs w-full" onclick={(e) => e.stopPropagation()}>
+      <p class="mb-4">{confirmState.message}</p>
+      <div class="flex gap-2">
+        <button class="btn-small btn-secondary flex-1" onclick={() => answerConfirm(false)}>Cancel</button>
+        <button class="btn flex-1 {confirmState.danger ? '!bg-danger !text-white' : ''}" onclick={() => answerConfirm(true)}>{confirmState.label}</button>
       </div>
     </div>
   </div>

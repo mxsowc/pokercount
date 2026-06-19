@@ -9,7 +9,7 @@ export async function PUT({ request, params }) {
   const { name, unit } = await request.json();
   const game = mutate(id, (g: any) => {
     if (name) g.name = String(name).slice(0, 80);
-    if (unit) g.unit = String(unit).slice(0, 4);
+    if (unit) g.unit = String(unit).slice(0, 16);
   });
   return json(game);
 }

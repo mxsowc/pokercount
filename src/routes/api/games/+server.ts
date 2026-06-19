@@ -22,5 +22,6 @@ export async function POST({ request }) {
     }
     g.log.push(logEntry(actor, 'create', { detail: { name: g.name } }));
   });
+  if (!game) return json({ error: 'failed to create game' }, { status: 500 });
   return json({ ...game, hostToken: signGameToken(game.id) }, { status: 201 });
 }

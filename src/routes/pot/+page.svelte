@@ -76,6 +76,22 @@
     const count = fieldCount(ref);
     return Array.from({ length: count }, (_, i) => toks[i] || null);
   }
+  // All card fields in fill order: every player's hole cards, then each board/run.
+  function allRefs(): string[] {
+    const refs = players.map((_, i) => `hole:${i}`);
+    for (let b = 0; b < boardCount; b++) for (let r = 0; r < runCount; r++) refs.push(`board:${b}-${r}`);
+    return refs;
+  }
+  // The next unfilled slot at or after `ref`, so the picker can flow across fields
+  // (player 1 → player 2 → board) without closing between each.
+  function nextEmptyAfter(ref: string): { ref: string; idx: number } | null {
+    const refs = allRefs();
+    for (let j = Math.max(0, refs.indexOf(ref)); j < refs.length; j++) {
+      const filled = parseTokens(fieldValue(refs[j])).length;
+      if (filled < fieldCount(refs[j])) return { ref: refs[j], idx: filled };
+    }
+    return null;
+  }
 
   // ---- picker ---------------------------------------------------------------
   function openPicker(ref: string, idx: number) {
@@ -119,12 +135,15 @@
         setFieldValue(pickerRef, newVal);
       }
 
-      // Auto-advance to next empty slot or close
+      // Auto-advance: next empty slot in this field, else flow into the next
+      // field (next player or the board), else close once the hand is complete.
       if (newToks.length < maxCount) {
         pickerIdx = newToks.length;
         pickRank = null;
       } else {
-        pickerOpen = false;
+        const nxt = nextEmptyAfter(pickerRef);
+        if (nxt) { pickerRef = nxt.ref; pickerIdx = nxt.idx; pickRank = null; }
+        else pickerOpen = false;
       }
     } catch (e) {
       console.error('Card pick error:', e);
@@ -357,43 +376,46 @@
 
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-1">Pot splitter</h1>
-  <p class="text-muted text-sm mb-4">Tap the slots to pick cards. We'll work out who gets what.</p>
+  <p class="text-muted text-sm mb-3">Tap the slots to pick cards — or type them (e.g. <code class="text-text">Ah Kh</code>). We'll work out who gets what.</p>
+  <button class="btn-small btn-secondary mb-4" onclick={loadExample}>Try an example →</button>
 
   <!-- Game options -->
   <div class="card">
-    <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Game</h3>
-
-    <label class="block text-xs text-muted font-medium mb-1">Variant</label>
-    <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
-      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'omaha' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-        onclick={() => { game = 'omaha'; haptic(8); }}>Omaha / PLO</button>
+    <!-- Variant: the only choice most hands need -->
+    <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
       <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'holdem' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={() => { game = 'holdem'; haptic(8); }}>Hold'em</button>
+      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'omaha' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        onclick={() => { game = 'omaha'; haptic(8); }}>Omaha / PLO</button>
     </div>
 
-    <label class="block text-xs text-muted font-medium mb-1">Boards</label>
-    <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 1 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-        onclick={() => { boardCount = 1; haptic(8); }}>Single board</button>
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 2 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-        onclick={() => { boardCount = 2; haptic(8); }}>Double board</button>
-    </div>
+    <details class="mt-3">
+      <summary class="text-sm text-muted cursor-pointer">Double board · run it twice · hi-lo</summary>
 
-    <label class="block text-xs text-muted font-medium mb-1">Run it</label>
-    <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
-      {#each [{ v: 1, l: 'Once' }, { v: 2, l: 'Twice' }, { v: 3, l: '3 times' }] as opt}
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-          onclick={() => { runCount = opt.v; haptic(8); }}>{opt.l}</button>
-      {/each}
-    </div>
+      <label class="block text-xs text-muted font-medium mb-1 mt-3">Boards</label>
+      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 1 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          onclick={() => { boardCount = 1; haptic(8); }}>Single board</button>
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 2 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          onclick={() => { boardCount = 2; haptic(8); }}>Double board</button>
+      </div>
 
-    <label class="block text-xs text-muted font-medium mb-1">Hi-Lo split</label>
-    <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-        onclick={() => { hiLo = false; haptic(8); }}>High only</button>
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-        onclick={() => { hiLo = true; haptic(8); }}>8-or-better</button>
-    </div>
+      <label class="block text-xs text-muted font-medium mb-1">Run it</label>
+      <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
+        {#each [{ v: 1, l: 'Once' }, { v: 2, l: 'Twice' }, { v: 3, l: '3 times' }] as opt}
+          <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+            onclick={() => { runCount = opt.v; haptic(8); }}>{opt.l}</button>
+        {/each}
+      </div>
+
+      <label class="block text-xs text-muted font-medium mb-1">Hi-Lo split</label>
+      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          onclick={() => { hiLo = false; haptic(8); }}>High only</button>
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          onclick={() => { hiLo = true; haptic(8); }}>8-or-better</button>
+      </div>
+    </details>
   </div>
 
   <!-- Community cards -->
@@ -421,6 +443,8 @@
             {/if}
           {/each}
         </div>
+        <input class="input !py-1.5 !px-3 !text-sm mb-3 font-mono" placeholder="or type — e.g. Th 9h 4c"
+          value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
       {/each}
     {/each}
     <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.</p>
@@ -452,6 +476,8 @@
             {/if}
           {/each}
         </div>
+        <input class="input !py-1.5 !px-3 !text-sm mb-2 font-mono" placeholder="or type — e.g. {game === 'omaha' ? 'Ah Kh Qh Jh' : 'Ah Kh'}"
+          value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
         <label class="flex items-center justify-between cursor-pointer">
           <span class="text-muted text-xs">Folded (forfeits, still funds pot)</span>
           <input type="checkbox" bind:checked={p.folded} class="accent-accent w-4 h-4" />
@@ -462,8 +488,7 @@
       </div>
     {/each}
     <div class="flex gap-2 mt-2">
-      <button class="btn-small btn-secondary flex-1" onclick={addPlayer}>+ Add player</button>
-      <button class="btn-small btn-ghost flex-1" onclick={loadExample}>Load example</button>
+      <button class="btn-small btn-secondary w-full" onclick={addPlayer}>+ Add player</button>
     </div>
     <p class="text-muted text-xs mt-2">"In pot" = how much that player put in. Short stacks make side pots automatically; whoever folded still funds the pot but can't win it.</p>
   </div>
