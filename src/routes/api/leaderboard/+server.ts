@@ -11,6 +11,12 @@ export function GET({ request }) {
   // You + the people you follow, all time.
   const set = new Set(getFollowing(su.id));
   set.add(su.id);
+  // Private profiles don't appear on other people's leaderboards (you always see yourself).
+  for (const id of [...set]) {
+    if (id === su.id) continue;
+    const u = getUser(id);
+    if (u && u.privacy === 'private') set.delete(id);
+  }
   const rows = computeLeaderboard(allGames(), set)
     .map((r) => { const u = getUser(r.id); return u ? { ...r, user: publicUser(u), you: r.id === su.id } : null; })
     .filter(Boolean);

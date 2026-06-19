@@ -21,6 +21,7 @@ export function GET({ request }) {
       const net = netFor(g, p.id); // same net the leaderboard/stats use (frozen line, else computed)
       const u = getUser(p.userId);
       if (!u) continue;
+      if (u.privacy === 'private') continue; // private players don't show in anyone's feed
       items.push({
         user: publicUser(u),
         game: { id: g.id, name: g.name },

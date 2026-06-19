@@ -241,18 +241,15 @@
     } catch (e: any) { /* button just won't appear */ }
   }
 
-  async function initApple() {
+  // Apple: use Apple's *official* rendered button (matches Google's official
+  // widget — looks legit, not hand-rolled). It draws into #appleid-signin and,
+  // on success, fires AppleIDSignInOnSuccess on document (popup mode).
+  let appleInited = false;
+  async function onAppleSuccess(e: any) {
+    const d = e?.detail || {};
+    const idToken = d.authorization?.id_token;
+    const nm = d.user?.name ? [d.user.name.firstName, d.user.name.lastName].filter(Boolean).join(' ') : undefined;
     try {
-      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
-      (window as any).AppleID.auth.init({ clientId: config.appleClientId, scope: 'name email', redirectURI: window.location.origin, usePopup: true });
-    } catch (e: any) { /* button just won't work; handled on click */ }
-  }
-
-  async function onApple() {
-    try {
-      const resp = await (window as any).AppleID.auth.signIn();
-      const idToken = resp?.authorization?.id_token;
-      const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
       const res = await fetch('/api/auth/apple', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken, name: nm }),
@@ -260,22 +257,38 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
       await afterAuth('Signed in with Apple');
-    } catch (e: any) {
-      // The user closing the Apple popup throws — don't nag them about it.
-      if (e?.error && e.error !== 'popup_closed_by_user') toast('Apple sign-in failed');
-    }
+    } catch (err: any) { toast(err.message); }
+  }
+  function onAppleFailure(e: any) {
+    if (e?.detail?.error && e.detail.error !== 'popup_closed_by_user') toast('Apple sign-in failed');
+  }
+  async function renderApple() {
+    if (!config.appleClientId) return;
+    try {
+      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+      const AppleID = (window as any).AppleID;
+      if (!appleInited) {
+        AppleID.auth.init({ clientId: config.appleClientId, scope: 'name email', redirectURI: window.location.origin, usePopup: true });
+        document.addEventListener('AppleIDSignInOnSuccess', onAppleSuccess);
+        document.addEventListener('AppleIDSignInOnFailure', onAppleFailure);
+        appleInited = true;
+      }
+      AppleID.auth.renderButton?.(); // (re)draw the #appleid-signin element
+    } catch (e: any) { /* button just won't appear */ }
   }
 
   onMount(async () => {
     if (!browser) return;
     try { config = await (await fetch('/api/config')).json(); } catch {}
-    if (config.appleClientId) initApple();
   });
 
-  // (Re)draw the Google button whenever we're signed out with config loaded —
-  // fixes it disappearing after logout (needed a refresh before).
+  // (Re)draw both official buttons whenever the signed-out view is shown — fixes
+  // them not appearing after logout (the page isn't re-mounted, so onMount alone
+  // would leave the now-visible button containers empty until a refresh).
   $effect(() => {
-    if (browser && !user && config.googleClientId) renderGoogle();
+    if (!browser || user) return;
+    if (config.googleClientId) renderGoogle();
+    if (config.appleClientId) renderApple();
   });
 
   // ---- one-time onboarding questions ----------------------------------------
@@ -465,13 +478,9 @@
             <div id="google-btn" class="flex justify-center"></div>
           {/if}
           {#if config.appleClientId}
-            <button onclick={onApple} aria-label="Continue with Apple"
-              class="mx-auto w-[280px] max-w-full h-10 flex items-center justify-center gap-2 rounded-full bg-black text-white text-sm font-medium border border-white/15 hover:bg-[#1a1a1a] transition-colors">
-              <svg width="14" height="17" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
-                <path d="M11.7 9.02c-.02-1.86 1.52-2.75 1.59-2.8-.87-1.27-2.22-1.44-2.7-1.46-1.15-.12-2.24.67-2.82.67-.58 0-1.48-.66-2.43-.64-1.25.02-2.4.73-3.05 1.84-1.3 2.26-.33 5.6.93 7.43.62.9 1.36 1.9 2.32 1.87.93-.04 1.28-.6 2.41-.6 1.12 0 1.44.6 2.42.58 1-.02 1.63-.91 2.24-1.81.71-1.04 1-2.05 1.02-2.1-.02-.01-1.95-.75-1.96-2.98zM9.86 3.3c.51-.62.86-1.49.76-2.35-.74.03-1.63.49-2.16 1.11-.47.55-.89 1.43-.78 2.27.82.07 1.67-.42 2.18-1.03z"/>
-              </svg>
-              Continue with Apple
-            </button>
+            <div id="appleid-signin" class="mx-auto cursor-pointer"
+              data-color="black" data-border="false" data-border-radius="20"
+              data-type="continue" data-mode="center-align" data-width="280" data-height="40"></div>
           {/if}
         </div>
       {/if}
