@@ -186,7 +186,8 @@
 </script>
 
 <svelte:head>
-  <title>potcount — home game tracker</title>
+  <title>potcount — poker home game tracker & who-pays-who settlement</title>
+  <link rel="canonical" href="https://potcount.com/" />
 </svelte:head>
 
 <div class="wrap">
@@ -196,8 +197,11 @@
           style="font-family: var(--font-display); letter-spacing: -0.04em;">
         pot<span class="text-accent font-bold">count</span>
       </h1>
+      <p class="text-accent uppercase tracking-[0.18em] text-xs font-bold mb-3 text-center max-md:text-left w-full">
+        Poker home game tracker
+      </p>
       <p class="text-muted text-[1.05rem] max-w-[48ch] text-center max-md:text-left mb-5 w-full">
-        Track buy-ins and top-ups. At the end it works out who pays who — and who had the best night.
+        Track every buy-in and top-up at your poker night. At the end it works out who pays who — and who had the best night.
       </p>
 
       {#if games.length > 0}
@@ -224,6 +228,40 @@
         <button class="btn w-full py-[18px] text-[1.1rem]" onclick={showOpen}>Open a game</button>
         <button class="btn btn-secondary w-full py-[18px] text-[1.1rem]" onclick={showJoin}>Join a game</button>
       </div>
+
+      {#if games.length === 0}
+        <!-- How it works — new visitors only; supports the CTA, doesn't replace it -->
+        <div class="w-full max-w-[620px] mx-auto mt-10">
+          <h3 class="text-xs font-semibold uppercase tracking-widest text-muted text-center mb-4">How it works</h3>
+          <div class="grid grid-cols-3 gap-3 max-md:grid-cols-1 max-md:gap-2.5">
+            <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:0ms">
+              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🎴</div>
+              <div>
+                <div class="font-semibold text-sm">Open a game</div>
+                <div class="text-muted text-xs mt-1 leading-snug">Name it and get a 4-digit code.</div>
+              </div>
+            </div>
+            <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:90ms">
+              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">💰</div>
+              <div>
+                <div class="font-semibold text-sm">Track the money</div>
+                <div class="text-muted text-xs mt-1 leading-snug">Add buy-ins &amp; top-ups as you play — or share the code so players add their own.</div>
+              </div>
+            </div>
+            <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:180ms">
+              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🧮</div>
+              <div>
+                <div class="font-semibold text-sm">Settle up</div>
+                <div class="text-muted text-xs mt-1 leading-snug">It works out who pays who in the fewest payments — and who had the best night.</div>
+              </div>
+            </div>
+          </div>
+          <p class="text-muted text-xs text-center mt-5 max-w-[48ch] mx-auto">
+            Just splitting one pot right now? The <a href="/pot">Split tool</a> does it instantly — no game needed.
+          </p>
+        </div>
+      {/if}
+
       <p class="text-muted text-xs text-center mt-5 max-w-[48ch] mx-auto">
         Games live on the server — anyone with the code can keep adding and settle later, even after the host closes the app.
       </p>
@@ -293,3 +331,19 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* "How it works" cards rise in, gently staggered (delay set per-card via --d). */
+  .pc-step {
+    opacity: 0;
+    animation: pc-rise 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+    animation-delay: var(--d, 0ms);
+  }
+  @keyframes pc-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pc-step { animation: none; opacity: 1; }
+  }
+</style>
