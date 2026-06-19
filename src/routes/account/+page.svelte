@@ -220,13 +220,24 @@
     } catch (e: any) { toast(e.message); }
   }
 
-  async function initGoogle() {
+  // Google's button is *drawn* by its script into #google-btn. It must be
+  // (re)drawn whenever the signed-out view is on screen — the page isn't
+  // re-mounted after logout, so a one-shot onMount call leaves it blank until a
+  // refresh. ?hl=en + locale:'en' force English to match the Apple button.
+  let googleInited = false;
+  async function renderGoogle() {
+    if (!config.googleClientId) return;
     try {
-      await loadScript('https://accounts.google.com/gsi/client');
+      await loadScript('https://accounts.google.com/gsi/client?hl=en');
       const google = (window as any).google;
-      google.accounts.id.initialize({ client_id: config.googleClientId, callback: onGoogle });
+      if (!googleInited) {
+        google.accounts.id.initialize({ client_id: config.googleClientId, callback: onGoogle });
+        googleInited = true;
+      }
       const el = document.getElementById('google-btn');
-      if (el) google.accounts.id.renderButton(el, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280 });
+      if (el && !el.childElementCount) {
+        google.accounts.id.renderButton(el, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 280, locale: 'en' });
+      }
     } catch (e: any) { /* button just won't appear */ }
   }
 
@@ -258,8 +269,13 @@
   onMount(async () => {
     if (!browser) return;
     try { config = await (await fetch('/api/config')).json(); } catch {}
-    if (config.googleClientId) initGoogle();
     if (config.appleClientId) initApple();
+  });
+
+  // (Re)draw the Google button whenever we're signed out with config loaded —
+  // fixes it disappearing after logout (needed a refresh before).
+  $effect(() => {
+    if (browser && !user && config.googleClientId) renderGoogle();
   });
 
   // ---- one-time onboarding questions ----------------------------------------
@@ -449,9 +465,9 @@
             <div id="google-btn" class="flex justify-center"></div>
           {/if}
           {#if config.appleClientId}
-            <button onclick={onApple}
-              class="btn w-full !bg-black !text-white !border-black hover:opacity-90 flex items-center justify-center gap-2">
-              <svg width="15" height="18" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
+            <button onclick={onApple} aria-label="Continue with Apple"
+              class="mx-auto w-[280px] max-w-full h-10 flex items-center justify-center gap-2 rounded-full bg-black text-white text-sm font-medium border border-white/15 hover:bg-[#1a1a1a] transition-colors">
+              <svg width="14" height="17" viewBox="0 0 14 17" fill="currentColor" aria-hidden="true">
                 <path d="M11.7 9.02c-.02-1.86 1.52-2.75 1.59-2.8-.87-1.27-2.22-1.44-2.7-1.46-1.15-.12-2.24.67-2.82.67-.58 0-1.48-.66-2.43-.64-1.25.02-2.4.73-3.05 1.84-1.3 2.26-.33 5.6.93 7.43.62.9 1.36 1.9 2.32 1.87.93-.04 1.28-.6 2.41-.6 1.12 0 1.44.6 2.42.58 1-.02 1.63-.91 2.24-1.81.71-1.04 1-2.05 1.02-2.1-.02-.01-1.95-.75-1.96-2.98zM9.86 3.3c.51-.62.86-1.49.76-2.35-.74.03-1.63.49-2.16 1.11-.47.55-.89 1.43-.78 2.27.82.07 1.67-.42 2.18-1.03z"/>
               </svg>
               Continue with Apple
