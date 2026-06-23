@@ -658,7 +658,8 @@
           {@const myAmt = amounts[i]}
           {@const maxAmt = Math.max(...amounts)}
           {#if myAmt < maxAmt}
-            <div class="text-xs text-warn mt-1.5">All-in short — can only win up to {money(myAmt * players.filter((_, j) => amounts[j] > 0).length, '€')} (main pot)</div>
+            {@const maxWin = amounts.reduce((s: number, a: number) => s + Math.min(a, myAmt), 0)}
+            <div class="text-xs text-warn mt-1.5">All-in short — can only win up to {money(maxWin, '€')} (main pot)</div>
           {:else if myAmt === maxAmt && amounts.filter(a => a > 0 && a < maxAmt).length > 0}
             <div class="text-xs text-accent mt-1.5">Covers all — eligible for every pot</div>
           {/if}
