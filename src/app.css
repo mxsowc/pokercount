@@ -2,20 +2,23 @@
 
 /* ── potcount design tokens ─────────────────────────────────────────────── */
 @theme {
-  --color-bg: #0a0f0d;
-  --color-bg-2: #0d1411;
-  --color-surface: #131a17;
-  --color-surface-2: #1a231e;
-  --color-surface-3: #212c26;
-  --color-border: #28332d;
+  --color-bg: #0a0b0d;
+  --color-bg-2: #0e1012;
+  --color-surface: #141618;
+  --color-surface-2: #1b1e21;
+  --color-surface-3: #232729;
+  --color-border: #2e3234;
   --color-border-soft: rgba(255, 255, 255, 0.07);
-  --color-text: #e9efea;
-  --color-muted: #8fa097;
-  --color-faint: #5d6b63;
-  --color-accent: #34d399;
-  --color-accent-2: #43e0a8;
-  --color-accent-ink: #04140d;
-  --color-accent-glow: rgba(52, 211, 153, 0.45);
+  --color-text: #e9ebed;
+  --color-muted: #919599;
+  --color-faint: #60656a;
+  --color-accent: #da7756;
+  --color-accent-2: #e48a6a;
+  --color-accent-ink: #1a0800;
+  --color-accent-glow: rgba(218, 119, 86, 0.45);
+  --color-win: #34d399;
+  --color-win-ink: #04140d;
+  --color-win-glow: rgba(52, 211, 153, 0.45);
   --color-gold: #f4c451;
   --color-info: #6ea8ff;
   --color-danger: #ff5f6d;
@@ -45,10 +48,10 @@ html, body {
 }
 body { min-height: 100dvh; }
 
-/* ambient emerald glow + grain */
+/* ambient warm glow + grain */
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
-  background: radial-gradient(130% 78% at 50% -24%, rgba(52,211,153,.12), transparent 56%), var(--color-bg);
+  background: radial-gradient(130% 78% at 50% -24%, rgba(218,119,86,.10), transparent 56%), var(--color-bg);
 }
 body::after {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .04;
@@ -58,7 +61,7 @@ body::after {
 /* ── utility layers ─────────────────────────────────────────────────────── */
 @layer components {
   .wrap {
-    @apply mx-auto px-4 pb-[calc(72px+env(safe-area-inset-bottom,0px))];
+    @apply mx-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))];
     max-width: 640px;
     padding-top: 22px;
   }
@@ -70,7 +73,7 @@ body::after {
   .btn {
     @apply font-semibold text-[15px] px-[18px] py-[13px] rounded-[11px] cursor-pointer border border-transparent text-accent-ink;
     font-family: inherit;
-    background: linear-gradient(180deg, var(--color-accent), #18b07e);
+    background: linear-gradient(180deg, var(--color-accent), #b5603f);
     box-shadow: 0 8px 22px -10px var(--color-accent-glow), 0 1px 0 rgba(255,255,255,.22) inset;
     transition: transform .08s var(--ease-spring), filter .15s var(--ease-spring);
   }
@@ -99,7 +102,7 @@ body::after {
     @apply inline-flex items-center gap-1 px-[11px] py-[5px] rounded-full text-xs font-semibold text-muted border border-border bg-surface-2;
     min-height: 30px;
   }
-  .pill-win { @apply text-accent border-accent/45 bg-accent/[.08]; }
+  .pill-win { @apply text-win border-win/45 bg-win/[.08]; }
   .pill-lose { @apply text-danger border-danger/45 bg-danger/[.07]; }
   .pill-info { @apply text-info border-info/45 bg-info/[.08]; }
   .banner {
@@ -107,7 +110,7 @@ body::after {
     border-left-width: 3px;
   }
   .banner-warn { @apply border-warn text-[#f3cd6b]; background: rgba(240,180,8,.1); }
-  .banner-ok { @apply border-accent text-[#8fe6c2]; background: rgba(52,211,153,.1); }
+  .banner-ok { @apply border-win text-[#8fe6c2]; background: rgba(52,211,153,.1); }
   .banner-info { @apply border-info text-[#b9d2ff]; background: rgba(110,168,255,.09); }
   .player-row {
     @apply flex items-center justify-between gap-2.5 py-[13px] px-[14px] rounded-[11px] mb-[9px] border border-border-soft;
@@ -126,6 +129,22 @@ body::after {
     backdrop-filter: blur(14px) saturate(150%);
     border-bottom: 1px solid var(--color-border-soft);
   }
+  /* Bottom nav — phones only; hidden from sm up (desktop uses .topbar). */
+  .botnav {
+    @apply fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around gap-1 sm:hidden;
+    padding: 6px 8px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    backdrop-filter: blur(16px) saturate(150%);
+    border-top: 1px solid var(--color-border-soft);
+  }
+  .botnav-item {
+    @apply flex flex-col items-center justify-center gap-1 flex-1 no-underline text-muted text-[.66rem] font-semibold rounded-xl py-1 transition-colors;
+    min-height: 50px;
+  }
+  .botnav-item.is-active { @apply text-accent; }
+  .botnav-item:active { background: var(--color-surface-2); }
   .input {
     @apply w-full py-[13px] px-[14px] text-base bg-surface-2 text-text border border-border rounded-[11px] outline-none;
     font-family: inherit;
@@ -133,7 +152,7 @@ body::after {
   }
   .input:focus {
     @apply border-accent bg-surface;
-    box-shadow: 0 0 0 3px rgba(52,211,153,.16);
+    box-shadow: 0 0 0 3px rgba(218,119,86,.16);
   }
   .input::placeholder { @apply text-faint; }
 }
@@ -144,6 +163,10 @@ body::after {
 @keyframes sheetup { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── responsive ─────────────────────────────────────────────────────────── */
+/* Phones: leave room at the bottom so content clears the fixed bottom nav. */
+@media (max-width: 639px) {
+  body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+}
 @media (min-width: 640px) {
   .wrap { @apply px-6; }
   .topbar { padding-left: clamp(22px, 5vw, 48px); padding-right: clamp(22px, 5vw, 48px); }

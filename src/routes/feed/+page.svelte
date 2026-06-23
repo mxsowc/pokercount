@@ -85,7 +85,7 @@
 
 {#snippet avatar(name: string, size: string)}
   <span class="{size} rounded-full grid place-items-center font-extrabold text-accent-ink shrink-0"
-        style="background: radial-gradient(circle at 50% 34%, #66f0bf, var(--color-accent) 60%, #13a276)">{initial(name)}</span>
+        style="background: radial-gradient(circle at 50% 34%, #f0a47a, var(--color-accent) 60%, #a85a3a)">{initial(name)}</span>
 {/snippet}
 
 <div class="wrap">
@@ -96,9 +96,9 @@
   {:else}
     <!-- Tabs -->
     <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-4">
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'feed' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'feed' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={() => (tab = 'feed')}>Feed</button>
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'leaderboard' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'leaderboard' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={showLeaderboard}>Leaderboard</button>
     </div>
 
@@ -148,7 +148,7 @@
                     onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; }}
                     onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; } }}>{item.user.displayName}</span>
                   {even ? 'broke even in' : (won ? 'won' : 'lost')}
-                  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(item.net, item.unit)}</span> in{/if}
+                  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(item.net, item.unit)}</span> in{/if}
                   <span class="text-muted">{item.game.name}</span>
                 </div>
                 <div class="text-muted text-xs mt-0.5">{ago(item.at)}</div>
@@ -211,7 +211,7 @@
                 <div class="text-muted text-xs">{row.games} game{row.games === 1 ? '' : 's'} · {fmtSigned(row.avg, '€')}/game</div>
               </div>
             </div>
-            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(row.net, '€')}</div>
+            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(row.net, '€')}</div>
           </a>
         {/each}
       {/if}

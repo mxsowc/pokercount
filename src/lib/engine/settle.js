@@ -5,7 +5,9 @@
 // All money is handled in integer minor units (cents) internally to avoid
 // floating-point drift, then converted back to major units in the output.
 
-const toCents = (x) => Math.round(Number(x) * 100);
+// Non-numeric input (e.g. a bad finalStack like "xyz") would yield NaN and
+// silently poison the discrepancy/balanced flags, so coerce it to 0 cents.
+const toCents = (x) => { const c = Math.round(Number(x) * 100); return Number.isFinite(c) ? c : 0; };
 const toMajor = (c) => c / 100;
 
 /**

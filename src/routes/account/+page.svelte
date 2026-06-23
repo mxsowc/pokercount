@@ -241,15 +241,31 @@
     } catch (e: any) { /* button just won't appear */ }
   }
 
-  // Apple: use Apple's *official* rendered button (matches Google's official
-  // widget — looks legit, not hand-rolled). It draws into #appleid-signin and,
-  // on success, fires AppleIDSignInOnSuccess on document (popup mode).
+  // Apple: manually call signIn() from our own button instead of Apple's
+  // auto-rendered widget. The rendered button + $effect re-draws caused the
+  // Apple popup to re-trigger (Face ID loop). A manual call gives us full
+  // control and a busy guard.
   let appleInited = false;
-  async function onAppleSuccess(e: any) {
-    const d = e?.detail || {};
-    const idToken = d.authorization?.id_token;
-    const nm = d.user?.name ? [d.user.name.firstName, d.user.name.lastName].filter(Boolean).join(' ') : undefined;
+  let appleBusy = $state(false);
+  let appleReady = $state(false);
+  async function initApple() {
+    if (!config.appleClientId || appleInited) return;
     try {
+      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+      const AppleID = (window as any).AppleID;
+      AppleID.auth.init({ clientId: config.appleClientId, scope: 'name email', redirectURI: window.location.origin, usePopup: true });
+      appleInited = true;
+      appleReady = true;
+    } catch { /* SDK failed to load — button stays hidden */ }
+  }
+  async function doAppleSignIn() {
+    if (appleBusy || !appleInited) return;
+    appleBusy = true;
+    try {
+      const AppleID = (window as any).AppleID;
+      const resp = await AppleID.auth.signIn();
+      const idToken = resp?.authorization?.id_token;
+      const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
       const res = await fetch('/api/auth/apple', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken, name: nm }),
@@ -257,24 +273,11 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
       await afterAuth('Signed in with Apple');
-    } catch (err: any) { toast(err.message); }
-  }
-  function onAppleFailure(e: any) {
-    if (e?.detail?.error && e.detail.error !== 'popup_closed_by_user') toast('Apple sign-in failed');
-  }
-  async function renderApple() {
-    if (!config.appleClientId) return;
-    try {
-      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
-      const AppleID = (window as any).AppleID;
-      if (!appleInited) {
-        AppleID.auth.init({ clientId: config.appleClientId, scope: 'name email', redirectURI: window.location.origin, usePopup: true });
-        document.addEventListener('AppleIDSignInOnSuccess', onAppleSuccess);
-        document.addEventListener('AppleIDSignInOnFailure', onAppleFailure);
-        appleInited = true;
-      }
-      AppleID.auth.renderButton?.(); // (re)draw the #appleid-signin element
-    } catch (e: any) { /* button just won't appear */ }
+    } catch (err: any) {
+      if (err?.error !== 'popup_closed_by_user') toast('Apple sign-in failed');
+    } finally {
+      appleBusy = false;
+    }
   }
 
   onMount(async () => {
@@ -282,13 +285,13 @@
     try { config = await (await fetch('/api/config')).json(); } catch {}
   });
 
-  // (Re)draw both official buttons whenever the signed-out view is shown — fixes
-  // them not appearing after logout (the page isn't re-mounted, so onMount alone
-  // would leave the now-visible button containers empty until a refresh).
+  // (Re)draw Google's official button whenever the signed-out view is shown —
+  // the page isn't re-mounted after logout, so onMount alone would leave it blank.
+  // Apple is init-once (no re-render needed — we draw our own button).
   $effect(() => {
     if (!browser || user) return;
     if (config.googleClientId) renderGoogle();
-    if (config.appleClientId) renderApple();
+    if (config.appleClientId) initApple();
   });
 
   // ---- one-time onboarding questions ----------------------------------------
@@ -411,11 +414,11 @@
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Your stats</h2>
       <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
+          <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
           <div class="text-muted text-xs mt-1">total profit</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit) : '—'}</div>
           <div class="text-muted text-xs mt-1">avg / game</div>
         </div>
         <div class="card text-center !mb-0">
@@ -423,11 +426,11 @@
           <div class="text-muted text-xs mt-1">% profitable</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.best?.net ?? 0) >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {(stats.best?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net) : '—'}</div>
           <div class="text-muted text-xs mt-1">best night</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.worst?.net ?? 0) >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {(stats.worst?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net) : '—'}</div>
           <div class="text-muted text-xs mt-1">worst night</div>
         </div>
         <div class="card text-center !mb-0">
@@ -477,10 +480,11 @@
           {#if config.googleClientId}
             <div id="google-btn" class="flex justify-center"></div>
           {/if}
-          {#if config.appleClientId}
-            <div id="appleid-signin" class="mx-auto cursor-pointer"
-              data-color="black" data-border="false" data-border-radius="20"
-              data-type="continue" data-mode="center-align" data-width="280" data-height="40"></div>
+          {#if config.appleClientId && appleReady}
+            <button class="apple-btn" onclick={doAppleSignIn} disabled={appleBusy}>
+              <svg viewBox="0 0 17 20" width="17" height="20" fill="currentColor"><path d="M13.26 10.37c-.02-2.26 1.84-3.34 1.93-3.4-1.05-1.54-2.69-1.75-3.27-1.78-1.39-.14-2.72.82-3.43.82-.71 0-1.81-.8-2.98-.78a4.39 4.39 0 00-3.69 2.25c-1.57 2.73-.4 6.77 1.13 8.99.75 1.08 1.64 2.3 2.81 2.26 1.13-.05 1.55-.73 2.91-.73 1.36 0 1.74.73 2.92.71 1.21-.02 1.98-1.1 2.72-2.19a9.56 9.56 0 001.24-2.54c-.03-.01-2.37-.91-2.39-3.61zM11.04 3.65a3.95 3.95 0 00.9-2.83A4.02 4.02 0 009.34 2a3.76 3.76 0 00-.93 2.73c1.07.08 2.15-.47 2.63-1.08z"/></svg>
+              {appleBusy ? 'Signing in…' : 'Continue with Apple'}
+            </button>
           {/if}
         </div>
       {/if}
@@ -516,3 +520,29 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .apple-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 280px;
+    height: 44px;
+    margin: 0 auto;
+    padding: 0 16px;
+    border-radius: 20px;
+    border: none;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .apple-btn:hover { opacity: 0.85; }
+  .apple-btn:active { opacity: 0.7; }
+  .apple-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>

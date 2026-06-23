@@ -60,21 +60,53 @@ export async function POST(event) {
   }
   const finishedGames = (gameStatus.ended || 0) + (gameStatus.settled || 0);
 
-  // Per-account engagement: only accounts with finished-game results count.
+  // Per-account engagement: participation across ALL games (not just finished).
   let playersWhoPlayed = 0;
   let sumGames = 0;
+  // Net stats: finished games only (active games have no final stacks).
   let sumProfit = 0;
+  let playersWithResults = 0;
+  let sumFinishedGames = 0;
   let biggestNight: { net: number; handle: string; game: string } | null = null;
   for (const u of users) {
+    // Count seats across ALL games (active included).
+    let seatCount = 0;
+    for (const g of games) {
+      if ((g.players || []).some((p: any) => p.userId === u.id)) seatCount++;
+    }
+    if (seatCount > 0) { playersWhoPlayed++; sumGames += seatCount; }
+    // Net stats from finished games only.
     const results = userResults(games, u.id);
-    if (!results.length) continue;
-    playersWhoPlayed++;
-    sumGames += results.length;
-    for (const r of results) {
-      sumProfit += r.net;
-      if (!biggestNight || r.net > biggestNight.net) biggestNight = { net: r.net, handle: u.handle, game: r.name };
+    if (results.length) {
+      playersWithResults++;
+      sumFinishedGames += results.length;
+      for (const r of results) {
+        sumProfit += r.net;
+        if (!biggestNight || r.net > biggestNight.net) biggestNight = { net: r.net, handle: u.handle, game: r.name };
+      }
     }
   }
+
+  // Distinct players who played (including anonymous — no account linked).
+  const allPlayerCount = new Set<string>();
+  for (const g of games) {
+    for (const p of (g.players || [])) allPlayerCount.add(p.id);
+  }
+
+  // Recent games (newest first) for the games table.
+  const recentGames = [...games]
+    .sort((a: any, b: any) => (String(b.updatedAt || b.createdAt) < String(a.updatedAt || a.createdAt) ? -1 : 1))
+    .slice(0, 20)
+    .map((g: any) => ({
+      id: g.id,
+      name: g.name,
+      status: g.status,
+      players: g.players?.length || 0,
+      transactions: g.transactions?.length || 0,
+      pot: (g.transactions || []).reduce((s: number, t: any) => s + (t.amount || 0), 0),
+      unit: g.unit || '€',
+      updatedAt: g.updatedAt || g.createdAt,
+    }));
   const round1 = (n: number) => Math.round(n * 10) / 10;
   const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -108,11 +140,13 @@ export async function POST(event) {
       byStatus: gameStatus,
       avgPlayers: games.length ? round1(totalSeats / games.length) : 0,
       buyIns: totalBuyIns,
+      totalDistinctPlayers: allPlayerCount.size,
+      recentGames,
     },
     engagement: {
       playersWhoPlayed,
       avgGamesPerPlayer: playersWhoPlayed ? round1(sumGames / playersWhoPlayed) : 0,
-      avgNetPerPlayer: playersWhoPlayed ? round2(sumProfit / playersWhoPlayed) : 0,
+      avgNetPerPlayer: playersWithResults ? round2(sumProfit / playersWithResults) : 0,
       biggestNight,
     },
   });

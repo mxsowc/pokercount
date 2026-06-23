@@ -3,11 +3,87 @@
   import { haptic } from '$lib/utils/fx';
   import { toast } from '$lib/stores/toast';
   import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
+
+  onMount(() => { loadActiveGame(); });
+
+  // Parse a typed amount: accept a comma decimal (phone keypads) and strip
+  // spaces / thousands separators so "1.234,56" / "1 000" / "1,000" don't mangle.
+  const decAmt = (v: any): number =>
+    Number(String(v ?? '').trim().replace(/\s/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
 
   const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
   const SUITS = ['s', 'h', 'd', 'c'] as const;
   const SUIT_SYM: Record<string, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SCALE = 100;
+
+  // ---- active game context ---------------------------------------------------
+  // Read the user's most recent active game so we can offer player names and
+  // currency as quick-fill options — zero friction for mid-game pot splits.
+  let activeGame = $state<any>(null);
+  let activeGamePlayers = $state<string[]>([]);
+  let activeGameUnit = $state('€');
+
+  async function loadActiveGame() {
+    if (!browser) return;
+    try {
+      const list = JSON.parse(localStorage.getItem('pc_games') || '[]');
+      const recent = list.find((g: any) => g.status === 'active') || list[0];
+      if (!recent?.id) return;
+      const res = await fetch(`/api/games/${recent.id}`);
+      if (!res.ok) return;
+      const g = await res.json();
+      if (g.status !== 'active') return;
+      activeGame = g;
+      activeGamePlayers = g.players.map((p: any) => p.name);
+      activeGameUnit = g.unit || '€';
+    } catch { /* offline or no game — fine */ }
+  }
+
+  let selectedFromGame = $state<Set<string>>(new Set());
+  let allInFromGame = $state<Set<string>>(new Set());
+  let potBefore = $state('');
+  let showPotBefore = $state(false);
+
+  function toggleGamePlayer(name: string) {
+    const next = new Set(selectedFromGame);
+    if (next.has(name)) { next.delete(name); allInFromGame.delete(name); }
+    else next.add(name);
+    selectedFromGame = next;
+    allInFromGame = new Set(allInFromGame);
+    haptic(8);
+  }
+
+  function toggleAllIn(name: string) {
+    const next = new Set(allInFromGame);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    allInFromGame = next;
+    haptic(8);
+  }
+
+  function applySelectedPlayers() {
+    if (selectedFromGame.size < 2) { toast('Pick at least 2 players'); return; }
+    const potBeforeAmt = decAmt(potBefore) || 0;
+    const selectedNames = [...selectedFromGame];
+    // If there's a pot-before and no all-ins, split evenly as starting amounts.
+    // With all-ins, leave amounts blank — the user needs to enter the actual
+    // per-player totals since they'll differ.
+    const perPlayer = potBeforeAmt > 0 && allInFromGame.size === 0
+      ? String(Math.round((potBeforeAmt / selectedNames.length) * 100) / 100)
+      : '';
+    players = selectedNames.map(name => ({
+      name, hole: '',
+      amount: allInFromGame.has(name) ? '' : perPlayer,
+      folded: false,
+    }));
+    // Toast a helpful reminder for all-in situations
+    if (allInFromGame.size > 0) {
+      const names = [...allInFromGame].join(', ');
+      toast(`${names} marked all-in — enter each player's total in the pot`);
+    }
+    haptic(12);
+  }
 
   // ---- state ----------------------------------------------------------------
   let game = $state<'holdem' | 'omaha'>('holdem');
@@ -29,6 +105,15 @@
   let pickRank = $state<string | null>(null);
 
   const holeCount = $derived(game === 'omaha' ? 4 : 2);
+
+  // ---- smart guidance -------------------------------------------------------
+  // Contextual hints that appear based on the current state — never blocks,
+  // just a one-liner to help the user avoid the most common mistakes.
+  const amounts = $derived(players.map(p => decAmt(p.amount) || 0));
+  const hasAmounts = $derived(amounts.some(a => a > 0));
+  const allSame = $derived(hasAmounts && new Set(amounts.filter(a => a > 0)).size === 1);
+  const hasFolded = $derived(players.some(p => p.folded));
+  const shortStack = $derived(hasAmounts && !allSame && amounts.filter(a => a > 0).length >= 2);
 
   // ---- card helpers ---------------------------------------------------------
   function normCard(tok: string): string | null {
@@ -175,7 +260,8 @@
     try {
       const { resolve } = await import('$lib/engine/index.js');
       const builtPlayers = players.map((p, i) => {
-        const amount = Number(p.amount);
+        // accept comma decimals (phone keypads) — see the text input below
+        const amount = decAmt(p.amount);
         if (!Number.isFinite(amount) || amount < 0) throw new Error(`Enter a valid "in pot" amount for ${p.name || 'Player ' + (i + 1)}`);
         return {
           id: 'p' + i, name: p.name.trim() || 'Player ' + (i + 1),
@@ -258,7 +344,7 @@
             const won = wins.has(pl.id);
             const holeCards = parseTokens(players[+pl.id.slice(1)].hole);
             const tag = pl.folded ? '<span class="pill">folded</span>' : (won ? '<span class="pill pill-win">won</span>' : '');
-            html += `<div class="p-2 rounded-lg bg-surface-2 border ${won ? 'border-accent shadow-[0_0_26px_-8px_var(--color-accent-glow)]' : 'border-border-soft'} ${pl.folded ? 'opacity-45' : ''}">`;
+            html += `<div class="p-2 rounded-lg bg-surface-2 border ${won ? 'border-win shadow-[0_0_26px_-8px_var(--color-win-glow)]' : 'border-border-soft'} ${pl.folded ? 'opacity-45' : ''}">`;
             html += `<div class="flex flex-wrap gap-1 mb-1">`;
             holeCards.forEach(c => {
               const p = cardParts(c);
@@ -377,42 +463,110 @@
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-1">Pot splitter</h1>
   <p class="text-muted text-sm mb-3">Tap the slots to pick cards — or type them (e.g. <code class="text-text">Ah Kh</code>). We'll work out who gets what.</p>
+
+  <!-- Active game context — tap players who are in the hand -->
+  {#if activeGame && activeGamePlayers.length >= 2}
+    <div class="card !bg-surface !p-3 !mb-3 border-accent/30">
+      <div class="text-sm mb-2.5">
+        <span class="text-accent font-semibold">#{activeGame.id}</span>
+        <span class="text-muted ml-1">{activeGame.name}</span>
+        <span class="text-muted"> — who's in this hand?</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
+        {#each activeGamePlayers as name}
+          {@const selected = selectedFromGame.has(name)}
+          {@const isAllIn = allInFromGame.has(name)}
+          <button class="text-sm px-3 py-1.5 rounded-lg border transition-all active:scale-95 {selected ? 'bg-accent/15 border-accent text-accent font-semibold' : 'bg-surface-2 border-border text-text hover:border-accent/40'}"
+            onclick={() => toggleGamePlayer(name)}>
+            {#if selected}✓ {/if}{name}
+          </button>
+        {/each}
+      </div>
+
+      <!-- Per-player all-in toggles — only shown when 2+ players selected -->
+      {#if selectedFromGame.size >= 2}
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          {#each [...selectedFromGame] as name}
+            {@const isAllIn = allInFromGame.has(name)}
+            <button class="text-xs px-2.5 py-1 rounded-lg border transition-all active:scale-95 {isAllIn ? 'bg-warn/15 border-warn text-[#f3cd6b] font-semibold' : 'bg-surface-2 border-border-soft text-muted hover:border-warn/40'}"
+              onclick={() => toggleAllIn(name)}
+              title="{name} is all-in for less">
+              {name} {isAllIn ? '· all-in' : ''}
+            </button>
+          {/each}
+          <span class="text-xs text-faint self-center ml-0.5">all-in?</span>
+        </div>
+
+        <!-- Optional: pot already built before this action -->
+        {#if !showPotBefore}
+          <button class="text-xs text-muted underline decoration-dotted mt-2" onclick={() => showPotBefore = true}>
+            Pot already has money in it?
+          </button>
+        {:else}
+          <div class="flex items-center gap-2 mt-2">
+            <span class="text-xs text-muted shrink-0">Pot before:</span>
+            <input class="input !py-1.5 !px-3 !text-sm flex-1" type="text" inputmode="decimal"
+              bind:value={potBefore} placeholder="e.g. 50" />
+            <span class="text-xs text-muted shrink-0">{activeGameUnit}</span>
+            <button class="text-xs text-faint hover:text-text" onclick={() => { showPotBefore = false; potBefore = ''; }}>✕</button>
+          </div>
+          <p class="text-xs text-faint mt-1">We'll split it evenly as each player's starting contribution.</p>
+        {/if}
+
+        <button class="btn-small btn w-full mt-2.5" onclick={applySelectedPlayers}>
+          Set up for {selectedFromGame.size} players{allInFromGame.size ? ` (${allInFromGame.size} all-in)` : ''}
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <button class="btn-small btn-secondary mb-4" onclick={loadExample}>Try an example →</button>
 
   <!-- Game options -->
   <div class="card">
     <!-- Variant: the only choice most hands need -->
     <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
-      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'holdem' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'holdem' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={() => { game = 'holdem'; haptic(8); }}>Hold'em</button>
-      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'omaha' ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'omaha' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={() => { game = 'omaha'; haptic(8); }}>Omaha / PLO</button>
     </div>
 
+    {#if game === 'omaha'}
+      <div class="flex gap-1.5 mt-3 flex-wrap">
+        <button class="btn-small {boardCount === 2 ? 'btn' : 'btn-secondary'}" onclick={() => { boardCount = boardCount === 2 ? 1 : 2; haptic(8); }}>
+          {boardCount === 2 ? '✓ Double board' : 'Double board'}
+        </button>
+        <button class="btn-small {hiLo ? 'btn' : 'btn-secondary'}" onclick={() => { hiLo = !hiLo; haptic(8); }}>
+          {hiLo ? '✓ Hi-Lo' : 'Hi-Lo'}
+        </button>
+      </div>
+    {/if}
+
     <details class="mt-3">
-      <summary class="text-sm text-muted cursor-pointer">Double board · run it twice · hi-lo</summary>
+      <summary class="text-sm text-muted cursor-pointer">{game === 'omaha' ? 'Run it twice · more options' : 'Double board · run it twice · hi-lo'}</summary>
 
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Boards</label>
       <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 1 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 1 ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
           onclick={() => { boardCount = 1; haptic(8); }}>Single board</button>
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 2 ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 2 ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
           onclick={() => { boardCount = 2; haptic(8); }}>Double board</button>
       </div>
 
       <label class="block text-xs text-muted font-medium mb-1">Run it</label>
       <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
         {#each [{ v: 1, l: 'Once' }, { v: 2, l: 'Twice' }, { v: 3, l: '3 times' }] as opt}
-          <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
             onclick={() => { runCount = opt.v; haptic(8); }}>{opt.l}</button>
         {/each}
       </div>
 
       <label class="block text-xs text-muted font-medium mb-1">Hi-Lo split</label>
       <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
           onclick={() => { hiLo = false; haptic(8); }}>High only</button>
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {hiLo ? 'bg-gradient-to-b from-accent to-[#18b07e] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="py-2 rounded-lg font-semibold text-sm transition-all {hiLo ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
           onclick={() => { hiLo = true; haptic(8); }}>8-or-better</button>
       </div>
     </details>
@@ -447,7 +601,7 @@
           value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
       {/each}
     {/each}
-    <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.</p>
+    <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.{#if boardCount > 1} Each board is dealt independently.{/if}</p>
   </div>
 
   <!-- Players -->
@@ -456,10 +610,27 @@
     {#each players as p, i}
       {@const ref = `hole:${i}`}
       {@const slots = getSlots(ref)}
-      <div class="card !bg-surface-2 !p-3 !mb-2">
+      <div class="card !bg-surface-2 !p-3 !mb-2 {allInFromGame.has(p.name) ? '!border-warn/30' : ''}">
+        {#if allInFromGame.has(p.name)}
+          <div class="text-xs text-[#f3cd6b] font-semibold mb-1.5">All-in — enter their total in the pot</div>
+        {/if}
         <div class="flex gap-2 mb-2">
-          <input class="input flex-[1.2] !py-2 !px-3" bind:value={p.name} placeholder="Player {i + 1}" />
-          <input class="input flex-[0.8] !py-2 !px-3" type="number" inputmode="decimal" step="any" min="0" bind:value={p.amount} placeholder="in pot" />
+          <div class="flex-[1.2] relative">
+            <input class="input w-full !py-2 !px-3" bind:value={p.name} placeholder="Player {i + 1}" autocomplete="off"
+              onfocus={(e) => { (e.target as HTMLElement).dataset.showSuggest = '1'; }}
+              onblur={(e) => { setTimeout(() => { (e.target as HTMLElement).dataset.showSuggest = ''; }, 150); }} />
+            {#if activeGamePlayers.length > 0 && !p.name}
+              <div class="absolute top-full left-0 right-0 z-20 mt-1 bg-surface border border-border rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                {#each activeGamePlayers.filter(n => !players.some((pp, j) => j !== i && pp.name === n)) as suggestion}
+                  <button class="w-full text-left px-3 py-2 text-sm hover:bg-surface-2 first:rounded-t-xl last:rounded-b-xl"
+                    onmousedown={(e) => { e.preventDefault(); players[i].name = suggestion; players = players; }}>
+                    {suggestion}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          <input class="input flex-[0.8] !py-2 !px-3" type="text" inputmode="decimal" bind:value={p.amount} placeholder="in pot ({activeGameUnit})" />
         </div>
         <div class="text-muted text-xs mb-1">{holeCount} hole cards</div>
         <div class="flex flex-wrap gap-[7px] mb-2">
@@ -482,6 +653,16 @@
           <span class="text-muted text-xs">Folded (forfeits, still funds pot)</span>
           <input type="checkbox" bind:checked={p.folded} class="accent-accent w-4 h-4" />
         </label>
+        <!-- Per-player all-in hint -->
+        {#if shortStack && amounts[i] > 0 && !p.folded}
+          {@const myAmt = amounts[i]}
+          {@const maxAmt = Math.max(...amounts)}
+          {#if myAmt < maxAmt}
+            <div class="text-xs text-warn mt-1.5">All-in short — can only win up to {money(myAmt * players.filter((_, j) => amounts[j] > 0).length, '€')} (main pot)</div>
+          {:else if myAmt === maxAmt && amounts.filter(a => a > 0 && a < maxAmt).length > 0}
+            <div class="text-xs text-accent mt-1.5">Covers all — eligible for every pot</div>
+          {/if}
+        {/if}
         {#if players.length > 2}
           <button class="btn-small btn-danger mt-1.5" onclick={() => removePlayer(i)}>Remove</button>
         {/if}
@@ -490,7 +671,30 @@
     <div class="flex gap-2 mt-2">
       <button class="btn-small btn-secondary w-full" onclick={addPlayer}>+ Add player</button>
     </div>
-    <p class="text-muted text-xs mt-2">"In pot" = how much that player put in. Short stacks make side pots automatically; whoever folded still funds the pot but can't win it.</p>
+    <!-- Contextual guidance — appears based on the state of the hand -->
+    {#if !hasAmounts}
+      <p class="text-muted text-xs mt-2">"In pot" = how much that player put in this hand (not the total pot). Different amounts? That's fine — we'll split into side pots automatically.</p>
+    {:else if shortStack}
+      <div class="banner banner-info text-xs mt-2 !mb-0 !p-2.5">
+        Different amounts — we'll create side pots. The short stack can only win what they matched. Make sure each amount is what that player actually put in, not the total pot.
+      </div>
+    {:else if allSame && !hasFolded}
+      <p class="text-accent text-xs mt-2 font-medium">All matched at {money(amounts.find(a => a > 0) || 0, '€')} each — straight split, no side pots.</p>
+    {:else if hasFolded && allSame}
+      <p class="text-muted text-xs mt-2">Folded players' chips stay in the pot but they can't win. Everyone else matched evenly.</p>
+    {:else}
+      <p class="text-muted text-xs mt-2">"In pot" = how much that player put in. Short stacks make side pots automatically.</p>
+    {/if}
+
+    {#if boardCount > 1 && hasAmounts}
+      <p class="text-muted text-xs mt-1">Double board: each pot splits evenly across both boards — enter the same "in pot" amounts, not half.</p>
+    {/if}
+    {#if runCount > 1 && hasAmounts}
+      <p class="text-muted text-xs mt-1">Running it {runCount === 2 ? 'twice' : runCount + ' times'}: each pot splits across the runs — enter full "in pot" amounts.</p>
+    {/if}
+    {#if hiLo && hasAmounts}
+      <p class="text-muted text-xs mt-1">Hi-Lo: each pot is halved — best high takes one half, best qualifying low (8-or-better) takes the other. No qualifier? High scoops.</p>
+    {/if}
   </div>
 
   <div class="sticky bottom-3 z-10 mt-1">

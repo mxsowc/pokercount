@@ -82,27 +82,41 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-2">
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.total}</div>
-          <div class="text-muted text-xs mt-1">games ({data.games.finished} finished)</div>
+          <div class="text-muted text-xs mt-1">total games</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.engagement.avgGamesPerPlayer}</div>
-          <div class="text-muted text-xs mt-1">avg games / player</div>
+          <div class="text-xs font-semibold mt-2 leading-relaxed">
+            {#if data.games.byStatus}
+              {#each Object.entries(data.games.byStatus) as [status, count]}
+                <span class="inline-block mr-1.5 {status === 'active' ? 'text-accent' : status === 'settled' ? 'text-gold' : 'text-muted'}">{count} {status}</span>
+              {/each}
+            {/if}
+          </div>
+          <div class="text-muted text-xs mt-1">by status</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.avgPlayers}</div>
           <div class="text-muted text-xs mt-1">avg players / game</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayer >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{data.engagement.avgNetPerPlayer}</div>
-          <div class="text-muted text-xs mt-1">avg net / player</div>
+          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.totalDistinctPlayers || 0}</div>
+          <div class="text-muted text-xs mt-1">distinct players (all)</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.engagement.playersWhoPlayed}</div>
-          <div class="text-muted text-xs mt-1">players who played</div>
+          <div class="text-muted text-xs mt-1">linked accounts played</div>
+        </div>
+        <div class="card text-center !mb-0">
+          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.engagement.avgGamesPerPlayer}</div>
+          <div class="text-muted text-xs mt-1">avg games / account</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.buyIns}</div>
           <div class="text-muted text-xs mt-1">buy-in events</div>
+        </div>
+        <div class="card text-center !mb-0">
+          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayer >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{data.engagement.avgNetPerPlayer}</div>
+          <div class="text-muted text-xs mt-1">avg net / player</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-sm font-semibold mt-2 leading-tight">{providerLine(data.providers)}</div>
@@ -110,12 +124,33 @@
         </div>
         {#if data.engagement.biggestNight}
           <div class="card text-center !mb-0">
-            <div class="text-2xl font-extrabold text-accent" style="font-family:var(--font-display)">{data.engagement.biggestNight.net}</div>
+            <div class="text-2xl font-extrabold text-win" style="font-family:var(--font-display)">{data.engagement.biggestNight.net}</div>
             <div class="text-muted text-xs mt-1 truncate">biggest night · @{data.engagement.biggestNight.handle}</div>
           </div>
         {/if}
       </div>
-      <p class="text-muted text-xs mb-5">Net figures combine all currencies — treat as a rough indicator if games use different units.</p>
+      <p class="text-muted text-xs mb-5">Net figures are from finished games only and combine all currencies.</p>
+
+      {#if data.games.recentGames?.length}
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent games</h2>
+        <div class="card !p-0 overflow-hidden mb-5">
+          {#each data.games.recentGames as g (g.id)}
+            <div class="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-border last:border-0">
+              <div class="min-w-0">
+                <div class="font-semibold text-sm truncate">
+                  <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{g.id}</span>
+                  {g.name || 'Untitled'}
+                </div>
+                <div class="text-muted text-xs truncate">{g.players} players · {g.transactions} buy-ins · pot {g.unit}{g.pot}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="pill {g.status === 'active' ? 'pill-win' : g.status === 'settled' ? 'pill-info' : ''}">{g.status}</span>
+                <span class="text-muted text-xs">{fmtDate(g.updatedAt)}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     {/if}
 
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent signups</h2>

@@ -73,9 +73,18 @@ const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 export const isSafeId = (v) => typeof v === 'string' && v.length > 0 && !RESERVED_KEYS.has(v);
 /** @param {unknown} v @returns {number} */
 export const num = (v) => (typeof v === 'number' ? v : Number(v));
-/** Valid money: finite, ≥0, and either exactly 0 or ≥1 cent (rejects e.g. 0.003).
+/** Valid money: a number (or numeric string) that is finite, ≥0, and an exact
+ *  number of whole cents — either 0 or ≥1 cent. Rejects sub-cent precision
+ *  (e.g. 0.005, which would display as one cent but settle as another), plus
+ *  empties/booleans/objects that `Number()` would silently coerce to 0.
  * @param {unknown} v @returns {boolean} */
-export const isMoney = (v) => { const n = num(v); return Number.isFinite(n) && n >= 0 && (n === 0 || Math.round(n * 100) >= 1); };
+export const isMoney = (v) => {
+  if (v === '' || v == null || typeof v === 'boolean' || typeof v === 'object') return false;
+  const n = num(v);
+  if (!Number.isFinite(n) || n < 0) return false;
+  const cents = n * 100;
+  return Math.abs(cents - Math.round(cents)) < 1e-6 && (n === 0 || Math.round(cents) >= 1);
+};
 
 /** Is the requester the host of this game? Account owner, a valid signed host
  *  token, or — for legacy (pre-token) games only — the device that opened it.

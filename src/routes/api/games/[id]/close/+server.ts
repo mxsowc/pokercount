@@ -1,7 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
 import { sessionUser, getActor, logEntry } from '$lib/server/helpers.js';
-import { verifyGameToken } from '$lib/server/auth.js';
 import { computeSettlement } from '$lib/engine/settle.js';
 
 export async function POST({ request, params }) {
@@ -12,21 +11,10 @@ export async function POST({ request, params }) {
 
   const su = sessionUser(request);
   const actor = su ? { id: 'user:' + su.id, name: su.displayName } : getActor(request);
-  const hostToken = request.headers.get('x-host-token');
-  const isHost = !g0.hostId
-    || (su && g0.ownerId && g0.ownerId === su.id)
-    || (hostToken && verifyGameToken(hostToken, g0.id))
-    || (!g0.tokenedHost && g0.hostId === actor.id);
 
+  // Anyone with the game can lock in the summary — "host" is just who started it,
+  // not a gatekeeper. The books don't have to balance; the summary flags any gap.
   const s = computeSettlement(g0.players, g0.transactions, g0.finalStacks);
-
-  if (!isHost) {
-    const playerId = request.headers.get('x-player-id');
-    const isSeated = (su && g0.players.some((p: any) => p.userId === su.id))
-      || (playerId && g0.players.some((p: any) => p.id === playerId));
-    if (!isSeated) return json({ error: 'Only players in this game can close it' }, { status: 403 });
-    if (!s.balanced) return json({ error: "The cash-outs don't add up yet — only the host can close an unbalanced game" }, { status: 409 });
-  }
 
   const game = mutate(id, (g: any) => {
     g.settlement = {

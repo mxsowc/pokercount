@@ -17,6 +17,9 @@
 export function divide(amount, n) {
   if (n <= 0) throw new Error('divide needs at least one recipient');
   if (!Number.isInteger(amount)) throw new Error('amount must be an integer');
+  // Negative amounts would send the odd chip to the LAST recipient (Math.floor
+  // rounds toward −∞), silently reversing the documented seat-priority rule.
+  if (amount < 0) throw new Error('amount must be non-negative');
   const base = Math.floor(amount / n);
   let remainder = amount - base * n;
   const shares = new Array(n).fill(base);

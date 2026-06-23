@@ -69,9 +69,36 @@
 
   // Open game form
   let openName = $state('');
-  let openGameName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
+
+  const TAGLINES = [
+    'Who has the boat?',
+    'Please no pocket jacks',
+    'Feels like a set-over-set night',
+    'Runner runner never comes',
+    'Always a flush draw',
+    'Aces get cracked tonight',
+    'The river giveth',
+    'Big slick energy',
+    'Praying for a blank',
+    'Two pair is never good enough',
+    'Check-raise or cry',
+    'Everyone limps in',
+    'One more bullet',
+    'Pot is already disgusting',
+    'Pocket kings walk',
+    'Bad beats only tonight',
+    'Suited connectors or fold pre',
+    'Ship it',
+  ];
+  function gameTitle(): string {
+    const d = new Date();
+    const day = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const tag = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
+    return `${day} — ${tag}`;
+  }
+  let generatedTitle = $state('');
 
   // Currency: searchable, with custom entry. `unitInput` is what's used as the
   // game's unit — pick from the list or just type your own (e.g. "BTC", "chips").
@@ -129,7 +156,7 @@
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: openGameName.trim() || undefined, unit: unitInput.trim() || '€', players, code: code || undefined })
+        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined })
       });
       const game = await res.json();
       if (!res.ok) {
@@ -178,6 +205,7 @@
   function showOpen() {
     view = 'open';
     openName = getActor().name;
+    generatedTitle = gameTitle();
   }
   function showJoin() {
     view = 'join';
@@ -272,10 +300,12 @@
     <h1 class="text-2xl font-bold mb-1">Open a game</h1>
     <p class="text-muted mb-4">You'll get a code to share. Everyone else just joins with it.</p>
     <div class="card">
-      <label class="block text-xs text-muted font-medium mb-1 mt-3">Your name</label>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-muted text-sm flex-1 italic truncate">{generatedTitle}</span>
+        <button type="button" class="btn-small btn-secondary !py-1.5 !px-2.5 shrink-0" onclick={() => generatedTitle = gameTitle()} title="Shuffle title">🔀</button>
+      </div>
+      <label class="block text-xs text-muted font-medium mb-1">Your name</label>
       <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" />
-      <label class="block text-xs text-muted font-medium mb-1 mt-3">Game name</label>
-      <input class="input" bind:value={openGameName} placeholder="Friday Night PLO" />
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
 

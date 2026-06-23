@@ -9,11 +9,16 @@ export async function PATCH({ request, params }) {
   if (g0.status !== 'active') return json({ error: 'Game is closed.' }, { status: 409 });
   const actor = getActor(request);
   const { name } = await request.json();
+  const trimmed = String(name || '').trim().slice(0, 40);
+  if (!trimmed) return json({ error: 'Name cannot be empty' }, { status: 400 });
+  // Reject duplicate names — two players with the same name breaks settlement display.
+  const existing = g0.players.find((p: any) => p.id !== params.pid && p.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return json({ error: 'Another player already has that name' }, { status: 409 });
   const game = mutate(id, (g: any) => {
     const p = g.players.find((x: any) => x.id === params.pid);
-    if (p && name) {
+    if (p) {
       const from = p.name;
-      p.name = String(name).trim().slice(0, 40);
+      p.name = trimmed;
       g.log.push(logEntry(actor, 'rename_player', { playerId: params.pid, playerName: p.name, detail: { from, to: p.name } }));
     }
   });

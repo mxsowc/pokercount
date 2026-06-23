@@ -107,7 +107,7 @@
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Stats</h2>
     <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-accent' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
+        <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
         <div class="text-muted text-xs mt-1">total profit</div>
       </div>
       <div class="card text-center !mb-0">
@@ -140,7 +140,7 @@
           <span class="font-semibold">{r.name}</span>
           <span class="text-muted text-sm">#{r.id}</span>
           {#if r.net != null}
-            <span class="ml-auto font-bold tabular-nums {r.net >= 0 ? 'text-accent' : 'text-danger'}">{fmtSigned(r.net)}</span>
+            <span class="ml-auto font-bold tabular-nums {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
           {:else}
             <span class="pill ml-auto">in progress</span>
           {/if}
@@ -166,7 +166,7 @@
         {#each socialList.users as u (u.id)}
           <a href="/u/{u.handle}" class="flex items-center gap-2.5 p-2.5 no-underline text-text hover:bg-surface-2 rounded-lg transition-colors">
             <span class="w-7 h-7 rounded-full grid place-items-center text-[.65rem] font-extrabold text-accent-ink shrink-0"
-                  style="background: radial-gradient(circle at 50% 34%, #66f0bf, var(--color-accent) 60%, #13a276)">
+                  style="background: radial-gradient(circle at 50% 34%, #f0a47a, var(--color-accent) 60%, #a85a3a)">
               {(u.displayName || '?').charAt(0).toUpperCase()}
             </span>
             <div>
