@@ -18,6 +18,8 @@ export interface Transaction {
   amount: number;
   type: TxType;
   at: string;
+  /** Display name of whoever created or last edited this entry. */
+  by?: string;
 }
 
 export interface Transfer {
@@ -72,6 +74,10 @@ export interface Game {
   players: Player[];
   transactions: Transaction[];
   finalStacks: Record<string, number>;
+  /** Optional hours each seat reports playing — powers that player's €/hr stat.
+   *  Set per-account by the seat's owner; absent = they didn't enter it (the
+   *  game is then simply not counted toward their hourly rate). Keyed by playerId. */
+  hours?: Record<string, number>;
   log: LogEntry[];
   /** Device/actor id that opened the game (host). */
   hostId?: string;
@@ -80,6 +86,10 @@ export interface Game {
   /** True for games created after host tokens existed (host proven by signed token). */
   tokenedHost?: boolean;
   settlement?: Settlement;
+  /** Optional series tag for recurring game groups. */
+  series?: string | null;
+  /** Post-game votes (e.g. "hardest to read"). */
+  votes?: { hardestToRead?: Record<string, string> };
 }
 
 /** Payload accepted by createGame. */

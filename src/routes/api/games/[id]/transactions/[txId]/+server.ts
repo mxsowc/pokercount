@@ -16,6 +16,7 @@ export async function PATCH({ request, params }) {
     if (t) {
       const from = t.amount;
       t.amount = num(amount);
+      t.by = actor.name; // last edited by
       const pname = g.players.find((p: any) => p.id === t.playerId)?.name;
       g.log.push(logEntry(actor, 'edit_tx', { playerId: t.playerId, playerName: pname, detail: { from, to: num(amount), type: t.type } }));
     }

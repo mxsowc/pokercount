@@ -11,5 +11,20 @@ export function GET({ params, request }) {
   const blocked = privacyBlock(u, request);
   if (blocked) return json({ error: blocked.error, privacy: u.privacy }, { status: blocked.status });
 
-  return json({ user: publicUser(u), stats: computeUserStats(allGames(), u.id) });
+  // Count "hardest to read" votes received across all games
+  const games = allGames();
+  const hardestToReadCount = games.reduce((count: number, g: any) => {
+    if (!g.votes?.hardestToRead) return count;
+    const votedPlayerIds = Object.values(g.votes.hardestToRead) as string[];
+    // Find the player seat linked to this user
+    const seat = g.players.find((p: any) => p.userId === u.id);
+    if (!seat) return count;
+    return count + votedPlayerIds.filter((pid: string) => pid === seat.id).length;
+  }, 0);
+
+  return json({
+    user: publicUser(u),
+    stats: computeUserStats(games, u.id),
+    badges: { hardestToRead: hardestToReadCount },
+  });
 }

@@ -19,6 +19,7 @@ export function computeUserStats(games, userId) {
   let best = null;
   let worst = null;
   const recent = [];
+  const finishedResults = []; // {at, net, hours} for finished games, for curve/streak/hourly
 
   for (const g of games) {
     const seat = (g.players || []).find((p) => p.userId === userId);
@@ -50,9 +51,29 @@ export function computeUserStats(games, userId) {
     if (!best || net > best.net) best = { id: g.id, name: g.name, net: round2(net) };
     if (!worst || net < worst.net) worst = { id: g.id, name: g.name, net: round2(net) };
     recent.push({ id: g.id, name: g.name, net: round2(net), at: g.updatedAt, status: g.status });
+    const hrs = g.hours && seat ? g.hours[seat.id] : null;
+    finishedResults.push({ at: g.updatedAt, net, hours: typeof hrs === 'number' ? hrs : null });
   }
 
   recent.sort((a, b) => (a.at < b.at ? 1 : -1));
+
+  // Oldest → newest for the running curve / streaks.
+  finishedResults.sort((a, b) => (a.at < b.at ? -1 : 1));
+
+  // Cumulative profit over time (a bankroll sparkline), accumulated in cents.
+  let cumC = 0;
+  const curve = finishedResults.map((r) => { cumC += Math.round(r.net * 100); return { at: r.at, cum: cumC / 100 }; });
+
+  // Win/loss streaks. net 0 (break-even) is neutral and breaks a streak.
+  const streak = streakOf(finishedResults.map((r) => r.net));
+
+  // €/hr — ONLY from games where this user entered their hours. No hours = the
+  // game isn't counted (we never assume a duration). null when none entered.
+  let hNetC = 0, hHours = 0, hGames = 0;
+  for (const r of finishedResults) {
+    if (typeof r.hours === 'number' && r.hours > 0) { hNetC += Math.round(r.net * 100); hHours += r.hours; hGames++; }
+  }
+  const hourly = hHours > 0 ? { rate: round2((hNetC / 100) / hHours), hours: Math.round(hHours * 100) / 100, games: hGames } : null;
 
   const totalProfit = totalProfitC / 100;
   return {
@@ -64,6 +85,31 @@ export function computeUserStats(games, userId) {
     profitablePct: gamesPlayed ? Math.round((profitable / gamesPlayed) * 100) : 0,
     best,
     worst,
+    curve,
+    streak,
+    hourly,
     recent: recent.slice(0, 30),
   };
+}
+
+/** Win/loss streaks from finished nets in chronological order.
+ *  @param {number[]} nets @returns {{current:number, kind:'win'|'loss'|'none', longestWin:number, longestLoss:number}} */
+function streakOf(nets) {
+  let longestWin = 0, longestLoss = 0, runW = 0, runL = 0;
+  for (const n of nets) {
+    if (n > 0) { runW++; runL = 0; } else if (n < 0) { runL++; runW = 0; } else { runW = 0; runL = 0; }
+    if (runW > longestWin) longestWin = runW;
+    if (runL > longestLoss) longestLoss = runL;
+  }
+  let current = 0;
+  /** @type {'win'|'loss'|'none'} */ let kind = 'none';
+  for (let i = nets.length - 1; i >= 0; i--) {
+    const n = nets[i];
+    if (i === nets.length - 1) {
+      if (n > 0) kind = 'win'; else if (n < 0) kind = 'loss'; else break;
+      current = 1; continue;
+    }
+    if ((kind === 'win' && n > 0) || (kind === 'loss' && n < 0)) current++; else break;
+  }
+  return { current, kind, longestWin, longestLoss };
 }

@@ -75,6 +75,18 @@ function byId(players, id) {
 }
 
 /**
+ * Minimal transfers for an arbitrary set of net balances (major units) — used to
+ * re-settle the *residual* after some payments were recorded for actual (possibly
+ * rounded) amounts. `nets` is an array of { id, net }.
+ * @param {Array<{id:string, net:number}>} nets
+ * @returns {Array<{from:string, to:string, amount:number}>}
+ */
+export function settleNets(nets) {
+  const lines = nets.map(({ id, net }) => ({ playerId: id, _netC: toCents(net) }));
+  return minimizeTransfers(lines).map((t) => ({ from: t.from, to: t.to, amount: toMajor(t.amount) }));
+}
+
+/**
  * Minimal-transaction settlement.
  *
  * The fewest payments that clear a balanced set of nets is

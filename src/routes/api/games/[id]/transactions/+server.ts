@@ -31,7 +31,7 @@ export async function POST({ request, params }) {
       for (const e of entries) {
         const amt = num(e.amount);
         const txType = e.type === 'topup' ? 'topup' : 'buyin';
-        g.transactions.push({ id: uid(8), playerId: e.playerId, amount: amt, type: txType, at: new Date().toISOString() });
+        g.transactions.push({ id: uid(8), playerId: e.playerId, amount: amt, type: txType, at: new Date().toISOString(), by: actor.name });
         const pname = g.players.find((p: any) => p.id === e.playerId)?.name;
         g.log.push(logEntry(actor, txType, { playerId: e.playerId, playerName: pname, detail: { amount: amt, type: txType } }));
       }

@@ -13,6 +13,7 @@
   let game = $state<any>(null);
   let myAccount = $state<any>(null);
   let showActivity = $state(false);
+  let seriesData = $state<any>(null);
   let showShareBanner = $state(false);
   let showTrackTip = $state(false); // host-only "how to keep score" recommendation
   let expanded = $state(new Set<string>());
@@ -193,6 +194,10 @@
       return;
     }
     try { myAccount = (await api('GET', '/api/me')).user; } catch {}
+    // Load series data if this game belongs to one
+    if (game.series) {
+      try { seriesData = await api('GET', `/api/series?name=${encodeURIComponent(game.series)}`); } catch {}
+    }
     loading = false;
     if (showShareBanner) toast('Game started!');
 
@@ -240,6 +245,7 @@
       case 'mark_paid': return `marked settled: ${d.from} → ${d.to} ${money(d.amount, unit)}`;
       case 'mark_unpaid': return `marked unsettled: ${d.from} → ${d.to} ${money(d.amount, unit)}`;
       case 'edit_settlement': return 'adjusted who pays who';
+      case 'pay_actual': return `paid ${d.from} → ${d.to} ${money(d.amount, unit)} (recomputed the rest)`;
       default: return e.action;
     }
   }
@@ -521,6 +527,24 @@
     } catch (e: any) { toast(e.message); }
   }
 
+  // ---- hours played (for the signed-in user's €/hr stat) --------------------
+  let hoursInput = $state('');
+  let savingHours = $state(false);
+  async function saveHours() {
+    const h = decAmt(hoursInput);
+    if (!(h > 0)) { toast('Enter the hours played'); return; }
+    savingHours = true;
+    try { game = await api('PUT', `/api/games/${gameId}/hours`, { hours: h }); hoursInput = ''; toast('Hours saved'); }
+    catch (e: any) { toast(e.message); }
+    finally { savingHours = false; }
+  }
+  async function clearHours() {
+    savingHours = true;
+    try { game = await api('PUT', `/api/games/${gameId}/hours`, { hours: null }); hoursInput = ''; toast('Hours cleared'); }
+    catch (e: any) { toast(e.message); }
+    finally { savingHours = false; }
+  }
+
   // Remove this game from *your* view only: unlink your account seat (so it drops
   // out of "My games") and forget it on this device. Anyone else who's linked
   // keeps the game and their access — the game itself is not destroyed.
@@ -551,6 +575,24 @@
     if (!paid) haptic(14);
     try { game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { paid }); }
     catch (e: any) { toast(e.message); }
+  }
+
+  // "Paid a different amount" — record the actual amount on a payment, then the
+  // server re-solves the remaining payments (so e.g. paying €50 on a €40 debt
+  // routes the €10 change back to you in the optimal way).
+  let payDiff = $state<{ id: string; amount: string } | null>(null);
+  function startPayDiff(t: any) { payDiff = { id: t.id, amount: String(t.amount) }; }
+  async function confirmPayDiff() {
+    if (!payDiff) return;
+    const amt = decAmt(payDiff.amount);
+    if (!(Number.isFinite(amt) && amt >= 0)) { toast('Enter a valid amount'); return; }
+    const tid = payDiff.id;
+    try {
+      game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { paid: true, amount: amt });
+      payDiff = null;
+      haptic(12);
+      toast('Recorded — remaining payments recomputed');
+    } catch (e: any) { toast(e.message); }
   }
 
   async function joinAsPlayer() {
@@ -1025,7 +1067,7 @@
             <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">{p.name}'s buy-ins</h3>
             {#each game.transactions.filter((t: any) => t.playerId === p.id) as t (t.id)}
               <div class="flex items-center justify-between gap-2 text-sm mb-2 py-1.5 px-2 -mx-2 rounded-lg hover:bg-surface-3">
-                <span class="text-muted">{t.type === 'topup' ? 'Top-up' : 'Buy-in'} · {shortDate(t.at)}</span>
+                <span class="text-muted">{t.type === 'topup' ? 'Top-up' : 'Buy-in'} · {shortDate(t.at)}{#if t.by} · <span class="text-faint">by {t.by}</span>{/if}</span>
                 <div class="flex items-center gap-2 shrink-0">
                   <button class="font-semibold tabular-nums text-accent hover:text-accent-2 underline decoration-dotted underline-offset-2" title="Tap to change amount" onclick={() => editTx(t)}>{money(t.amount, unit)} ✎</button>
                   <button class="btn-small btn-ghost !px-3 text-danger" title="Remove this entry" onclick={() => delTx(t)}>✕</button>
@@ -1229,6 +1271,28 @@
         </div>
       {/if}
 
+      <!-- Hours played → powers the signed-in player's €/hr stat. Optional; a
+           game with no hours simply doesn't count toward that stat. -->
+      {#if myAccount && mySeat}
+        {@const myHours = game.hours?.[mySeat.id] ?? null}
+        <div class="card mt-4">
+          <div class="text-xs uppercase tracking-widest font-bold text-muted">
+            ⏱ Hours played{#if myHours != null}<span class="text-win normal-case tracking-normal font-semibold"> · {myHours}h logged</span>{/if}
+          </div>
+          <p class="text-muted text-xs mt-1 mb-2">
+            {myHours != null
+              ? 'Counts toward your €/hr on your profile. Update or clear it anytime.'
+              : 'Optional — how long did you play? Adds this game to your €/hr stat. Skip it and the game simply won’t count toward that stat (nothing is assumed).'}
+          </p>
+          <div class="flex gap-2">
+            <input class="input flex-1 !py-2" type="text" inputmode="decimal" placeholder="e.g. 4 or 3.5"
+              bind:value={hoursInput} onkeydown={(e) => { if (e.key === 'Enter') saveHours(); }} />
+            <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={saveHours}>{myHours != null ? 'Update' : 'Save'}</button>
+            {#if myHours != null}<button class="btn-small btn-ghost" disabled={savingHours} onclick={clearHours}>Clear</button>{/if}
+          </div>
+        </div>
+      {/if}
+
       <!-- Podium -->
       {#if standings.length >= 2}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Podium</h2>
@@ -1293,15 +1357,30 @@
       {:else if s.transfers.length === 0}
         <div class="banner banner-ok">Everyone broke even — nothing to settle.</div>
       {:else}
-        <p class="text-muted text-xs mb-2">Tap an amount to copy it. Use <b>Adjust</b> to change who pays who.</p>
+        <p class="text-muted text-xs mb-2">Tap an amount to copy it. Paid a different amount? Tap <b>≠</b> and we'll recompute the rest. Use <b>Adjust</b> to change who pays who.</p>
         {#each s.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t (t.id)}
           <div class="transfer-row {t.paid ? 'opacity-50' : ''}">
             <span class="font-semibold truncate min-w-0 {t.paid ? 'line-through' : ''}">{t.fromName}</span>
             <span class="text-accent font-extrabold shrink-0">→</span>
             <span class="font-semibold truncate min-w-0 {t.paid ? 'line-through' : ''}">{t.toName}</span>
             <span class="ml-auto font-bold tabular-nums cursor-pointer shrink-0 {t.paid ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</span>
+            {#if !t.paid}
+              <button class="btn-small btn-secondary shrink-0 !px-2.5" title="Paid a different amount — recompute the rest" onclick={() => startPayDiff(t)}>≠</button>
+            {/if}
             <button class="btn-small shrink-0 {t.paid ? 'btn-secondary' : 'btn'}" onclick={() => markPaid(t.id, !t.paid)}>{t.paid ? '✓ paid' : 'Mark paid'}</button>
           </div>
+          {#if payDiff?.id === t.id}
+            <div class="bg-surface-2 rounded-[10px] p-3 mb-2 -mt-1 border-l-[3px] border-accent">
+              <div class="text-xs text-muted mb-2">How much did <b class="text-text">{t.fromName}</b> actually give <b class="text-text">{t.toName}</b>? We'll mark it paid and recompute everyone else (any change comes back to them).</div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-muted text-sm">{unit}</span>
+                <input class="input !w-24 !py-2 !px-2.5" type="text" inputmode="decimal" bind:value={payDiff!.amount}
+                  onkeydown={(e) => { if (e.key === 'Enter') confirmPayDiff(); }} autocomplete="off" />
+                <button class="btn-small btn" onclick={confirmPayDiff}>Record &amp; recompute</button>
+                <button class="btn-small btn-ghost" onclick={() => payDiff = null}>Cancel</button>
+              </div>
+            </div>
+          {/if}
         {/each}
         {@const smallUnpaid = s.transfers.filter((t: any) => t.amount <= forgiveMax && !t.paid)}
         {#if smallUnpaid.length > 0}
@@ -1332,6 +1411,54 @@
             Share your night
           </button>
         </div>
+      {/if}
+
+      <!-- Series leaderboard — running scoreboard across recurring games -->
+      {#if seriesData && seriesData.gameCount > 1}
+        <div class="card mt-4">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">{seriesData.series} — {seriesData.gameCount} games</h3>
+          </div>
+          {#each seriesData.leaderboard.slice(0, 5) as entry, idx}
+            {@const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : ''}
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span>{medal} {entry.name} <span class="text-muted text-xs">{entry.games}g · {entry.wins}w</span></span>
+              <span class="font-bold tabular-nums {entry.totalNet >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{entry.totalNet >= 0 ? '+' : ''}{money(entry.totalNet, unit)}</span>
+            </div>
+          {/each}
+          {#if seriesData.leaderboard.length > 5}
+            <p class="text-xs text-muted mt-1">+{seriesData.leaderboard.length - 5} more</p>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- "Hardest to read" vote — signed-in users with a seat only -->
+      {#if myAccount && mySeat && standings.length >= 3}
+        {@const myVote = game.votes?.hardestToRead?.[myAccount.id]}
+        {@const eligiblePlayers = game.players.filter((p: any) => p.userId && p.userId !== myAccount.id)}
+        {#if eligiblePlayers.length > 0}
+          <div class="card mt-4 !p-3">
+            <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Who was hardest to read?</div>
+            {#if myVote}
+              {@const votedPlayer = game.players.find((p: any) => p.id === myVote)}
+              <p class="text-sm text-muted">You voted for <b class="text-text">{votedPlayer?.name || '?'}</b> 🎭</p>
+            {:else}
+              <div class="flex flex-wrap gap-1.5">
+                {#each eligiblePlayers as p (p.id)}
+                  <button class="btn-small btn-secondary" onclick={async () => {
+                    try {
+                      const res = await api('POST', `/api/games/${gameId}/vote`, { playerId: p.id });
+                      game = { ...game, votes: { ...game.votes, hardestToRead: res.votes } };
+                      haptic(14);
+                      toast(`Voted for ${p.name} 🎭`);
+                    } catch (e: any) { toast(e.message); }
+                  }}>{p.name}</button>
+                {/each}
+              </div>
+              <p class="text-xs text-faint mt-1.5">Only you and other signed-in players can vote.</p>
+            {/if}
+          </div>
+        {/if}
       {/if}
 
       <!-- Claim your seat / create an account — follow your home-game stats -->

@@ -70,6 +70,7 @@
   let openName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
+  let openSeries = $state('');
 
   const TAGLINES = [
     'Who has the boat?',
@@ -171,6 +172,15 @@
       }
       localStorage.setItem('pc_me_' + game.id, game.players[0].id);
       if (game.hostToken) localStorage.setItem('pc_host_' + game.id, game.hostToken);
+      // Tag with series if provided
+      const seriesVal = openSeries.trim();
+      if (seriesVal) {
+        await fetch(`/api/games/${game.id}/meta`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-Host-Token': game.hostToken || '' },
+          body: JSON.stringify({ series: seriesVal }),
+        }).catch(() => {});
+      }
       rememberGame(game);
       goto(`/game?g=${game.id}&new=1`);
     } catch (e: any) { toast('Could not reach the server — check your connection'); }
@@ -350,6 +360,10 @@
           {/if}
         </div>
         <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be “big blinds”, “chips”, anything.</p>
+
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Series (optional)</label>
+        <input class="input" bind:value={openSeries} placeholder="e.g. Thursday PLO" maxlength="60" />
+        <p class="text-xs text-faint mt-1">Tag recurring games to track a running leaderboard across sessions.</p>
 
         <div class="flex gap-2.5 mt-3">
           <div class="flex-1">

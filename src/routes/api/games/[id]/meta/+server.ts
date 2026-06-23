@@ -6,10 +6,11 @@ export async function PUT({ request, params }) {
   const g0 = getGame(id);
   if (!g0) return json({ error: 'game not found' }, { status: 404 });
   if (g0.status !== 'active') return json({ error: 'Game is closed.' }, { status: 409 });
-  const { name, unit } = await request.json();
+  const { name, unit, series } = await request.json();
   const game = mutate(id, (g: any) => {
     if (name) g.name = String(name).slice(0, 80);
     if (unit) g.unit = String(unit).slice(0, 16);
+    if (series !== undefined) g.series = series ? String(series).trim().slice(0, 60) : null;
   });
   return json(game);
 }

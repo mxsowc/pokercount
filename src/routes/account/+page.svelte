@@ -3,12 +3,14 @@
   import { invalidateAll, goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
+  import Sparkline from '$lib/components/Sparkline.svelte';
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
 
   let user = $derived($page.data?.user ?? null);
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
+  let badges = $state<any>(null);
   let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
 
   // Login form
@@ -220,6 +222,7 @@
       const res = await fetch(`/api/users/${encodeURIComponent(user.handle)}/stats`);
       const data = await res.json();
       stats = data.stats;
+      badges = data.badges || null;
     } catch {}
   }
 
@@ -466,7 +469,40 @@
           <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed}</div>
           <div class="text-muted text-xs mt-1">games played</div>
         </div>
+        <div class="card text-center !mb-0">
+          <div class="text-xl font-extrabold tabular-nums {stats.streak?.kind === 'win' ? 'text-win' : stats.streak?.kind === 'loss' ? 'text-danger' : ''}" style="font-family:var(--font-display)">
+            {stats.streak && stats.streak.current > 0 ? `${stats.streak.kind === 'win' ? '🔥' : '❄️'} ${stats.streak.current}${stats.streak.kind === 'win' ? 'W' : 'L'}` : '—'}
+          </div>
+          <div class="text-muted text-xs mt-1">current streak</div>
+        </div>
+        {#if stats.hourly}
+          <div class="card text-center !mb-0">
+            <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate)}<span class="text-sm text-muted">/h</span></div>
+            <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g</div>
+          </div>
+        {/if}
       </div>
+
+      {#if stats.curve && stats.curve.length >= 2}
+        <div class="card mt-3 text-win">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
+            <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit)}</span>
+          </div>
+          <Sparkline points={stats.curve.map((p: any) => p.cum)} />
+        </div>
+      {/if}
+
+      <!-- Badges -->
+      {#if badges?.hardestToRead > 0}
+        <div class="flex flex-wrap gap-2 mt-4">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
+            <span>🎭</span>
+            <span class="font-semibold">Hardest to read</span>
+            <span class="text-muted">× {badges.hardestToRead}</span>
+          </div>
+        </div>
+      {/if}
 
       <!-- Recent games with multi-select -->
       {#if stats.recent?.length}
