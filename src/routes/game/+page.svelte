@@ -869,13 +869,13 @@
         <p class="text-muted text-sm">No payments needed — everyone's even.</p>
       {/if}
 
-      <!-- Reconciliation: the books don't have to balance, but flag any gap so people can fix it. -->
-      {#if settlement && settlement.totalFinal > 0 && !settlement.balanced}
+      <!-- Reconciliation: only a real miscount once EVERYONE has cashed out. While
+           players are still in, the gap is just their uncounted stacks — see the
+           "still in" note above — so don't cry "recount". -->
+      {#if allEntered && settlement && !settlement.balanced}
         <div class="banner banner-warn mt-3 text-sm">
           <div>Off by {money(Math.abs(settlement.discrepancy), unit)} — counted {money(settlement.totalFinal, unit)} of {money(settlement.totalInvested, unit)} bought in. Recount if you can.</div>
-          {#if allEntered}
-            <button class="btn-small btn w-full mt-2.5" onclick={() => reconcileOpen = true}>Can't find it? Even out the {money(Math.abs(settlement.discrepancy), unit)} →</button>
-          {/if}
+          <button class="btn-small btn w-full mt-2.5" onclick={() => reconcileOpen = true}>Can't find it? Even out the {money(Math.abs(settlement.discrepancy), unit)} →</button>
         </div>
       {/if}
 
@@ -1092,8 +1092,9 @@
         {/if}
       </div>
 
-      <!-- Balance banner -->
-      {#if settlement && settlement.totalFinal > 0}
+      <!-- Balance banner — only meaningful once everyone has cashed out; before
+           that the live "counted X of Y" counter above gives running feedback. -->
+      {#if allEntered && settlement}
         {#if settlement.balanced}
           <div class="banner banner-ok">Books balance. Total in = total out = {money(settlement.totalInvested, unit)}.</div>
         {:else}
@@ -1101,9 +1102,7 @@
           <div class="banner banner-warn">
             <div>Off by {money(Math.abs(diff), unit)} — counted {money(settlement.totalFinal, unit)} but {money(settlement.totalInvested, unit)} was bought in.
             {diff > 0 ? 'Too many chips counted' : 'Missing chips'} — recount if you can.</div>
-            {#if allEntered}
-              <button class="btn-small btn w-full mt-2.5" onclick={() => reconcileOpen = true}>Can't find it? Even out the {money(Math.abs(diff), unit)} →</button>
-            {/if}
+            <button class="btn-small btn w-full mt-2.5" onclick={() => reconcileOpen = true}>Can't find it? Even out the {money(Math.abs(diff), unit)} →</button>
           </div>
         {/if}
       {/if}
