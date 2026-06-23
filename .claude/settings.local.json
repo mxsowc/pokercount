@@ -14,7 +14,9 @@
       "WebFetch(domain:apps.apple.com)",
       "WebFetch(domain:www.pokersplit.org)",
       "WebFetch(domain:webcache.googleusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:network.pokernow.com)",
+      "WebFetch(domain:www.pokernow1.online)"
     ]
   }
 }

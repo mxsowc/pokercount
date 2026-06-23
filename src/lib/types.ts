@@ -64,9 +64,14 @@ export interface LogEntry {
 }
 
 export interface Game {
+  /** Immutable internal id (the map key + filename + what shared links use). Never shown. */
   id: string;
+  /** Human-facing 4–6 digit code, reusable once the game closes. Shown to players. */
+  code: string;
   name: string;
   unit: string;
+  /** The table's standard buy-in, captured at creation; seeds the quick-buy / bulk amount. */
+  defaultBuyIn?: number;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
@@ -85,6 +90,8 @@ export interface Game {
   ownerId?: string;
   /** True for games created after host tokens existed (host proven by signed token). */
   tokenedHost?: boolean;
+  /** Host locked the table: nobody new can self-join by code; the host adds players. */
+  locked?: boolean;
   settlement?: Settlement;
   /** Optional series tag for recurring game groups. */
   series?: string | null;
@@ -98,6 +105,7 @@ export interface NewGameInput {
   unit?: string;
   players?: { name?: string }[];
   code?: string;
+  defaultBuyIn?: number;
 }
 
 export interface User {

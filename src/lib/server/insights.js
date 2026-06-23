@@ -24,9 +24,13 @@ export function userResults(games, userId) {
   /** @type {Result[]} */
   const out = [];
   for (const g of games) {
-    if (g.status !== 'ended' && g.status !== 'settled') continue;
     const seat = (g.players || []).find((p) => p.userId === userId);
     if (!seat) continue;
+    const finished = g.status === 'ended' || g.status === 'settled';
+    // Locked result: the game finished OR this seat already cashed out (its net
+    // no longer depends on who's still in). Matches computeUserStats.
+    const cashedOut = g.finalStacks != null && g.finalStacks[seat.id] != null;
+    if (!finished && !cashedOut) continue;
     out.push({ gameId: g.id, name: g.name, net: netFor(g, seat.id), at: g.settlement?.computedAt || g.updatedAt });
   }
   out.sort((a, b) => (a.at < b.at ? -1 : 1));

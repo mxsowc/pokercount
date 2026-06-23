@@ -26,8 +26,11 @@ export async function POST({ request, params }) {
       if (g.status !== 'active') throw httpError(409, 'Game is closed.');
       if (su) {
         const existing = g.players.find((p: any) => p.userId === su.id);
-        if (existing) { newId = existing.id; return; }
+        if (existing) { newId = existing.id; return; } // already seated — rejoin is always allowed
       }
+      // Locked table: only the host adds players (via the add-player route). A new
+      // self-join by code is refused — checked here so a rejoin above still works.
+      if (g.locked) throw httpError(403, 'The host locked this game — ask them to add you.');
       // Re-check the name atomically so two simultaneous joins can't both land the same name.
       if (g.players.some((p: any) => p.name.toLowerCase() === lower)) {
         throw httpError(409, `There's already a player called "${nm}" — pick a slightly different name.`);

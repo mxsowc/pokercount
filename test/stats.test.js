@@ -8,7 +8,7 @@ import { userResults, computeLeaderboard } from '../src/lib/server/insights.js';
 // Build a game where `seatNets` maps userId -> {buyin, final}. Each player buys in
 // once and cashes out `final`; status defaults to ended.
 let seq = 0;
-/** @param {Record<string, {buyin:number, final:number, hours?:number}>} seatNets */
+/** @param {Record<string, {buyin:number, final:number|null, hours?:number}>} seatNets */
 function game(seatNets, { status = 'ended', frozen = false } = {}) {
   const id = 'G' + (++seq);
   const players = Object.keys(seatNets).map((uid, i) => ({ id: 'p' + i, name: uid, userId: uid }));
@@ -16,7 +16,9 @@ function game(seatNets, { status = 'ended', frozen = false } = {}) {
   const finalStacks = /** @type {Record<string, number>} */ ({});
   const hours = /** @type {Record<string, number>} */ ({});
   for (const p of players) {
-    finalStacks[p.id] = seatNets[p.userId].final;
+    // final === null/undefined means "still in" — no final stack recorded yet.
+    const fin = seatNets[p.userId].final;
+    if (fin != null) finalStacks[p.id] = fin;
     const h = seatNets[p.userId].hours;
     if (h != null) hours[p.id] = h;
   }
@@ -24,7 +26,7 @@ function game(seatNets, { status = 'ended', frozen = false } = {}) {
   const g = { id, name: id, status, updatedAt: '2024-01-' + String(10 + seq).padStart(2, '0'), players, transactions, finalStacks };
   if (Object.keys(hours).length) g.hours = hours;
   if (frozen) {
-    g.settlement = { lines: players.map((p) => ({ playerId: p.id, net: seatNets[p.userId].final - seatNets[p.userId].buyin })) };
+    g.settlement = { lines: players.filter((p) => seatNets[p.userId].final != null).map((p) => ({ playerId: p.id, net: (seatNets[p.userId].final ?? 0) - seatNets[p.userId].buyin })) };
   }
   return g;
 }
@@ -40,13 +42,25 @@ test('empty / no games', () => {
   assert.equal(s.worst, null);
 });
 
-test('active games count toward totalGames but not gamesPlayed', () => {
-  const games = [game({ u: { buyin: 20, final: 0 } }, { status: 'active' })];
+test('active game with no cash-out yet: counts as a game but no result', () => {
+  const games = [game({ u: { buyin: 20, final: null } }, { status: 'active' })];
   const s = computeUserStats(games, 'u');
   assert.equal(s.totalGames, 1);
-  assert.equal(s.gamesPlayed, 0);
+  assert.equal(s.gamesPlayed, 0, 'still in → no locked result');
   assert.equal(s.avgProfit, 0);
-  assert.equal(s.recent[0].net, null, 'active game shows null net');
+  assert.equal(s.recent[0].net, null, 'shows in-progress (null net)');
+});
+
+test('active game counts the moment YOU cash out (locked result)', () => {
+  // live table: you cashed out +50, an opponent is still in
+  const g = game({ u: { buyin: 100, final: 150 }, still: { buyin: 100, final: null } }, { status: 'active' });
+  const you = computeUserStats([g], 'u');
+  assert.equal(you.gamesPlayed, 1, 'your cashed-out result counts even while the game runs on');
+  assert.equal(you.totalProfit, 50);
+  assert.equal(you.recent[0].net, 50, 'shows your net, not in-progress');
+  const opp = computeUserStats([g], 'still');
+  assert.equal(opp.gamesPlayed, 0, 'a player still in has no locked result yet');
+  assert.equal(opp.recent[0].net, null);
 });
 
 test('wins / losses / break-even aggregate correctly', () => {
@@ -80,7 +94,7 @@ test('frozen snapshot and live-compute give the same net', () => {
 });
 
 test('profitablePct + avg guarded at zero games', () => {
-  const s = computeUserStats([game({ u: { buyin: 10, final: 0 } }, { status: 'active' })], 'u');
+  const s = computeUserStats([game({ u: { buyin: 10, final: null } }, { status: 'active' })], 'u');
   assert.equal(s.profitablePct, 0);
   assert.equal(s.avgProfit, 0);
 });
@@ -156,12 +170,13 @@ test('hourly rate: only counts games with hours entered; null if none', () => {
 });
 function round2(/** @type {number} */ n) { return Math.round(n * 100) / 100; }
 
-test('userResults excludes active games and orders oldest→newest', () => {
+test('userResults: finished + cashed-out count, still-in excluded; oldest→newest', () => {
   const games = [
-    game({ u: { buyin: 10, final: 15 }, o: { buyin: 10, final: 5 } }),
-    game({ u: { buyin: 10, final: 5 }, o: { buyin: 10, final: 15 } }, { status: 'active' }),
+    game({ u: { buyin: 10, final: 15 }, o: { buyin: 10, final: 5 } }),                          // finished → +5
+    game({ u: { buyin: 10, final: null }, o: { buyin: 10, final: 5 } }, { status: 'active' }),   // still in → excluded
+    game({ u: { buyin: 10, final: 8 }, o: { buyin: 10, final: null } }, { status: 'active' }),   // cashed out live → -2
   ];
   const r = userResults(games, 'u');
-  assert.equal(r.length, 1, 'only the finished game');
-  assert.equal(r[0].net, 5);
+  assert.equal(r.length, 2, 'finished + cashed-out-live, not the still-in one');
+  assert.deepEqual(r.map((x) => x.net), [5, -2], 'oldest → newest');
 });

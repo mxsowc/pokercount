@@ -106,6 +106,7 @@ export async function POST(event) {
     .slice(0, 20)
     .map((g: any) => ({
       id: g.id,
+      code: g.code ?? g.id,
       name: g.name,
       status: g.status,
       players: g.players?.length || 0,

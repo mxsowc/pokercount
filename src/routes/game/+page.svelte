@@ -7,6 +7,7 @@
   import { ago, shortDate } from '$lib/utils/time';
   import { haptic, celebrate } from '$lib/utils/fx';
   import { computeSettlement } from '$lib/engine/settle.js';
+  import QrCode from '$lib/components/QrCode.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
 
   // ---- state ----------------------------------------------------------------
@@ -16,6 +17,7 @@
   let seriesData = $state<any>(null);
   let showShareBanner = $state(false);
   let showTrackTip = $state(false); // host-only "how to keep score" recommendation
+  let amHost = $state(false); // this device opened the game (holds the host token)
   let expanded = $state(new Set<string>());
   let loading = $state(true);
   let error = $state('');
@@ -183,7 +185,8 @@
     identityDismissed = !!localStorage.getItem('pc_idban_' + gameId);
     // Show the host (this is the device that created the game) a one-time tip on
     // how to keep score, unless they've dismissed it for this game.
-    showTrackTip = !!localStorage.getItem('pc_host_' + gameId) && !localStorage.getItem('pc_tracktip_' + gameId);
+    amHost = !!localStorage.getItem('pc_host_' + gameId);
+    showTrackTip = amHost && !localStorage.getItem('pc_tracktip_' + gameId);
     bulkAmount = localStorage.getItem('pc_default_buyin') || '20';
 
     try {
@@ -193,6 +196,8 @@
       loading = false;
       return;
     }
+    // Prefer the table's standard buy-in set at creation (falls back to the device default).
+    if (game?.defaultBuyIn > 0) bulkAmount = String(game.defaultBuyIn);
     try { myAccount = (await api('GET', '/api/me')).user; } catch {}
     // Load series data if this game belongs to one
     if (game.series) {
@@ -530,6 +535,7 @@
   // ---- hours played (for the signed-in user's €/hr stat) --------------------
   let hoursInput = $state('');
   let savingHours = $state(false);
+  let editingHours = $state(false);
   async function saveHours() {
     const h = decAmt(hoursInput);
     if (!(h > 0)) { toast('Enter the hours played'); return; }
@@ -674,22 +680,55 @@
     draft = auto.transfers.map((t: any) => ({ from: t.from, to: t.to, amount: String(t.amount) }));
   }
 
-  function shareLink() {
-    const url = `${location.origin}/game?g=${gameId}`;
-    if (navigator.share) { navigator.share({ title: 'potcount', text: `Join game #${gameId}`, url }).catch(() => {}); }
-    else { navigator.clipboard.writeText(url).then(() => toast('Link copied')).catch(() => {}); }
+  // Share opens a sheet with the code, link and a QR — the QR is the in-person
+  // win: pass the phone round and everyone scans to join, no typing the code.
+  let shareOpen = $state(false);
+  const shareUrl = () => `${location.origin}/game?g=${gameId}`;
+  function shareLink() { shareOpen = true; }
+  function copyShareLink() {
+    navigator.clipboard.writeText(shareUrl()).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
+  }
+  function nativeShare() {
+    if (navigator.share) navigator.share({ title: 'potcount', text: `Join game #${game?.code ?? gameId}`, url: shareUrl() }).catch(() => {});
+    else copyShareLink();
+  }
+  async function toggleLock() {
+    try {
+      game = await api('PUT', `/api/games/${gameId}/lock`, { locked: !game.locked });
+      toast(game.locked ? 'Table locked — you add players' : 'Table open — anyone with the link can join');
+    } catch (e: any) { toast(e.message || 'Could not change lock'); }
+  }
+
+  // Just the payments, as plain text to drop in the group chat to settle up.
+  function copyWhoPaysWho() {
+    const transfers = (game?.settlement?.transfers || []).filter((t: any) => !t.paid);
+    if (!transfers.length) { toast('No payments to copy'); return; }
+    let text = `${game.name} #${game.code} — who pays who\n`;
+    for (const t of transfers) text += `${t.fromName} → ${t.toName}: ${money(t.amount, unit)}\n`;
+    navigator.clipboard.writeText(text.trim())
+      .then(() => toast('Copied — paste in your group chat'))
+      .catch(() => toast('Could not copy'));
   }
 
   function shareResult() {
     if (!game?.settlement?.lines) return;
     const lines = game.settlement.lines.slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0));
     const medals = ['🥇', '🥈', '🥉'];
-    let text = `${game.name} #${game.id}\n\n`;
+    let text = `${game.name} #${game.code}\n\n`;
     lines.forEach((l: any, i: number) => {
       const medal = i < 3 ? medals[i] + ' ' : '   ';
       const sign = l.net >= 0 ? '+' : '';
       text += `${medal}${l.name}: ${sign}${money(l.net, unit)}\n`;
     });
+    const transfers = (game.settlement.transfers || [])
+      .filter((t: any) => !t.paid)
+      .slice().sort((a: any, b: any) => b.amount - a.amount);
+    if (transfers.length) {
+      text += '\nWho pays who:\n';
+      for (const t of transfers) {
+        text += `${t.fromName} → ${t.toName}: ${money(t.amount, unit)}\n`;
+      }
+    }
     text += `\npotcount.com/game?g=${gameId}`;
     const url = `${location.origin}/game?g=${gameId}`;
     if (navigator.share) {
@@ -758,7 +797,7 @@
 </script>
 
 <svelte:head>
-  <title>{game ? `potcount — ${game.name} #${game.id}` : 'potcount — game'}</title>
+  <title>{game ? `potcount — ${game.name} #${game.code}` : 'potcount — game'}</title>
 </svelte:head>
 
 <div class="wrap">
@@ -850,7 +889,7 @@
 
       <div class="mt-3">
         <h1 class="text-2xl font-bold">{game.name}</h1>
-        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(stillInPlay, unit)} in play</div>
+        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(stillInPlay, unit)} in play</div>
       </div>
 
       <!-- Provisional notice — the game's still live, so the result can still change -->
@@ -970,7 +1009,7 @@
       <div class="flex items-center justify-between gap-2.5">
         <div>
           <h1 class="text-2xl font-bold cursor-text border-b border-dashed border-transparent hover:border-border focus:border-accent focus:outline-none" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
-          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
+          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
         <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
       </div>
@@ -978,7 +1017,7 @@
       <!-- Share banner -->
       {#if showShareBanner}
         <div class="banner banner-ok flex items-center justify-between mt-2.5">
-          <span>Game open! Share code <b class="text-accent font-bold">#{game.id}</b> so players can join.</span>
+          <span>Game open! Share code <b class="text-accent font-bold">#{game.code}</b> so players can join.</span>
           <div class="flex gap-1.5">
             <button class="btn-small btn-ghost" onclick={shareLink}>Copy link</button>
             <button class="btn-small btn-ghost" onclick={() => showShareBanner = false}>✕</button>
@@ -1240,7 +1279,7 @@
         <div>
           <h1 class="text-2xl font-bold">{game.name}</h1>
           <div class="text-muted text-sm">
-            Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> ·
+            Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> ·
             <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold {allSettled ? 'bg-win/15 text-win border border-win' : 'bg-warn/15 text-[#f3cd6b] border border-warn'}">
               {allSettled ? 'All settled' : 'Game ended'}
             </span>
@@ -1271,26 +1310,32 @@
         </div>
       {/if}
 
-      <!-- Hours played → powers the signed-in player's €/hr stat. Optional; a
-           game with no hours simply doesn't count toward that stat. -->
       {#if myAccount && mySeat}
         {@const myHours = game.hours?.[mySeat.id] ?? null}
-        <div class="card mt-4">
-          <div class="text-xs uppercase tracking-widest font-bold text-muted">
-            ⏱ Hours played{#if myHours != null}<span class="text-win normal-case tracking-normal font-semibold"> · {myHours}h logged</span>{/if}
+        {#if myHours != null && !editingHours}
+          <div class="flex items-center gap-3 mt-4 px-1 text-sm text-muted">
+            <span>{myHours}h logged</span>
+            <button class="btn-small btn-ghost !py-1 !px-2 text-xs" onclick={() => { hoursInput = String(myHours); editingHours = true; }}>Edit</button>
+            <button class="btn-small btn-ghost !py-1 !px-2 text-xs" disabled={savingHours} onclick={clearHours}>Clear</button>
           </div>
-          <p class="text-muted text-xs mt-1 mb-2">
-            {myHours != null
-              ? 'Counts toward your €/hr on your profile. Update or clear it anytime.'
-              : 'Optional — how long did you play? Adds this game to your €/hr stat. Skip it and the game simply won’t count toward that stat (nothing is assumed).'}
-          </p>
-          <div class="flex gap-2">
+        {:else if myHours != null && editingHours}
+          <div class="flex gap-2 mt-4 px-1">
             <input class="input flex-1 !py-2" type="text" inputmode="decimal" placeholder="e.g. 4 or 3.5"
-              bind:value={hoursInput} onkeydown={(e) => { if (e.key === 'Enter') saveHours(); }} />
-            <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={saveHours}>{myHours != null ? 'Update' : 'Save'}</button>
-            {#if myHours != null}<button class="btn-small btn-ghost" disabled={savingHours} onclick={clearHours}>Clear</button>{/if}
+              bind:value={hoursInput} onkeydown={(e) => { if (e.key === 'Enter') { saveHours(); editingHours = false; } }} />
+            <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={() => { saveHours(); editingHours = false; }}>Update</button>
+            <button class="btn-small btn-ghost" onclick={() => { editingHours = false; }}>Cancel</button>
           </div>
-        </div>
+        {:else}
+          <div class="card mt-4">
+            <div class="text-xs uppercase tracking-widest font-bold text-muted">Hours played</div>
+            <p class="text-muted text-xs mt-1 mb-2">Optional — how long did you play? Powers your {unit}/hr stat.</p>
+            <div class="flex gap-2">
+              <input class="input flex-1 !py-2" type="text" inputmode="decimal" placeholder="e.g. 4 or 3.5"
+                bind:value={hoursInput} onkeydown={(e) => { if (e.key === 'Enter') saveHours(); }} />
+              <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={saveHours}>Save</button>
+            </div>
+          </div>
+        {/if}
       {/if}
 
       <!-- Podium -->
@@ -1311,10 +1356,13 @@
       </div>
 
       <!-- Who pays who -->
-      <div class="flex items-center justify-between mt-4 mb-3">
+      <div class="flex items-center justify-between mt-4 mb-3 gap-2">
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Who pays who</h2>
         {#if s.transfers.length > 0 && !editingSettlement && s.balanced !== false}
-          <button class="btn-small btn-ghost" onclick={startEditing}>Adjust</button>
+          <div class="flex gap-1.5 shrink-0">
+            <button class="btn-small btn-ghost" onclick={copyWhoPaysWho}>Copy</button>
+            <button class="btn-small btn-ghost" onclick={startEditing}>Adjust</button>
+          </div>
         {/if}
       </div>
 
@@ -1524,12 +1572,40 @@
   <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 banner banner-warn max-w-[90%] text-center">{liveStatus}</div>
 {/if}
 
+<!-- Share Modal — code + link + QR (scan to join in person) -->
+{#if shareOpen}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) shareOpen = false }}>
+    <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px] text-center" onclick={(e) => e.stopPropagation()}>
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Invite players</h3>
+      <div class="text-3xl font-extrabold tracking-widest text-accent mb-1" style="font-family:var(--font-display)">#{game?.code ?? gameId}</div>
+      <p class="text-muted text-xs mb-3">Scan to join, or share the link</p>
+      <div class="flex justify-center mb-3"><QrCode data={shareUrl()} size={208} /></div>
+      <div class="flex gap-2">
+        <button class="btn-small btn-secondary flex-1" onclick={copyShareLink}>Copy link</button>
+        <button class="btn-small btn flex-1" onclick={nativeShare}>Share…</button>
+      </div>
+      {#if amHost}
+        <button class="w-full mt-3 flex items-center justify-between gap-3 p-3 rounded-xl border border-border text-left" onclick={toggleLock}>
+          <span>
+            <span class="block text-sm font-semibold">{game?.locked ? '🔒 Table locked' : '🔓 Open to anyone'}</span>
+            <span class="block text-xs text-muted">{game?.locked ? 'Only you can add players. Tap to open.' : 'Anyone with the code/link can join. Tap to lock.'}</span>
+          </span>
+          <span class="text-xs font-semibold text-accent shrink-0">{game?.locked ? 'Open' : 'Lock'}</span>
+        </button>
+      {:else if game?.locked}
+        <p class="text-xs text-muted mt-3">🔒 The host locked this table — ask them to add you.</p>
+      {/if}
+      <button class="btn-small btn-ghost w-full mt-2" onclick={() => shareOpen = false}>Done</button>
+    </div>
+  </div>
+{/if}
+
 <!-- Join Modal -->
 {#if joinOpen}
   <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) joinOpen = false }}>
     <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px]" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Join this game</h3>
-      <p class="text-muted text-sm mb-3">Game #{gameId} — enter your name to take a seat.</p>
+      <p class="text-muted text-sm mb-3">Game #{game?.code ?? gameId} — enter your name to take a seat.</p>
       <input class="input mb-3" bind:value={joinNameVal} placeholder="Your name" maxlength="40" onkeydown={(e) => { if (e.key === 'Enter') joinAsPlayer(); }} />
       <button class="btn w-full" onclick={joinAsPlayer}>Join as player</button>
       <button class="btn-small btn-ghost w-full mt-2" onclick={() => joinOpen = false}>Just watch</button>

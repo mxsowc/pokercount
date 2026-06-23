@@ -29,7 +29,8 @@
   function rememberGame(game: any) {
     if (!browser || !game?.id) return;
     const list = listMyGames().filter((g: any) => g.id !== game.id);
-    list.unshift({ id: game.id, name: game.name, unit: game.unit, you: getActor().name, players: game.players.length, status: game.status, at: Date.now() });
+    // Store the internal id (for the link) AND the human code (for display).
+    list.unshift({ id: game.id, code: game.code ?? game.id, name: game.name, unit: game.unit, you: getActor().name, players: game.players.length, status: game.status, at: Date.now() });
     if (list.length > 20) list.length = 20;
     localStorage.setItem('pc_games', JSON.stringify(list));
   }
@@ -50,7 +51,7 @@
       for (const sg of server) {
         const prev = byId.get(sg.id) || {};
         byId.set(sg.id, {
-          id: sg.id, name: sg.name, unit: sg.unit,
+          id: sg.id, code: sg.code ?? prev.code ?? sg.id, name: sg.name, unit: sg.unit,
           you: sg.seatName || prev.you,
           players: sg.players, status: sg.status,
           at: prev.at ?? sg.at,   // keep local recency if we have it
@@ -71,6 +72,7 @@
   let openCode = $state('');
   let openSeats = $state(0);
   let openSeries = $state('');
+  let openBuyIn = $state(''); // table's standard buy-in → seeds the quick-buy on the game page
 
   const TAGLINES = [
     'Who has the boat?',
@@ -155,11 +157,12 @@
     const players = [{ name: you }];
     for (let i = 0; i < openSeats; i++) players.push({ name: `Player ${i + 2}` });
     const code = openCode.replace(/[^0-9]/g, '');
+    const buyIn = Number(String(openBuyIn).replace(',', '.').trim());
     try {
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined })
+        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined })
       });
       const game = await res.json();
       if (!res.ok) {
@@ -254,7 +257,7 @@
           {#each games as g (g.id)}
             <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
               <div>
-                <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm" style="font-family: var(--font-display)">#{g.id}</span></div>
+                <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm" style="font-family: var(--font-display)">#{g.code ?? g.id}</span></div>
                 <div class="text-muted text-xs mt-0.5">{g.you ? `you: ${g.you} · ` : ''}{g.players} players · {ago(new Date(g.at).toISOString())}{g.status === 'settled' ? ' · settled' : g.status === 'ended' ? ' · ended' : ''}</div>
               </div>
               <div class="flex items-center gap-2">
@@ -364,6 +367,10 @@
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Series (optional)</label>
         <input class="input" bind:value={openSeries} placeholder="e.g. Thursday PLO" maxlength="60" />
         <p class="text-xs text-faint mt-1">Tag recurring games to track a running leaderboard across sessions.</p>
+
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Standard buy-in (optional)</label>
+        <input class="input" bind:value={openBuyIn} inputmode="decimal" placeholder="e.g. 20" />
+        <p class="text-xs text-faint mt-1">Sets the default for the one-tap buy-in and "buy everyone in". You can still enter any amount.</p>
 
         <div class="flex gap-2.5 mt-3">
           <div class="flex-1">

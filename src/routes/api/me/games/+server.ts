@@ -16,6 +16,7 @@ export function GET({ request }) {
     if (!seat) continue;
     mine.push({
       id: g.id,
+      code: g.code ?? g.id,
       name: g.name,
       unit: g.unit,
       status: g.status,

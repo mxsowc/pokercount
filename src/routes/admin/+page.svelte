@@ -138,7 +138,7 @@
             <div class="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-border last:border-0">
               <div class="min-w-0">
                 <div class="font-semibold text-sm truncate">
-                  <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{g.id}</span>
+                  <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{g.code ?? g.id}</span>
                   {g.name || 'Untitled'}
                 </div>
                 <div class="text-muted text-xs truncate">{g.players} players · {g.transactions} buy-ins · pot {g.unit}{g.pot}</div>

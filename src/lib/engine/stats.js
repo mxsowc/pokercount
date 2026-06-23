@@ -27,8 +27,12 @@ export function computeUserStats(games, userId) {
     totalGames++;
 
     const finished = g.status === 'ended' || g.status === 'settled';
-    if (!finished) {
-      // Still counts as a "home game" — show it as in-progress (no result yet).
+    // Your result is locked the moment YOU cash out — net = your cash-out minus
+    // your buy-in, independent of who's still playing or your podium place — so
+    // it counts immediately, even while the game runs on. A seat with no final
+    // stack yet (still in) has no result and stays "in progress".
+    const cashedOut = !!seat && g.finalStacks != null && g.finalStacks[seat.id] != null;
+    if (!finished && !cashedOut) {
       recent.push({ id: g.id, name: g.name, net: null, at: g.updatedAt, status: g.status });
       continue;
     }

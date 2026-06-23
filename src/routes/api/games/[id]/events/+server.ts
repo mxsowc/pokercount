@@ -2,12 +2,14 @@ import { getGame, onChange } from '$lib/server/store.js';
 import { withProfiles } from '$lib/server/helpers.js';
 
 export function GET({ params }) {
-  const id = params.id.toUpperCase();
-  if (!getGame(id)) {
+  const g0 = getGame(params.id.toUpperCase());
+  if (!g0) {
     return new Response(JSON.stringify({ error: 'game not found' }), {
       status: 404, headers: { 'Content-Type': 'application/json' }
     });
   }
+  // Always filter/snapshot by the canonical internal id (the URL may be a code).
+  const id = g0.id;
 
   const encoder = new TextEncoder();
   let unsub: (() => void) | null = null;
