@@ -82,7 +82,7 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-2">
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.total}</div>
-          <div class="text-muted text-xs mt-1">total games</div>
+          <div class="text-muted text-xs mt-1">games played</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-xs font-semibold mt-2 leading-relaxed">
@@ -129,7 +129,7 @@
           </div>
         {/if}
       </div>
-      <p class="text-muted text-xs mb-5">Net figures are from finished games only and combine all currencies.</p>
+      <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with at least one buy-in); empty/test games are excluded. Net figures are from finished games only and combine all currencies.</p>
 
       {#if data.games.recentGames?.length}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent games</h2>

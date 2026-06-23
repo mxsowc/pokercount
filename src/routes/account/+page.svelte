@@ -56,6 +56,32 @@
     toast('Logged out');
   }
 
+  // ---- multi-select game stats -----------------------------------------------
+  let selectedGames = $state(new Set<string>());
+  let selectMode = $state(false);
+  const selectedStats = $derived.by(() => {
+    if (!stats?.recent || selectedGames.size === 0) return null;
+    const picked = stats.recent.filter((r: any) => selectedGames.has(r.id) && r.net != null);
+    if (!picked.length) return null;
+    const totalC = picked.reduce((s: number, r: any) => s + Math.round(r.net * 100), 0);
+    const profitable = picked.filter((r: any) => r.net > 0).length;
+    const best = picked.reduce((b: any, r: any) => (!b || r.net > b.net ? r : b), null);
+    const worst = picked.reduce((w: any, r: any) => (!w || r.net < w.net ? r : w), null);
+    return {
+      count: picked.length,
+      total: Math.round(totalC) / 100,
+      avg: Math.round(totalC / picked.length) / 100,
+      profitablePct: Math.round((profitable / picked.length) * 100),
+      best, worst,
+    };
+  });
+  function toggleGame(id: string) {
+    const next = new Set(selectedGames);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    selectedGames = next;
+  }
+  function clearSelection() { selectedGames = new Set(); selectMode = false; }
+
   // ---- profile editing ------------------------------------------------------
   let nameInput = $state('');
   let savingName = $state(false);
@@ -438,6 +464,68 @@
           <div class="text-muted text-xs mt-1">games played</div>
         </div>
       </div>
+
+      <!-- Recent games with multi-select -->
+      {#if stats.recent?.length}
+        <div class="flex items-center justify-between mt-6 mb-3">
+          <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Your games</h2>
+          {#if selectMode}
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted">{selectedGames.size} selected</span>
+              <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={clearSelection}>Done</button>
+            </div>
+          {:else}
+            <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={() => selectMode = true}>Compare</button>
+          {/if}
+        </div>
+
+        {#if selectedStats}
+          <div class="card !border-accent/40 mb-3">
+            <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="text-center">
+                <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{selectedStats.total >= 0 ? '+' : ''}{fmtSigned(selectedStats.total)}</div>
+                <div class="text-muted text-[.65rem]">total</div>
+              </div>
+              <div class="text-center">
+                <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg)}</div>
+                <div class="text-muted text-[.65rem]">avg / game</div>
+              </div>
+              <div class="text-center">
+                <div class="text-lg font-extrabold tabular-nums" style="font-family:var(--font-display)">{selectedStats.profitablePct}%</div>
+                <div class="text-muted text-[.65rem]">profitable</div>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        {#each stats.recent as r (r.id)}
+          {#if selectMode}
+            <button class="transfer-row w-full text-left {selectedGames.has(r.id) ? '!border-accent' : ''}" onclick={() => toggleGame(r.id)}>
+              <span class="w-5 h-5 rounded border shrink-0 grid place-items-center {selectedGames.has(r.id) ? 'bg-accent border-accent text-accent-ink' : 'border-border'}">
+                {#if selectedGames.has(r.id)}<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>{/if}
+              </span>
+              <span class="font-semibold truncate">{r.name}</span>
+              <span class="text-muted text-sm shrink-0">#{r.id}</span>
+              {#if r.net != null}
+                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+              {:else}
+                <span class="pill ml-auto shrink-0">in progress</span>
+              {/if}
+            </button>
+          {:else}
+            <a href="/game?g={r.id}" class="transfer-row no-underline text-text hover:border-border">
+              <span class="font-semibold truncate">{r.name}</span>
+              <span class="text-muted text-sm shrink-0">#{r.id}</span>
+              {#if r.net != null}
+                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+              {:else}
+                <span class="pill ml-auto shrink-0">in progress</span>
+              {/if}
+            </a>
+          {/if}
+        {/each}
+      {/if}
     {/if}
 
   {:else}

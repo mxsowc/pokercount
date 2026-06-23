@@ -42,6 +42,8 @@
 
   // Live standings / per-player summary screen (shown over the active game)
   let activeView = $state<'play' | 'standings'>('play');
+  let quickCashout = $state('');
+  let quickCashoutBusy = $state(false);
 
   // Bulk buy-in
   let bulkAmount = $state('20');
@@ -114,6 +116,10 @@
 
   // Account ↔ seat linkage (for claim / leave)
   const mySeat = $derived(myAccount && game ? game.players.find((p: any) => p.userId === myAccount.id) ?? null : null);
+  // Which seat is "me": prefer the seat linked to my account, fall back to this
+  // device's seat token. (Account-linked players don't always have pc_me set on
+  // every device, and pc_me can point at a different seat than the linked one.)
+  const mySeatId = (): string | null => mySeat?.id ?? myId();
   const unclaimedSeats = $derived(game ? game.players.filter((p: any) => !p.userId) : []);
   const seatedUserIds = $derived(new Set((game?.players ?? []).map((p: any) => p.userId).filter(Boolean)));
   // If an unclaimed seat name matches my account name, it's probably mine — pre-offer it.
@@ -144,9 +150,9 @@
     const pending = lines.filter((l: any) => game?.finalStacks?.[l.playerId] == null);
     return { ranked, pending };
   });
-  // The viewer's own line (if they're seated on this device).
+  // The viewer's own line (account-linked seat, or this device's seat).
   const myLiveLine = $derived.by(() => {
-    const id = myId();
+    const id = mySeatId();
     return id ? (settlement?.lines ?? []).find((l: any) => l.playerId === id) ?? null : null;
   });
   const ordinal = (n: number) => {
@@ -219,6 +225,7 @@
       case 'remove_tx': return `removed ${d.type === 'topup' ? 'top-up' : 'buy-in'} of ${money(d.amount, unit)}`;
       case 'set_final': return `cash-out ${d.from == null ? '—' : money(d.from, unit)} → ${d.to == null ? '—' : money(d.to, unit)}`;
       case 'close_game': return 'ended the game';
+      case 'auto_close': return 'auto-closed after 24 hours';
       case 'reopen_game': return 'reopened the game';
       case 'mark_paid': return `marked settled: ${d.from} → ${d.to} ${money(d.amount, unit)}`;
       case 'mark_unpaid': return `marked unsettled: ${d.from} → ${d.to} ${money(d.amount, unit)}`;
@@ -229,10 +236,9 @@
 
   // ---- my balance callout ---------------------------------------------------
   function myBalance() {
-    if (!game?.settlement || !myId()) return null;
+    const pid = mySeatId();
+    if (!game?.settlement || !pid) return null;
     const s = game.settlement;
-    const pid = game.players.find((p: any) => p.id === myId())?.id;
-    if (!pid) return null;
     const line = s.lines?.find((l: any) => l.playerId === pid);
     if (!line) return null;
     const iOwe = s.transfers.filter((t: any) => t.from === pid);
@@ -744,7 +750,7 @@
           {@const medal = rows.length >= 3 ? ['🥈', '🥇', '🥉'][i] : ['🥇', '🥈'][i]}
           {@const height = rows.length >= 3 ? [94, 124, 72][i] : [124, 94][i]}
           <div class="flex-1 max-w-[130px] flex flex-col items-center text-center">
-            <div class="font-extrabold tabular-nums mb-1.5 {l.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{l.net >= 0 ? '+' : ''}{money(l.net, unit)}</div>
+            <div class="font-extrabold tabular-nums mb-1.5 {l.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</div>
             <div class="w-full rounded-t-xl border border-border-soft border-b-0 flex flex-col items-center pt-3 gap-0.5 bg-surface-2" style="height:{height}px">
               <span class="text-[1.7rem]">{medal}</span>
             </div>
@@ -793,8 +799,24 @@
         {:else}
           <div class="card mt-4">
             <div class="text-xs uppercase tracking-widest font-bold text-muted">Your result</div>
-            <p class="text-muted text-sm mt-1 mb-2.5">You haven't cashed out yet — enter how much you have left to see if you're up or down.</p>
-            <button class="btn w-full" onclick={() => { activeView = 'play'; setTimeout(() => document.getElementById('cashout')?.scrollIntoView({ behavior: 'smooth' }), 60); }}>Cash out now</button>
+            <p class="text-muted text-sm mt-1 mb-2.5">You haven't cashed out yet — enter how much you have left.</p>
+            <form class="flex gap-2" onsubmit={(e) => {
+              e.preventDefault();
+              const pid = mine.playerId;
+              const raw = quickCashout.trim();
+              const amount = raw === '' ? null : decAmt(raw);
+              if (amount == null || Number.isNaN(amount) || amount < 0) return;
+              quickCashoutBusy = true;
+              api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount }).then(g => { game = g; haptic(9); }).finally(() => { quickCashoutBusy = false; });
+            }}>
+              <input class="input flex-1 !py-2.5" type="text" inputmode="decimal" placeholder="Chips left ({unit})" bind:value={quickCashout} />
+              <button type="submit" class="btn !px-5" disabled={quickCashoutBusy}>Go</button>
+            </form>
+            <button class="btn-small btn-ghost w-full mt-2" disabled={quickCashoutBusy} onclick={() => {
+              const pid = mine.playerId;
+              quickCashoutBusy = true;
+              api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount: 0 }).then(g => { game = g; haptic(9); }).finally(() => { quickCashoutBusy = false; });
+            }}>I'm out — nothing left</button>
           </div>
         {/if}
       {/if}
@@ -811,13 +833,13 @@
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-4 mb-3">Standings</h2>
       <div class="card">
         {#each ls.ranked as l, idx}
-          <div class="flex items-center justify-between mb-1.5 {l.playerId === myId() ? 'font-bold' : ''}">
+          <div class="flex items-center justify-between mb-1.5 {l.playerId === mySeatId() ? 'font-bold' : ''}">
             <span>{idx + 1}. {@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
-            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net >= 0 ? '+' : ''}{money(l.net, unit)}</span>
+            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</span>
           </div>
         {/each}
         {#each ls.pending as l}
-          <div class="flex items-center justify-between mb-1.5 opacity-60 {l.playerId === myId() ? 'font-bold' : ''}">
+          <div class="flex items-center justify-between mb-1.5 opacity-60 {l.playerId === mySeatId() ? 'font-bold' : ''}">
             <span>{@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
             <span class="text-muted text-sm">still in</span>
           </div>
@@ -947,7 +969,7 @@
               <button class="text-muted hover:text-text text-xs align-middle ml-0.5 min-w-[44px] min-h-[44px] -my-2" title="Rename" onclick={focusName}>✎</button>
               {#if p.handle}<a href="/u/{p.handle}" class="text-info text-xs no-underline hover:underline ml-1" title="Linked to @{p.handle}">@{p.handle}</a>{/if}
               {#if p.id === myId()}<span class="pill pill-info ml-1">you</span>{/if}
-              {#if final_ != null}<span class="pill ml-1 {net >= 0 ? 'pill-win' : 'pill-lose'}">{net >= 0 ? '+' : ''}{money(net, unit)}</span>{/if}
+              {#if final_ != null}<span class="pill ml-1 {net >= 0 ? 'pill-win' : 'pill-lose'}">{net < 0 ? '−' : '+'}{money(Math.abs(net), unit)}</span>{/if}
             </div>
             <button class="text-muted text-xs mt-0.5 hover:text-text {inv > 0 ? 'cursor-pointer underline decoration-dotted decoration-border underline-offset-2' : ''}"
                     onclick={() => { if (inv > 0) toggleExpand(p.id); }} title={inv > 0 ? 'Edit or remove buy-ins' : ''}>
@@ -1154,7 +1176,7 @@
         <div class="card mt-4 {bal.net > 0 ? '!border-win/50 !bg-win/[.08]' : bal.net < 0 ? '!border-danger/50 !bg-danger/[.08]' : ''}">
           <div class="text-xs uppercase tracking-widest font-bold text-muted">Your result</div>
           <div class="text-3xl font-extrabold mt-1 mb-2 {bal.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">
-            {bal.net >= 0 ? '+' : ''}{money(bal.net, unit)}
+            {bal.net < 0 ? '−' : '+'}{money(Math.abs(bal.net), unit)}
           </div>
           {#each bal.iOwe as t}
             <div class="flex justify-between text-sm {t.paid ? 'opacity-50 line-through' : ''}">
@@ -1181,7 +1203,7 @@
         {#each standings as l, idx}
           <div class="flex items-center justify-between mb-1.5">
             <span>{idx + 1}. {@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
-            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net >= 0 ? '+' : ''}{money(l.net, unit)}</span>
+            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</span>
           </div>
         {/each}
       </div>

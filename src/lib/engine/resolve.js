@@ -100,6 +100,7 @@ export function resolve(input) {
           board: boardIndex,
           run: runIndex,
           amount: segmentAmount,
+          shares: result.awards, // exact per-player cents won from this segment
           ...result.detail,
         });
       });

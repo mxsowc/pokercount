@@ -64,6 +64,6 @@ export function computeUserStats(games, userId) {
     profitablePct: gamesPlayed ? Math.round((profitable / gamesPlayed) * 100) : 0,
     best,
     worst,
-    recent: recent.slice(0, 12),
+    recent: recent.slice(0, 30),
   };
 }

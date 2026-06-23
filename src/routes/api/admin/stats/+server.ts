@@ -35,6 +35,13 @@ export async function POST(event) {
   const nowMs = Date.now();
   const DAY = 86_400_000;
 
+  // A game only counts as "actually played" once there's a real table: at least
+  // 2 players AND at least one buy-in. This keeps abandoned/test games (a single
+  // seat, or no money in) out of the played-game and engagement stats below.
+  // (The recent-games table still lists every game so admins can spot/clean them.)
+  const isRealGame = (g: any) => (g.players?.length || 0) >= 2 && (g.transactions?.length || 0) >= 1;
+  const played = games.filter(isRealGame);
+
   const providers: Record<string, number> = {};
   const perDay: Record<string, number> = {};
   let withEmail = 0;
@@ -49,11 +56,11 @@ export async function POST(event) {
     if (day) perDay[day] = (perDay[day] || 0) + 1;
   }
 
-  // Game-level aggregates (across ALL games, incl. anonymous players).
+  // Game-level aggregates — over actually-played games only (incl. anonymous players).
   const gameStatus: Record<string, number> = {};
   let totalSeats = 0;
   let totalBuyIns = 0;
-  for (const g of games) {
+  for (const g of played) {
     gameStatus[g.status] = (gameStatus[g.status] || 0) + 1;
     totalSeats += (g.players?.length || 0);
     totalBuyIns += (g.transactions?.length || 0);
@@ -69,14 +76,14 @@ export async function POST(event) {
   let sumFinishedGames = 0;
   let biggestNight: { net: number; handle: string; game: string } | null = null;
   for (const u of users) {
-    // Count seats across ALL games (active included).
+    // Count seats across actually-played games (active included).
     let seatCount = 0;
-    for (const g of games) {
+    for (const g of played) {
       if ((g.players || []).some((p: any) => p.userId === u.id)) seatCount++;
     }
     if (seatCount > 0) { playersWhoPlayed++; sumGames += seatCount; }
     // Net stats from finished games only.
-    const results = userResults(games, u.id);
+    const results = userResults(played, u.id);
     if (results.length) {
       playersWithResults++;
       sumFinishedGames += results.length;
@@ -89,7 +96,7 @@ export async function POST(event) {
 
   // Distinct players who played (including anonymous — no account linked).
   const allPlayerCount = new Set<string>();
-  for (const g of games) {
+  for (const g of played) {
     for (const p of (g.players || [])) allPlayerCount.add(p.id);
   }
 
@@ -135,10 +142,10 @@ export async function POST(event) {
     perDay,
     recent,
     games: {
-      total: games.length,
+      total: played.length,
       finished: finishedGames,
       byStatus: gameStatus,
-      avgPlayers: games.length ? round1(totalSeats / games.length) : 0,
+      avgPlayers: played.length ? round1(totalSeats / played.length) : 0,
       buyIns: totalBuyIns,
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,

@@ -90,6 +90,11 @@
   let hiLo = $state(false);
   let boardCount = $state(1);
   let runCount = $state(1);
+  // When running it 2–3×, how much of the board is dealt ONCE (shared) before the
+  // runs diverge: 'none' = whole board each run, 'flop' = share flop & run
+  // turn+river, 'turn' = share flop+turn & run only the river.
+  let runShare = $state<'none' | 'flop' | 'turn'>('none');
+  const sharedCount = $derived(runCount > 1 ? { none: 0, flop: 3, turn: 4 }[runShare] : 0);
   let players = $state([
     { name: '', hole: '', amount: '', folded: false },
     { name: '', hole: '', amount: '', folded: false },
@@ -105,6 +110,31 @@
   let pickRank = $state<string | null>(null);
 
   const holeCount = $derived(game === 'omaha' ? 4 : 2);
+
+  // ---- total pot → auto-fill ------------------------------------------------
+  // Enter the total pot once; we divide among non-all-in players, subtracting
+  // any amounts already entered (all-in players who typed their own number).
+  let totalPot = $state('');
+  let showTotalPot = $state(false);
+
+  function splitTotalPot() {
+    const total = decAmt(totalPot);
+    if (!(total > 0)) { toast('Enter the total pot amount'); return; }
+    // Sum amounts already entered (typically all-in players)
+    const fixed = players.reduce((sum, p) => {
+      const a = decAmt(p.amount);
+      return sum + (a > 0 ? a : 0);
+    }, 0);
+    // Players with no amount yet get an equal share of the remainder
+    const unfilled = players.filter(p => !(decAmt(p.amount) > 0));
+    if (unfilled.length === 0) { toast('Every player already has an amount'); return; }
+    const remainder = total - fixed;
+    if (remainder <= 0) { toast('All-in amounts already exceed the total pot'); return; }
+    const each = Math.round((remainder / unfilled.length) * 100) / 100;
+    unfilled.forEach(p => { p.amount = String(each); });
+    players = players; // trigger reactivity
+    haptic(12);
+  }
 
   // ---- smart guidance -------------------------------------------------------
   // Contextual hints that appear based on the current state — never blocks,
@@ -124,7 +154,9 @@
     return (str || '').replace(/,/g, ' ').trim().split(/\s+/).map(normCard).filter(Boolean) as string[];
   }
   function fieldCount(ref: string): number {
-    return ref.startsWith('hole') ? holeCount : 5;
+    if (ref.startsWith('hole')) return holeCount;
+    if (ref.endsWith('-shared')) return sharedCount;   // the dealt-once prefix
+    return 5 - sharedCount;                             // each run's remaining cards (or full board)
   }
   function fieldValue(ref: string): string {
     const [kind, key] = ref.split(':');
@@ -164,7 +196,10 @@
   // All card fields in fill order: every player's hole cards, then each board/run.
   function allRefs(): string[] {
     const refs = players.map((_, i) => `hole:${i}`);
-    for (let b = 0; b < boardCount; b++) for (let r = 0; r < runCount; r++) refs.push(`board:${b}-${r}`);
+    for (let b = 0; b < boardCount; b++) {
+      if (sharedCount > 0) refs.push(`board:${b}-shared`);
+      for (let r = 0; r < runCount; r++) refs.push(`board:${b}-${r}`);
+    }
     return refs;
   }
   // The next unfilled slot at or after `ref`, so the picker can flow across fields
@@ -272,9 +307,11 @@
 
       const boards: any[] = [];
       for (let b = 0; b < boardCount; b++) {
+        // Cards dealt once before the runs diverge (e.g. a shared flop), prepended to every run.
+        const shared = sharedCount > 0 ? parseTokens(runouts[`${b}-shared`] || '') : [];
         const runs: any[] = [];
         for (let r = 0; r < runCount; r++) {
-          const c = parseTokens(runouts[`${b}-${r}`] || ''); // raw card strings for the engine
+          const c = [...shared, ...parseTokens(runouts[`${b}-${r}`] || '')]; // full board = shared + this run's cards
           const label = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` Run ${r + 1}` : '');
           if (c.length < 3 || c.length > 5) throw new Error(`${label}: enter 3-5 community cards`);
           runs.push(c);
@@ -381,12 +418,44 @@
         html += `</div>`;
       });
 
-      // Each player collects
+      // Each player collects — with a plain-English breakdown of where each chip
+      // comes from, so you can physically push the pot one piece at a time.
       html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Each player collects</h3>';
-      const totals = builtPlayers.map(p => ({ name: p.name, amt: r.awards[p.id] || 0, contributed: p.contributed, folded: p.folded })).sort((a, b) => b.amt - a.amt);
+
+      // Source/fraction wording for one segment (one pot, on one board/run).
+      const potName = (i: number) => (r.pots.length > 1 ? potLabel(i).toLowerCase() : 'the pot');
+      const boardName = (b: number) => (boardCount > 1 ? (b === 0 ? 'top board' : 'bottom board') : '');
+      const runName = (rn: number) => (runCount > 1 ? `run ${rn + 1}` : '');
+      const sourceLabel = (seg: any) => [potName(seg.pot), boardName(seg.board), runName(seg.run)].filter(Boolean).join(' · ');
+      const fracWord = (n: number) => (({ 1: 'all of', 2: '½ of', 3: '⅓ of', 4: '¼ of' } as Record<number, string>)[n] || `1/${n} of`);
+      const describe = (seg: any, pid: string) => {
+        const src = sourceLabel(seg);
+        const inHigh = (seg.highWinners || []).includes(pid);
+        const inLow = (seg.lowWinners || []).includes(pid);
+        if (seg.walkover) return `all of ${src}`;
+        if (seg.lowWinners?.length) { // hi-lo: this segment split into halves
+          if (inHigh && inLow) return `high + low of ${src}`;
+          if (inLow) return `${seg.lowWinners.length > 1 ? 'shared ' : ''}low half of ${src}`;
+          return `${seg.highWinners.length > 1 ? 'shared ' : ''}high half of ${src}`;
+        }
+        return `${fracWord(seg.highWinners.length)} ${src}`; // high-only / scoop
+      };
+      // Only worth itemising when the pot actually splits into pieces.
+      const showBreakdown = r.pots.length > 1 || boardCount > 1 || runCount > 1 || hiLo;
+
+      const totals = builtPlayers.map(p => ({ id: p.id, name: p.name, amt: r.awards[p.id] || 0, contributed: p.contributed, folded: p.folded })).sort((a, b) => b.amt - a.amt);
       totals.forEach(t => {
         const net = t.amt - t.contributed;
-        html += `<div class="player-row"><div><span class="font-semibold">${esc(t.name)}</span> ${t.folded ? '<span class="pill">folded</span>' : ''}</div><div class="text-right"><div class="font-bold tabular-nums" style="font-family:var(--font-display)">${fmt(t.amt)}</div><div class="text-muted text-xs">${net >= 0 ? '+' : ''}${fmt(net)} vs put in ${fmt(t.contributed)}</div></div></div>`;
+        const lines: string[] = [];
+        if (r.returned && r.returned.id === t.id) lines.push(`uncalled bet back — <b>${fmt(r.returned.amount)}</b>`);
+        for (const seg of r.breakdown as any[]) {
+          const got = seg.shares?.[t.id] || 0;
+          if (got > 0) lines.push(`${describe(seg, t.id)} — <b>${fmt(got)}</b>`);
+        }
+        const breakdown = (showBreakdown && lines.length)
+          ? `<div class="text-xs text-muted mt-1.5 pt-1.5 border-t border-border-soft flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">${lines.map(l => `<span>${l}</span>`).join('')}</div>`
+          : '';
+        html += `<div class="player-row !flex-col !items-stretch gap-0"><div class="flex items-center justify-between gap-2"><div><span class="font-semibold">${esc(t.name)}</span> ${t.folded ? '<span class="pill">folded</span>' : ''}</div><div class="text-right"><div class="font-bold tabular-nums" style="font-family:var(--font-display)">${fmt(t.amt)}</div><div class="text-muted text-xs">${net >= 0 ? '+' : ''}${fmt(net)} vs put in ${fmt(t.contributed)}</div></div></div>${breakdown}</div>`;
       });
       html += `<p class="text-muted text-xs text-center mt-2">Total distributed ${fmt(r.total)} — matches every chip put in.</p>`;
 
@@ -562,6 +631,23 @@
         {/each}
       </div>
 
+      {#if runCount > 1}
+        <label class="block text-xs text-muted font-medium mb-1">Run which cards {runCount} times</label>
+        <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-1">
+          {#each [{ v: 'none', l: 'Whole board' }, { v: 'flop', l: 'Turn + river' }, { v: 'turn', l: 'River only' }] as opt}
+            <button class="py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all {runShare === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+              onclick={() => { runShare = opt.v as any; haptic(8); }}>{opt.l}</button>
+          {/each}
+        </div>
+        <p class="text-muted text-xs mb-3">
+          {runShare === 'none'
+            ? 'Each run gets a completely separate board.'
+            : runShare === 'flop'
+              ? `Flop is dealt once; turn + river run ${runCount} different ways.`
+              : `Flop + turn are dealt once; only the river runs ${runCount} different ways.`}
+        </p>
+      {/if}
+
       <label class="block text-xs text-muted font-medium mb-1">Hi-Lo split</label>
       <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
         <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
@@ -577,36 +663,62 @@
     <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">
       Community cards {boardCount * runCount > 1 ? `(${boardCount} board${boardCount > 1 ? 's' : ''} × ${runCount} run${runCount > 1 ? 's' : ''})` : ''}
     </h3>
+    {#snippet cardField(ref: string, label: string)}
+      {@const slots = getSlots(ref)}
+      <label class="block text-xs text-muted font-medium mb-1">{label}</label>
+      <div class="flex flex-wrap gap-[7px] mb-3">
+        {#each slots as card, i}
+          {#if card}
+            {@const p = cardParts(card)}
+            <button class="w-[46px] h-[60px] rounded-lg flex flex-col items-center justify-center font-extrabold leading-none shadow-md border bg-gradient-to-br from-white to-gray-100 border-gray-200 active:scale-95 transition-transform {p.red ? 'text-red-500' : 'text-gray-800'}"
+              onclick={() => openPicker(ref, i)}>
+              <span class="text-base">{p.rank}</span><b class="text-lg -mt-0.5">{p.sym}</b>
+            </button>
+          {:else}
+            <button class="w-[46px] h-[60px] rounded-lg border-2 border-dashed border-border bg-surface-2 text-faint text-2xl grid place-items-center hover:border-accent hover:text-accent active:scale-95 transition-all cursor-pointer"
+              onclick={() => openPicker(ref, i)}>+</button>
+          {/if}
+        {/each}
+      </div>
+      <input class="input !py-1.5 !px-3 !text-sm mb-3 font-mono" placeholder="or type — e.g. Th 9h 4c"
+        value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
+    {/snippet}
+
     {#each { length: boardCount } as _, b}
+      {#if sharedCount > 0 && runCount > 1}
+        {@render cardField(`board:${b}-shared`, (boardCount > 1 ? `Board ${b + 1} · ` : '') + (sharedCount === 3 ? 'Flop — dealt once' : 'Flop + turn — dealt once'))}
+      {/if}
       {#each { length: runCount } as _, r}
-        {@const ref = `board:${b}-${r}`}
-        {@const slots = getSlots(ref)}
-        {@const label = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` · Run ${r + 1}` : '')}
-        <label class="block text-xs text-muted font-medium mb-1">{label}</label>
-        <div class="flex flex-wrap gap-[7px] mb-3">
-          {#each slots as card, i}
-            {#if card}
-              {@const p = cardParts(card)}
-              <button class="w-[46px] h-[60px] rounded-lg flex flex-col items-center justify-center font-extrabold leading-none shadow-md border bg-gradient-to-br from-white to-gray-100 border-gray-200 active:scale-95 transition-transform {p.red ? 'text-red-500' : 'text-gray-800'}"
-                onclick={() => openPicker(ref, i)}>
-                <span class="text-base">{p.rank}</span><b class="text-lg -mt-0.5">{p.sym}</b>
-              </button>
-            {:else}
-              <button class="w-[46px] h-[60px] rounded-lg border-2 border-dashed border-border bg-surface-2 text-faint text-2xl grid place-items-center hover:border-accent hover:text-accent active:scale-95 transition-all cursor-pointer"
-                onclick={() => openPicker(ref, i)}>+</button>
-            {/if}
-          {/each}
-        </div>
-        <input class="input !py-1.5 !px-3 !text-sm mb-3 font-mono" placeholder="or type — e.g. Th 9h 4c"
-          value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
+        {@const base = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` · Run ${r + 1}` : '')}
+        {@const tail = sharedCount === 3 ? ' · turn + river' : sharedCount === 4 ? ' · river' : ''}
+        {@render cardField(`board:${b}-${r}`, base + tail)}
       {/each}
     {/each}
-    <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.{#if boardCount > 1} Each board is dealt independently.{/if}</p>
+    <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.{#if sharedCount > 0 && runCount > 1} The shared cards are dealt once; each run only needs its remaining card{sharedCount === 3 ? 's' : ''}.{:else if boardCount > 1} Each board is dealt independently.{/if}</p>
   </div>
 
   <!-- Players -->
   <div class="card">
-    <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Players · amount in the pot</h3>
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">Players</h3>
+      {#if !showTotalPot}
+        <button class="text-xs text-muted underline decoration-dotted" onclick={() => showTotalPot = true}>Enter total pot</button>
+      {/if}
+    </div>
+
+    {#if showTotalPot}
+      <div class="bg-surface-2 rounded-xl p-3 mb-3 border border-border-soft">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-muted shrink-0 font-medium">Total pot</span>
+          <input class="input !py-1.5 !px-3 !text-sm flex-1" type="text" inputmode="decimal"
+            bind:value={totalPot} placeholder="e.g. 150"
+            onkeydown={(e) => { if (e.key === 'Enter') splitTotalPot(); }} />
+          <button class="btn-small btn" onclick={splitTotalPot}>Split</button>
+          <button class="text-xs text-faint hover:text-text shrink-0 p-1" onclick={() => { showTotalPot = false; totalPot = ''; }}>✕</button>
+        </div>
+        <p class="text-xs text-faint mt-1.5">Players with an amount already filled in keep theirs (all-in). The rest is split evenly among the others.</p>
+      </div>
+    {/if}
     {#each players as p, i}
       {@const ref = `hole:${i}`}
       {@const slots = getSlots(ref)}

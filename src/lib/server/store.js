@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 // Overridable so tests (and alternate deployments) can point at an isolated dir.
 import { DATA_DIR } from "./paths.js";
 import { join } from "node:path";
+import { computeSettlement } from '$lib/engine/settle.js';
 
 /** @typedef {import('../types').Game} Game */
 /** @typedef {import('../types').NewGameInput} NewGameInput */
@@ -35,19 +36,25 @@ function uid(n = 8) {
 
 // Human-friendly numeric game codes, e.g. "2137". Grows from 4 to 6 digits if
 // the space ever gets crowded (far beyond any home-game need).
+/** @param {string} code */
+function isCodeTaken(code) {
+  const g = games.get(code);
+  return g != null && g.status === 'active';
+}
+
 function gameCode() {
   for (const len of [4, 5, 6]) {
     const min = 10 ** (len - 1);
     const span = 9 * min;
     for (let i = 0; i < 400; i++) {
       const code = String(min + (randomBytes(4).readUInt32BE(0) % span));
-      if (!games.has(code)) return code;
+      if (!isCodeTaken(code)) return code;
     }
   }
   let code;
   do {
     code = String(randomBytes(4).readUInt32BE(0));
-  } while (games.has(code));
+  } while (isCodeTaken(code));
   return code;
 }
 
@@ -61,7 +68,7 @@ export function normalizeCustomCode(raw) {
     e.status = 400;
     throw e;
   }
-  if (games.has(code)) {
+  if (isCodeTaken(code)) {
     /** @type {HttpError} */ const e = new Error('that code is already taken');
     e.status = 409;
     throw e;
@@ -157,6 +164,38 @@ export function mutate(id, fn) {
   if (!game) return null;
   fn(game);
   return touched(game);
+}
+
+const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Close any active game whose createdAt is older than 24 hours.
+ *  @returns {number} count of games auto-closed */
+export function reapStaleGames() {
+  const cutoff = Date.now() - STALE_MS;
+  let closed = 0;
+  for (const g of games.values()) {
+    if (g.status !== 'active') continue;
+    if (new Date(g.createdAt).getTime() > cutoff) continue;
+
+    const s = computeSettlement(g.players, g.transactions, g.finalStacks);
+    g.settlement = {
+      computedAt: new Date().toISOString(),
+      lines: s.lines,
+      transfers: s.transfers.map(t => ({ id: uid(8), ...t, paid: false, paidAt: null, paidBy: null })),
+      totalInvested: s.totalInvested, totalFinal: s.totalFinal,
+      discrepancy: s.discrepancy, balanced: s.balanced,
+    };
+    g.status = (s.balanced && s.transfers.length === 0) ? 'settled' : 'ended';
+    g.log.push({
+      id: uid(8), at: new Date().toISOString(),
+      actorId: 'system', actorName: 'potcount',
+      action: 'auto_close', detail: {},
+    });
+    touched(g);
+    closed++;
+  }
+  if (closed > 0) console.log(`[store] auto-closed ${closed} stale game(s)`);
+  return closed;
 }
 
 export { uid };
