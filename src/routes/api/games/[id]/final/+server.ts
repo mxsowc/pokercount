@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, logEntry, isSafeId, isMoney, num } from '$lib/server/helpers.js';
+import { getActor, logEntry, isSafeId, isMoney, num, httpError } from '$lib/server/helpers.js';
 
 export async function PUT({ request, params }) {
   const id = params.id.toUpperCase();
@@ -24,16 +24,24 @@ export async function PUT({ request, params }) {
       return json({ error: 'amount must be a number ≥ 0' }, { status: 400 });
     }
   }
-  const game = mutate(id, (g: any) => {
-    for (const u of updates) {
-      const clearing = u.amount === null || u.amount === '' || u.amount === undefined;
-      const from = g.finalStacks[u.playerId] ?? null;
-      let to;
-      if (clearing) { delete g.finalStacks[u.playerId]; to = null; }
-      else { g.finalStacks[u.playerId] = num(u.amount); to = num(u.amount); }
-      const pname = g.players.find((p: any) => p.id === u.playerId)?.name;
-      if (from !== to) g.log.push(logEntry(actor, 'set_final', { playerId: u.playerId, playerName: pname, detail: { from, to } }));
-    }
-  });
-  return json(game);
+  try {
+    const game = mutate(id, (g: any) => {
+      if (g.status !== 'active') throw httpError(409, 'Game is closed.');
+      for (const u of updates) {
+        if (!g.players.some((p: any) => p.id === u.playerId)) throw httpError(400, 'unknown player');
+      }
+      for (const u of updates) {
+        const clearing = u.amount === null || u.amount === '' || u.amount === undefined;
+        const from = g.finalStacks[u.playerId] ?? null;
+        let to;
+        if (clearing) { delete g.finalStacks[u.playerId]; to = null; }
+        else { g.finalStacks[u.playerId] = num(u.amount); to = num(u.amount); }
+        const pname = g.players.find((p: any) => p.id === u.playerId)?.name;
+        if (from !== to) g.log.push(logEntry(actor, 'set_final', { playerId: u.playerId, playerName: pname, detail: { from, to } }));
+      }
+    });
+    return json(game);
+  } catch (e: any) {
+    return json({ error: e.message || 'failed' }, { status: e.status || 400 });
+  }
 }

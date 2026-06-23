@@ -11,6 +11,7 @@ export async function POST({ request, params }) {
   // Reopening is open to anyone with the game, same as closing — host isn't special.
   const game = mutate(id, (g: any) => {
     g.status = 'active';
+    g.createdAt = new Date().toISOString();
     delete g.settlement;
     g.log.push(logEntry(actor, 'reopen_game', {}));
   });

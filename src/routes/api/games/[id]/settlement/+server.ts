@@ -20,7 +20,8 @@ export async function PUT({ request, params }) {
   if (!Array.isArray(body.transfers)) return json({ error: 'transfers must be a list' }, { status: 400 });
 
   const c = (x: any) => Math.round(Number(x) * 100);
-  const euros = (cents: number) => '\u20ac' + (cents / 100).toFixed(2);
+  const unit = g0.unit || '\u20ac';
+  const fmt = (cents: number) => unit + (cents / 100).toFixed(2);
   const owe = new Map(), owed = new Map(), nameOf = new Map();
   for (const l of g0.settlement.lines) {
     nameOf.set(l.playerId, l.name);
@@ -42,11 +43,11 @@ export async function PUT({ request, params }) {
   }
   for (const [pid, debt] of owe) {
     const paid = outSum.get(pid) || 0;
-    if (paid !== debt) return json({ error: `${nameOf.get(pid)} should pay ${euros(debt)} but plan adds up to ${euros(paid)}` }, { status: 400 });
+    if (paid !== debt) return json({ error: `${nameOf.get(pid)} should pay ${fmt(debt)} but plan adds up to ${fmt(paid)}` }, { status: 400 });
   }
   for (const [pid, credit] of owed) {
     const recv = inSum.get(pid) || 0;
-    if (recv !== credit) return json({ error: `${nameOf.get(pid)} should receive ${euros(credit)} but plan adds up to ${euros(recv)}` }, { status: 400 });
+    if (recv !== credit) return json({ error: `${nameOf.get(pid)} should receive ${fmt(credit)} but plan adds up to ${fmt(recv)}` }, { status: 400 });
   }
 
   const prev = new Map(g0.settlement.transfers.map((t: any) => [`${t.from}|${t.to}|${c(t.amount)}`, t]));

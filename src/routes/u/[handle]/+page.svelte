@@ -174,7 +174,7 @@
           <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
           <div class="grid grid-cols-3 gap-2">
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{selectedStats.total >= 0 ? '+' : ''}{fmtSigned(selectedStats.total)}</div>
+              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total)}</div>
               <div class="text-muted text-[.65rem]">total</div>
             </div>
             <div class="text-center">

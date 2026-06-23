@@ -208,10 +208,10 @@
               {@render avatar(row.user.displayName, 'w-8 h-8 text-[.7rem]')}
               <div class="min-w-0">
                 <div class="font-semibold text-[.95rem] truncate">{row.user.displayName}{#if row.you}<span class="text-muted font-normal"> · you</span>{/if}</div>
-                <div class="text-muted text-xs">{row.games} game{row.games === 1 ? '' : 's'} · {fmtSigned(row.avg, '€')}/game</div>
+                <div class="text-muted text-xs">{row.games} game{row.games === 1 ? '' : 's'} · {fmtSigned(row.avg)}/game</div>
               </div>
             </div>
-            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(row.net, '€')}</div>
+            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(row.net)}</div>
           </a>
         {/each}
       {/if}

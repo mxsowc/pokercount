@@ -17,6 +17,22 @@ export function sessionUser(request) {
   return uidVal ? getUser(uidVal) : null;
 }
 
+/** Privacy gate for a user's *detailed* profile data — stats and the
+ *  follower/following lists. Like an Instagram private account: the profile is
+ *  still findable in search and its follower COUNT stays visible (see the
+ *  `social` endpoint), but the details are hidden. 'public' = anyone, 'members'
+ *  = any signed-in user, 'private' = owner only.
+ * @param {User} target @param {Request} request
+ * @returns {{ status: number, error: string } | null} null when allowed */
+export function privacyBlock(target, request) {
+  const privacy = (target && target.privacy) || 'public';
+  if (privacy === 'public') return null;
+  const me = sessionUser(request);
+  if (privacy === 'private' && me?.id !== target.id) return { status: 403, error: 'This profile is private.' };
+  if (privacy === 'members' && !me) return { status: 403, error: 'Sign in to view this profile.' };
+  return null;
+}
+
 /** Build an actor object from the request — signed-in user or anonymous device.
  * @param {Request} request @returns {Actor} */
 export function actorOf(request) {
@@ -33,6 +49,15 @@ export function getActor(request) {
   const su = sessionUser(request);
   if (su) return { id: 'user:' + su.id, name: su.displayName };
   return actorOf(request);
+}
+
+/** A tagged error whose `status` the API layer maps to an HTTP code. Throw it
+ *  from inside a mutate() closure to reject the mutation atomically — the store
+ *  won't persist/broadcast a closure that throws, so re-checking invariants
+ *  there (instead of before the await) closes the check-then-act race.
+ * @param {number} status @param {string} message @returns {Error & {status:number}} */
+export function httpError(status, message) {
+  /** @type {any} */ const e = new Error(message); e.status = status; return e;
 }
 
 /** Create a log entry for the game's audit trail.

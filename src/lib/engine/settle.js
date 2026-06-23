@@ -75,34 +75,95 @@ function byId(players, id) {
 }
 
 /**
- * Greedy minimal-transaction settlement. Repeatedly match the player who is owed
- * the most with the player who owes the most. Produces at most (n-1) transfers.
- * If books don't balance (a miscount), the residual simply isn't fully settled —
- * the caller surfaces `discrepancy` so players can recount.
+ * Minimal-transaction settlement.
+ *
+ * The fewest payments that clear a balanced set of nets is
+ *   (players with a non-zero net) − (max number of disjoint subsets that each
+ *    sum to zero).
+ * Every such zero-sum subset can settle on its own, so we first split the players
+ * into the MOST independent zero-sum groups, then settle each group greedily
+ * (a group with no internal zero-sum subset needs exactly groupSize−1 payments).
+ * This is provably optimal — plain "largest owes → largest owed" greedy is not
+ * (e.g. nets [+3,−3,−2,−4,+3,+2,+1] greedy = 6 payments, optimum = 4).
+ *
+ * Finding the max zero-sum partition is NP-hard (subset-sum), but home games are
+ * tiny, so an exact bitmask search is instant up to the cap below; above it, or
+ * when the books don't balance (a miscount), we fall back to plain greedy — still
+ * ≤ n−1 payments, with the unsettled remainder surfaced via `discrepancy`.
  */
+const OPTIMAL_CAP = 14; // ≤14 non-zero players → exact optimum; above → greedy
+
 function minimizeTransfers(lines) {
-  // Work in cents; copy net balances we can mutate.
-  const creditors = lines
-    .filter((l) => l._netC > 0)
-    .map((l) => ({ id: l.playerId, amt: l._netC }))
-    .sort((a, b) => b.amt - a.amt);
-  const debtors = lines
-    .filter((l) => l._netC < 0)
-    .map((l) => ({ id: l.playerId, amt: -l._netC }))
-    .sort((a, b) => b.amt - a.amt);
+  const bal = lines.filter((l) => l._netC !== 0).map((l) => ({ id: l.playerId, amt: l._netC }));
+  const n = bal.length;
+  if (n === 0) return [];
+
+  const total = bal.reduce((s, b) => s + b.amt, 0);
+  // Only the balanced, small-enough case can be split into zero-sum groups.
+  const groups =
+    total === 0 && n <= OPTIMAL_CAP ? maxZeroSumPartition(bal) : [bal.map((_, i) => i)];
 
   const transfers = [];
+  for (const g of groups) settleGroupGreedy(g.map((i) => bal[i]), transfers);
+  return transfers;
+}
+
+/** Largest-owes → largest-owed within one group. Exact, non-negative amounts. */
+function settleGroupGreedy(members, out) {
+  const creditors = members.filter((m) => m.amt > 0).map((m) => ({ id: m.id, amt: m.amt })).sort((a, b) => b.amt - a.amt);
+  const debtors = members.filter((m) => m.amt < 0).map((m) => ({ id: m.id, amt: -m.amt })).sort((a, b) => b.amt - a.amt);
   let i = 0;
   let j = 0;
   while (i < debtors.length && j < creditors.length) {
     const pay = Math.min(debtors[i].amt, creditors[j].amt);
-    if (pay > 0) {
-      transfers.push({ from: debtors[i].id, to: creditors[j].id, amount: pay });
-    }
+    if (pay > 0) out.push({ from: debtors[i].id, to: creditors[j].id, amount: pay });
     debtors[i].amt -= pay;
     creditors[j].amt -= pay;
     if (debtors[i].amt === 0) i++;
     if (creditors[j].amt === 0) j++;
   }
-  return transfers;
+}
+
+/**
+ * Split a balanced set of nets into the maximum number of disjoint zero-sum
+ * subsets, via memoised bitmask search. Returns groups as arrays of indices.
+ */
+function maxZeroSumPartition(bal) {
+  const n = bal.length;
+  const FULL = (1 << n) - 1;
+  // Pre-sum every subset.
+  const sum = new Array(1 << n).fill(0);
+  for (let m = 1; m <= FULL; m++) {
+    const low = m & -m;
+    const idx = 31 - Math.clz32(low);
+    sum[m] = sum[m ^ low] + bal[idx].amt;
+  }
+  // solve(mask) → { count, choice }: the zero-sum subset to peel off `mask`
+  // (containing its lowest member) that maximises the total group count.
+  const memo = new Map();
+  function solve(mask) {
+    if (mask === 0) return { count: 0, choice: 0 };
+    const cached = memo.get(mask);
+    if (cached) return cached;
+    const low = mask & -mask;
+    let best = { count: -Infinity, choice: 0 };
+    for (let s = mask; s > 0; s = (s - 1) & mask) {
+      if ((s & low) === 0 || sum[s] !== 0) continue;
+      const rest = solve(mask ^ s).count + 1;
+      if (rest > best.count) best = { count: rest, choice: s };
+    }
+    memo.set(mask, best);
+    return best;
+  }
+
+  const groups = [];
+  let mask = FULL;
+  while (mask) {
+    const { choice } = solve(mask);
+    const g = [];
+    for (let i = 0; i < n; i++) if (choice & (1 << i)) g.push(i);
+    groups.push(g);
+    mask ^= choice;
+  }
+  return groups;
 }

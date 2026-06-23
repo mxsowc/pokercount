@@ -36,10 +36,12 @@ function uid(n = 8) {
 
 // Human-friendly numeric game codes, e.g. "2137". Grows from 4 to 6 digits if
 // the space ever gets crowded (far beyond any home-game need).
-/** @param {string} code */
+/** A code is taken if ANY game (active OR finished) still holds it. Reusing a
+ *  finished game's code would games.set/persist over its file and destroy its
+ *  saved history, and a stale link would surface a different group's game.
+ * @param {string} code */
 function isCodeTaken(code) {
-  const g = games.get(code);
-  return g != null && g.status === 'active';
+  return games.has(code);
 }
 
 function gameCode() {
@@ -116,7 +118,7 @@ function touched(game) {
   game.updatedAt = now();
   game.version = (game.version || 0) + 1;
   persist(game);
-  for (const fn of listeners) fn(game);
+  for (const fn of listeners) { try { fn(game); } catch (err) { console.error('[store] listener error:', err); } }
   return game;
 }
 
@@ -153,7 +155,7 @@ export function createGame({ name, unit, players, code }) {
   }
   games.set(id, game);
   persist(game);
-  for (const fn of listeners) fn(game);
+  for (const fn of listeners) { try { fn(game); } catch (err) { console.error('[store] listener error:', err); } }
   return game;
 }
 

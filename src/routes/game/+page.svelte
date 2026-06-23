@@ -44,6 +44,7 @@
   let activeView = $state<'play' | 'standings'>('play');
   let quickCashout = $state('');
   let quickCashoutBusy = $state(false);
+  let actionBusy = $state(new Set<string>());
 
   // Bulk buy-in
   let bulkAmount = $state('20');
@@ -129,6 +130,8 @@
     return unclaimedSeats.find((p: any) => p.name.trim().toLowerCase() === dn) ?? null;
   });
   const totalIn = $derived(game ? game.transactions.reduce((s: number, t: any) => s + Math.round(t.amount * 100), 0) / 100 : 0);
+  const totalCashedOut = $derived(game ? Object.values(game.finalStacks as Record<string, number>).reduce((s: number, v: number) => v != null ? s + Math.round(v * 100) : s, 0) / 100 : 0);
+  const stillInPlay = $derived(totalIn - totalCashedOut);
 
   // Live settlement computation for the active game view
   let settlement = $derived.by(() => {
@@ -195,7 +198,14 @@
 
     // SSE live updates
     const es = new EventSource(`/api/games/${gameId}/events`);
-    es.addEventListener('update', (e) => { try { game = JSON.parse(e.data); } catch {} });
+    es.addEventListener('update', (e) => {
+      try {
+        const next = JSON.parse(e.data);
+        // Ignore a frame older than what we already hold, so a slow/late delivery
+        // can't overwrite newer state (e.g. a just-returned POST result).
+        if (!game || (next.version ?? 0) >= (game.version ?? 0)) game = next;
+      } catch {}
+    });
     es.addEventListener('open', () => { if (liveStatus) { liveStatus = null; toast('Reconnected'); } });
     es.addEventListener('error', () => {
       liveStatus = es.readyState === EventSource.CLOSED ? 'Live sync stopped — refresh to reconnect.' : 'Reconnecting…';
@@ -331,6 +341,8 @@
   // modal. This is the most common action of the night, so it shouldn't cost a
   // full-screen context switch.
   async function quickBuyIn(pid: string, name: string) {
+    if (actionBusy.has('qi:' + pid)) return;
+    actionBusy = new Set([...actionBusy, 'qi:' + pid]);
     if (browser) localStorage.setItem('pc_default_buyin', String(quickAmt));
     const hasPrior = game.transactions.some((t: any) => t.playerId === pid);
     try {
@@ -338,6 +350,7 @@
       haptic(12);
       toast(`${name} ${hasPrior ? 'topped up' : 'bought in'} ${money(quickAmt, unit)}`);
     } catch (e: any) { toast(e.message); }
+    finally { const s = new Set(actionBusy); s.delete('qi:' + pid); actionBusy = s; }
   }
 
   function openMoneyModal(pid: string, name: string) {
@@ -399,7 +412,8 @@
 
   async function setFinal(pid: string, val: string) {
     const amount = String(val).trim() === '' ? null : decAmt(val);
-    game = await api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount });
+    try { game = await api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount }); }
+    catch (e: any) { toast(e.message); }
   }
 
   // Type a profit/loss and we back-compute the stack: left = profit + what they bought in.
@@ -412,8 +426,8 @@
   }
 
   async function setOut(pid: string) {
-    game = await api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount: 0 });
-    haptic(9);
+    try { game = await api('PUT', `/api/games/${gameId}/final`, { playerId: pid, amount: 0 }); haptic(9); }
+    catch (e: any) { toast(e.message); }
   }
 
   async function markRestOut() {
@@ -529,12 +543,14 @@
 
   async function removePlayer(pid: string) {
     if (!(await askConfirm('Remove this player and their transactions?', 'Remove', true))) return;
-    game = await api('DELETE', `/api/games/${gameId}/players/${pid}`);
+    try { game = await api('DELETE', `/api/games/${gameId}/players/${pid}`); }
+    catch (e: any) { toast(e.message); }
   }
 
   async function markPaid(tid: string, paid: boolean) {
     if (!paid) haptic(14);
-    game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { paid });
+    try { game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { paid }); }
+    catch (e: any) { toast(e.message); }
   }
 
   async function joinAsPlayer() {
@@ -620,6 +636,25 @@
     const url = `${location.origin}/game?g=${gameId}`;
     if (navigator.share) { navigator.share({ title: 'potcount', text: `Join game #${gameId}`, url }).catch(() => {}); }
     else { navigator.clipboard.writeText(url).then(() => toast('Link copied')).catch(() => {}); }
+  }
+
+  function shareResult() {
+    if (!game?.settlement?.lines) return;
+    const lines = game.settlement.lines.slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0));
+    const medals = ['🥇', '🥈', '🥉'];
+    let text = `${game.name} #${game.id}\n\n`;
+    lines.forEach((l: any, i: number) => {
+      const medal = i < 3 ? medals[i] + ' ' : '   ';
+      const sign = l.net >= 0 ? '+' : '';
+      text += `${medal}${l.name}: ${sign}${money(l.net, unit)}\n`;
+    });
+    text += `\npotcount.com/game?g=${gameId}`;
+    const url = `${location.origin}/game?g=${gameId}`;
+    if (navigator.share) {
+      navigator.share({ title: `${game.name} — Results`, text, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(text).then(() => toast('Results copied — paste in your group chat')).catch(() => {});
+    }
   }
 
   async function updateGameName(e: Event) {
@@ -750,7 +785,7 @@
           {@const medal = rows.length >= 3 ? ['🥈', '🥇', '🥉'][i] : ['🥇', '🥈'][i]}
           {@const height = rows.length >= 3 ? [94, 124, 72][i] : [124, 94][i]}
           <div class="flex-1 max-w-[130px] flex flex-col items-center text-center">
-            <div class="font-extrabold tabular-nums mb-1.5 {l.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</div>
+            <div class="font-extrabold tabular-nums mb-1.5 {l.net > 0 ? 'text-win' : l.net < 0 ? 'text-danger' : 'text-muted'}" style="font-family:var(--font-display)">{l.net === 0 ? 'Even' : (l.net < 0 ? '−' : '+') + money(Math.abs(l.net), unit)}</div>
             <div class="w-full rounded-t-xl border border-border-soft border-b-0 flex flex-col items-center pt-3 gap-0.5 bg-surface-2" style="height:{height}px">
               <span class="text-[1.7rem]">{medal}</span>
             </div>
@@ -773,7 +808,7 @@
 
       <div class="mt-3">
         <h1 class="text-2xl font-bold">{game.name}</h1>
-        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(totalIn, unit)} in play</div>
+        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(stillInPlay, unit)} in play</div>
       </div>
 
       <!-- Provisional notice — the game's still live, so the result can still change -->
@@ -788,7 +823,7 @@
         {@const mine = myLiveLine}
         {#if game.finalStacks[mine.playerId] != null}
           <div class="card mt-4 {mine.net > 0 ? '!border-win/50 !bg-win/[.08]' : mine.net < 0 ? '!border-danger/50 !bg-danger/[.08]' : ''}">
-            <div class="text-xs uppercase tracking-widest font-bold text-muted">Your result so far</div>
+            <div class="text-xs uppercase tracking-widest font-bold text-muted">{allEntered ? 'Your result' : 'Your result so far'}</div>
             <div class="text-3xl font-extrabold mt-1 {mine.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">
               {mine.net > 0 ? 'Up ' : mine.net < 0 ? 'Down ' : 'Even '}{money(Math.abs(mine.net), unit)}
             </div>
@@ -835,7 +870,7 @@
         {#each ls.ranked as l, idx}
           <div class="flex items-center justify-between mb-1.5 {l.playerId === mySeatId() ? 'font-bold' : ''}">
             <span>{idx + 1}. {@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
-            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</span>
+            <span class="font-bold tabular-nums {l.net > 0 ? 'text-win' : l.net < 0 ? 'text-danger' : 'text-muted'}">{l.net === 0 ? 'Even' : (l.net < 0 ? '−' : '+') + money(Math.abs(l.net), unit)}</span>
           </div>
         {/each}
         {#each ls.pending as l}
@@ -893,7 +928,7 @@
       <div class="flex items-center justify-between gap-2.5">
         <div>
           <h1 class="text-2xl font-bold cursor-text border-b border-dashed border-transparent hover:border-border focus:border-accent focus:outline-none" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
-          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {game.players.length} players · {money(totalIn, unit)} in play</div>
+          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
         <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
       </div>
@@ -1078,10 +1113,11 @@
                 value={fs ?? ''}
                 onchange={(e) => setFinal(p.id, (e.target as HTMLInputElement).value)}
                 onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinal(p.id, el.value); const next = document.querySelector(`[data-cashidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
-              <input class="input !w-[86px] !py-2 !px-2.5 tabular-nums {pl != null && pl > 0 ? '!text-win' : ''} {pl != null && pl < 0 ? '!text-danger' : ''}" type="text" inputmode="decimal" placeholder="P/L"
+              <input class="input !w-[86px] !py-2 !px-2.5 tabular-nums {pl != null && pl > 0 ? '!text-win' : ''} {pl != null && pl < 0 ? '!text-danger' : ''}" type="text" inputmode="decimal" placeholder="+/- P/L"
                 title="Profit / loss — type a number here to set the stack from it"
                 value={pl ?? ''}
-                onchange={(e) => setFinalFromProfit(p.id, (e.target as HTMLInputElement).value)} />
+                onchange={(e) => setFinalFromProfit(p.id, (e.target as HTMLInputElement).value)}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinalFromProfit(p.id, el.value); const next = document.querySelector(`[data-cashidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
             </div>
           </div>
         {:else}
@@ -1158,14 +1194,17 @@
       {@const allSettled = game.status === 'settled'}
       {@const bal = myBalance()}
 
-      <div>
-        <h1 class="text-2xl font-bold">{game.name}</h1>
-        <div class="text-muted text-sm">
-          Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> ·
-          <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold {allSettled ? 'bg-win/15 text-win border border-win' : 'bg-warn/15 text-[#f3cd6b] border border-warn'}">
-            {allSettled ? 'All settled' : 'Game ended'}
-          </span>
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <h1 class="text-2xl font-bold">{game.name}</h1>
+          <div class="text-muted text-sm">
+            Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.id}</span> ·
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold {allSettled ? 'bg-win/15 text-win border border-win' : 'bg-warn/15 text-[#f3cd6b] border border-warn'}">
+              {allSettled ? 'All settled' : 'Game ended'}
+            </span>
+          </div>
         </div>
+        <button class="btn-small btn-ghost shrink-0" onclick={shareLink}>Share</button>
       </div>
 
       {@render claimBanner()}
@@ -1202,7 +1241,7 @@
         {#each standings as l, idx}
           <div class="flex items-center justify-between mb-1.5">
             <span>{idx + 1}. {@render playerName(l)} <span class="text-muted text-sm">in {money(l.invested, unit)}</span></span>
-            <span class="font-bold tabular-nums {l.net >= 0 ? 'text-win' : 'text-danger'}">{l.net < 0 ? '−' : '+'}{money(Math.abs(l.net), unit)}</span>
+            <span class="font-bold tabular-nums {l.net > 0 ? 'text-win' : l.net < 0 ? 'text-danger' : 'text-muted'}">{l.net === 0 ? 'Even' : (l.net < 0 ? '−' : '+') + money(Math.abs(l.net), unit)}</span>
           </div>
         {/each}
       </div>
@@ -1267,7 +1306,7 @@
         {@const smallUnpaid = s.transfers.filter((t: any) => t.amount <= forgiveMax && !t.paid)}
         {#if smallUnpaid.length > 0}
           <div class="flex items-center gap-2 mt-2">
-            <button class="btn-small btn-ghost flex-1 text-muted" onclick={() => smallUnpaid.forEach((t: any) => markPaid(t.id, true))}>
+            <button class="btn-small btn-ghost flex-1 text-muted" onclick={async () => { for (const t of smallUnpaid) await markPaid(t.id, true); }}>
               Forgive {smallUnpaid.length === 1 ? '1 transfer' : smallUnpaid.length + ' transfers'} ≤ {money(forgiveMax, unit)}
             </button>
             <div class="flex items-center gap-0.5 shrink-0">
@@ -1284,6 +1323,15 @@
             <button class="btn-small btn-secondary !px-2.5" onclick={() => forgiveMax++}>+</button>
           </div>
         {/if}
+      {/if}
+
+      <!-- Share your result — the viral moment -->
+      {#if standings.length >= 2}
+        <div class="mt-4">
+          <button class="btn btn-secondary w-full" onclick={shareResult}>
+            Share your night
+          </button>
+        </div>
       {/if}
 
       <!-- Claim your seat / create an account — follow your home-game stats -->
@@ -1303,11 +1351,19 @@
           </div>
         </div>
       {:else if !myAccount}
+        {@const myLine = standings.find((l: any) => l.playerId === myId())}
+        {@const won = myLine && myLine.net > 0}
         <div class="card mt-4 !border-accent/40 text-center">
-          <div class="text-2xl mb-1">📈</div>
-          <div class="text-base font-bold">Follow your home-game stats</div>
-          <p class="text-muted text-sm mt-1 mb-3">Create a free account to claim your seat and track your wins, losses and results across every game.</p>
-          <button class="btn w-full" onclick={signInToClaim}>Claim your seat &amp; sign up</button>
+          {#if won}
+            <div class="text-2xl mb-1">🏆</div>
+            <div class="text-base font-bold">You're up {money(myLine.net, unit)} tonight</div>
+            <p class="text-muted text-sm mt-1 mb-3">Lock this in — create an account in 10 seconds and this win goes on your permanent record.</p>
+          {:else}
+            <div class="text-2xl mb-1">📈</div>
+            <div class="text-base font-bold">Track your stats across every game</div>
+            <p class="text-muted text-sm mt-1 mb-3">Create a free account to claim your seat and see your running record over time.</p>
+          {/if}
+          <button class="btn w-full" onclick={signInToClaim}>{won ? 'Save this win' : 'Claim your seat & sign up'}</button>
         </div>
       {/if}
 

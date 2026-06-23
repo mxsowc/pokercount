@@ -172,7 +172,11 @@
         players = players;
       }
     } else {
-      runouts[key] = val;
+      // Clamp typed input to this field's slot budget so a run / shared field can
+      // never hold more cards than it should (which would overflow the board).
+      const max = fieldCount(ref);
+      const toks = parseTokens(val);
+      runouts[key] = toks.length > max ? toks.slice(0, max).join(' ') : val;
       // Trigger reactivity
       runouts = runouts;
     }
@@ -288,6 +292,37 @@
   function addPlayer() { players = [...players, { name: '', hole: '', amount: '', folded: false }]; }
   function removePlayer(i: number) { if (players.length > 2) players = players.filter((_, idx) => idx !== i); }
 
+  const sharedFor = (rc: number, rs: 'none' | 'flop' | 'turn') => (rc > 1 ? { none: 0, flop: 3, turn: 4 }[rs] : 0);
+
+  // Switch run structure WITHOUT losing cards already entered. We rebuild each
+  // run's full board under the old split, then re-divide it under the new one —
+  // so e.g. a flop entered while running once becomes the "dealt once" flop when
+  // you switch to running turn + river twice, and existing turn/river cards stay
+  // on their run. Brand-new runs start empty (you'll deal them differently).
+  function setRunStructure(nextRunCount: number, nextRunShare: 'none' | 'flop' | 'turn') {
+    const oldShared = sharedFor(runCount, runShare);
+    const newShared = sharedFor(nextRunCount, nextRunShare);
+    if (oldShared !== newShared || nextRunCount !== runCount) {
+      const next: Record<string, string> = {};
+      for (let b = 0; b < boardCount; b++) {
+        const oldSharedCards = oldShared > 0 ? parseTokens(runouts[`${b}-shared`] || '').slice(0, oldShared) : [];
+        const fulls: string[][] = [];
+        for (let r = 0; r < runCount; r++) {
+          const tail = parseTokens(runouts[`${b}-${r}`] || '').slice(0, 5 - oldShared);
+          fulls.push([...oldSharedCards, ...tail].slice(0, 5));
+        }
+        if (newShared > 0) next[`${b}-shared`] = (fulls[0] || []).slice(0, newShared).join(' ');
+        for (let r = 0; r < nextRunCount; r++) {
+          const full = r < fulls.length ? fulls[r] : []; // brand-new runs start empty
+          next[`${b}-${r}`] = full.slice(newShared, 5).join(' ');
+        }
+      }
+      runouts = next;
+    }
+    runCount = nextRunCount;
+    runShare = nextRunShare;
+  }
+
   // ---- compute --------------------------------------------------------------
   async function compute() {
     result = null;
@@ -308,12 +343,15 @@
       const boards: any[] = [];
       for (let b = 0; b < boardCount; b++) {
         // Cards dealt once before the runs diverge (e.g. a shared flop), prepended to every run.
-        const shared = sharedCount > 0 ? parseTokens(runouts[`${b}-shared`] || '') : [];
+        // Clamp each piece to its slot budget so the assembled board can never exceed 5 cards
+        // (e.g. stale cards left over from a different run setup don't overflow it).
+        const shared = sharedCount > 0 ? parseTokens(runouts[`${b}-shared`] || '').slice(0, sharedCount) : [];
         const runs: any[] = [];
         for (let r = 0; r < runCount; r++) {
-          const c = [...shared, ...parseTokens(runouts[`${b}-${r}`] || '')]; // full board = shared + this run's cards
+          const tail = parseTokens(runouts[`${b}-${r}`] || '').slice(0, 5 - sharedCount);
+          const c = [...shared, ...tail]; // full board = shared + this run's cards
           const label = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` Run ${r + 1}` : '');
-          if (c.length < 3 || c.length > 5) throw new Error(`${label}: enter 3-5 community cards`);
+          if (c.length < 3) throw new Error(`${label}: enter at least the flop (3 community cards)`);
           runs.push(c);
         }
         boards.push({ runs });
@@ -627,7 +665,7 @@
       <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
         {#each [{ v: 1, l: 'Once' }, { v: 2, l: 'Twice' }, { v: 3, l: '3 times' }] as opt}
           <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-            onclick={() => { runCount = opt.v; haptic(8); }}>{opt.l}</button>
+            onclick={() => { setRunStructure(opt.v, runShare); haptic(8); }}>{opt.l}</button>
         {/each}
       </div>
 
@@ -636,7 +674,7 @@
         <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-1">
           {#each [{ v: 'none', l: 'Whole board' }, { v: 'flop', l: 'Turn + river' }, { v: 'turn', l: 'River only' }] as opt}
             <button class="py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all {runShare === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
-              onclick={() => { runShare = opt.v as any; haptic(8); }}>{opt.l}</button>
+              onclick={() => { setRunStructure(runCount, opt.v as any); haptic(8); }}>{opt.l}</button>
           {/each}
         </div>
         <p class="text-muted text-xs mb-3">
@@ -663,10 +701,9 @@
     <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">
       Community cards {boardCount * runCount > 1 ? `(${boardCount} board${boardCount > 1 ? 's' : ''} × ${runCount} run${runCount > 1 ? 's' : ''})` : ''}
     </h3>
-    {#snippet cardField(ref: string, label: string)}
+    {#snippet cardSlots(ref: string)}
       {@const slots = getSlots(ref)}
-      <label class="block text-xs text-muted font-medium mb-1">{label}</label>
-      <div class="flex flex-wrap gap-[7px] mb-3">
+      <div class="flex flex-wrap gap-[7px]">
         {#each slots as card, i}
           {#if card}
             {@const p = cardParts(card)}
@@ -680,19 +717,40 @@
           {/if}
         {/each}
       </div>
-      <input class="input !py-1.5 !px-3 !text-sm mb-3 font-mono" placeholder="or type — e.g. Th 9h 4c"
+    {/snippet}
+    {#snippet typeInput(ref: string)}
+      <input class="input !py-1.5 !px-3 !text-sm mt-2 font-mono" placeholder="or type — e.g. Th 9h 4c"
         value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
     {/snippet}
 
     {#each { length: boardCount } as _, b}
       {#if sharedCount > 0 && runCount > 1}
-        {@render cardField(`board:${b}-shared`, (boardCount > 1 ? `Board ${b + 1} · ` : '') + (sharedCount === 3 ? 'Flop — dealt once' : 'Flop + turn — dealt once'))}
+        <!-- One board: the shared cards are dealt once, then the runs branch and
+             stack directly under each other so it reads as a single board. -->
+        <div class="rounded-xl border border-border-soft p-3 mb-3">
+          <div class="text-xs text-muted font-medium mb-1.5">{boardCount > 1 ? `Board ${b + 1} · ` : ''}{sharedCount === 3 ? 'Flop' : 'Flop + turn'} — dealt once</div>
+          {@render cardSlots(`board:${b}-shared`)}
+          {@render typeInput(`board:${b}-shared`)}
+          <div class="mt-3 pl-3 border-l-2 border-accent/30 flex flex-col gap-3">
+            {#each { length: runCount } as _, r}
+              <div>
+                <div class="text-xs text-muted font-medium mb-1.5">Run {r + 1} · {sharedCount === 3 ? 'turn + river' : 'river'}</div>
+                {@render cardSlots(`board:${b}-${r}`)}
+                {@render typeInput(`board:${b}-${r}`)}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {:else}
+        {#each { length: runCount } as _, r}
+          {@const base = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` · Run ${r + 1}` : '')}
+          <div class="mb-3">
+            <div class="text-xs text-muted font-medium mb-1.5">{base}</div>
+            {@render cardSlots(`board:${b}-${r}`)}
+            {@render typeInput(`board:${b}-${r}`)}
+          </div>
+        {/each}
       {/if}
-      {#each { length: runCount } as _, r}
-        {@const base = (boardCount > 1 ? `Board ${b + 1}` : 'Board') + (runCount > 1 ? ` · Run ${r + 1}` : '')}
-        {@const tail = sharedCount === 3 ? ' · turn + river' : sharedCount === 4 ? ' · river' : ''}
-        {@render cardField(`board:${b}-${r}`, base + tail)}
-      {/each}
     {/each}
     <p class="text-muted text-xs">Tap a slot to pick a card. 3–5 cards per board.{#if sharedCount > 0 && runCount > 1} The shared cards are dealt once; each run only needs its remaining card{sharedCount === 3 ? 's' : ''}.{:else if boardCount > 1} Each board is dealt independently.{/if}</p>
   </div>

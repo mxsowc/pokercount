@@ -76,6 +76,30 @@ test('missing final stacks count as zero (still settles)', () => {
   assert.equal(r.transfers[0].amount, 30); // B pays A 30
 });
 
+test('minimal transfers: splits into zero-sum groups (beats plain greedy)', () => {
+  // Nets +3,−3,−2,−4,+3,+2,+1 — plain largest↔largest greedy needs 6 payments;
+  // the optimum is 4 (groups {+3,−3}, {−2,+2}, {−4,+3,+1}).
+  const players = 'abcdefg'.split('').map((id) => ({ id, name: id.toUpperCase() }));
+  const nets = { a: 3, b: -3, c: -2, d: -4, e: 3, f: 2, g: 1 };
+  // invested 10 each; finalStack = 10 + net so the net comes out as above.
+  const transactions = players.map((p) => ({ playerId: p.id, amount: 10 }));
+  const finalStacks = Object.fromEntries(players.map((p) => [p.id, 10 + nets[p.id]]));
+  const r = computeSettlement(players, transactions, finalStacks);
+
+  assert.ok(r.balanced);
+  assert.equal(r.transfers.length, 4, 'should find the 4-payment optimum');
+  assertConserves(r);
+});
+
+test('minimal transfers: exact pairs settle 1-for-1', () => {
+  // Two independent pairs → 2 payments, never cross-routed.
+  const players = 'abcd'.split('').map((id) => ({ id, name: id.toUpperCase() }));
+  const transactions = players.map((p) => ({ playerId: p.id, amount: 10 }));
+  const r = computeSettlement(players, transactions, { a: 20, b: 0, c: 20, d: 0 }); // +10,−10,+10,−10
+  assert.equal(r.transfers.length, 2);
+  assertConserves(r);
+});
+
 function sumBy(arr, k) {
   return Math.round(arr.reduce((s, x) => s + x[k], 0) * 100) / 100;
 }

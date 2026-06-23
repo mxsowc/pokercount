@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
-import { getActor, logEntry, isMoney, num, isSafeId } from '$lib/server/helpers.js';
+import { getActor, logEntry, isMoney, num, isSafeId, httpError } from '$lib/server/helpers.js';
 
 export async function POST({ request, params }) {
   const id = params.id.toUpperCase();
@@ -19,14 +19,25 @@ export async function POST({ request, params }) {
     if (!isMoney(e.amount) || num(e.amount) <= 0) return json({ error: 'amount must be > 0' }, { status: 400 });
     if (!isSafeId(e.playerId) || !g0.players.some((p: any) => p.id === e.playerId)) return json({ error: 'unknown player' }, { status: 400 });
   }
-  const game = mutate(id, (g: any) => {
-    for (const e of entries) {
-      const amt = num(e.amount);
-      const txType = e.type === 'topup' ? 'topup' : 'buyin';
-      g.transactions.push({ id: uid(8), playerId: e.playerId, amount: amt, type: txType, at: new Date().toISOString() });
-      const pname = g.players.find((p: any) => p.id === e.playerId)?.name;
-      g.log.push(logEntry(actor, txType, { playerId: e.playerId, playerName: pname, detail: { amount: amt, type: txType } }));
-    }
-  });
-  return json(game);
+  try {
+    const game = mutate(id, (g: any) => {
+      // Re-check inside the mutation (atomic on Node's single thread) so a
+      // concurrent close / remove-player between the checks above and here can't
+      // sneak a buy-in onto a closed game or a vanished player.
+      if (g.status !== 'active') throw httpError(409, 'Game is closed.');
+      for (const e of entries) {
+        if (!g.players.some((p: any) => p.id === e.playerId)) throw httpError(400, 'unknown player');
+      }
+      for (const e of entries) {
+        const amt = num(e.amount);
+        const txType = e.type === 'topup' ? 'topup' : 'buyin';
+        g.transactions.push({ id: uid(8), playerId: e.playerId, amount: amt, type: txType, at: new Date().toISOString() });
+        const pname = g.players.find((p: any) => p.id === e.playerId)?.name;
+        g.log.push(logEntry(actor, txType, { playerId: e.playerId, playerName: pname, detail: { amount: amt, type: txType } }));
+      }
+    });
+    return json(game);
+  } catch (e: any) {
+    return json({ error: e.message || 'failed' }, { status: e.status || 400 });
+  }
 }

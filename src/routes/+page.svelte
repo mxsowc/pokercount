@@ -2,7 +2,6 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
-  import { money } from '$lib/utils/money';
   import { ago } from '$lib/utils/time';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
@@ -144,10 +143,13 @@
   // Join game form
   let joinCode = $state('');
   let joinName = $state('');
+  let busy = $state(false);
 
   async function openGame() {
     const you = openName.trim();
     if (!you) { toast('Enter your name'); return; }
+    if (busy) return;
+    busy = true;
     setActorName(you);
     const players = [{ name: you }];
     for (let i = 0; i < openSeats; i++) players.push({ name: `Player ${i + 2}` });
@@ -160,7 +162,6 @@
       });
       const game = await res.json();
       if (!res.ok) {
-        // A custom code that's already in use → a game with it already exists.
         if (res.status === 409 && code) {
           toast(`A game with code #${code} is already running — pick another code or leave it blank.`);
         } else {
@@ -172,7 +173,8 @@
       if (game.hostToken) localStorage.setItem('pc_host_' + game.id, game.hostToken);
       rememberGame(game);
       goto(`/game?g=${game.id}&new=1`);
-    } catch (e: any) { toast(e.message); }
+    } catch (e: any) { toast('Could not reach the server — check your connection'); }
+    finally { busy = false; }
   }
 
   async function joinGame() {
@@ -180,6 +182,8 @@
     const you = joinName.trim();
     if (code.length < 3) { toast('Enter the game code'); return; }
     if (!you) { toast('Enter your name'); return; }
+    if (busy) return;
+    busy = true;
     setActorName(you);
     try {
       const res = await fetch(`/api/games/${code}/join`, {
@@ -189,10 +193,12 @@
       });
       const data = await res.json();
       if (!res.ok) { toast(data.error?.includes('not found') ? `No game with code #${code}` : data.error || 'Failed'); return; }
-      localStorage.setItem('pc_me_' + code, data.playerId);
+      const gid = data.game?.id || code;
+      localStorage.setItem('pc_me_' + gid, data.playerId);
       rememberGame(data.game);
-      goto(`/game?g=${code}`);
-    } catch (e: any) { toast(e.message); }
+      goto(`/game?g=${gid}`);
+    } catch (e: any) { toast('Could not reach the server — check your connection'); }
+    finally { busy = false; }
   }
 
   function forgetGame(id: string) {
@@ -249,6 +255,19 @@
               </div>
             </a>
           {/each}
+        </div>
+      {/if}
+
+      <!-- "Host your own" nudge — shown once after a player's first completed game -->
+      {#if games.length > 0 && games.some((g: any) => g.status === 'ended' || g.status === 'settled') && !games.some((g: any) => g.isHost) && browser && !localStorage.getItem('pc_host_nudge_dismissed')}
+        <div class="card !bg-surface !border-accent/25 !p-3 w-full mb-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-sm font-semibold">Now you know how it works 🎴</div>
+              <p class="text-muted text-xs mt-0.5">Open a game for your own group — they just need the code to join.</p>
+            </div>
+            <button class="text-xs text-faint hover:text-text p-2 -m-1 shrink-0" onclick={() => { localStorage.setItem('pc_host_nudge_dismissed', '1'); games = listMyGames(); }}>✕</button>
+          </div>
         </div>
       {/if}
 
@@ -343,7 +362,7 @@
           </div>
         </div>
       </details>
-      <button class="btn w-full mt-4" onclick={openGame}>Open game</button>
+      <button class="btn w-full mt-4" disabled={busy} onclick={openGame}>{busy ? 'Opening...' : 'Open game'}</button>
     </div>
 
   {:else if view === 'join'}
@@ -357,7 +376,7 @@
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Your name</label>
       <input class="input" bind:value={joinName} placeholder="e.g. Max" maxlength="40"
              onkeydown={(e) => { if (e.key === 'Enter') joinGame(); }} />
-      <button class="btn w-full mt-4" onclick={joinGame}>Join game</button>
+      <button class="btn w-full mt-4" disabled={busy} onclick={joinGame}>{busy ? 'Joining...' : 'Join game'}</button>
     </div>
   {/if}
 </div>
