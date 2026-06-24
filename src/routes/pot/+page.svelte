@@ -725,20 +725,28 @@
 
     {#each { length: boardCount } as _, b}
       {#if sharedCount > 0 && runCount > 1}
-        <!-- One board: the shared cards are dealt once, then the runs branch and
-             stack directly under each other so it reads as a single board. -->
+        <!-- One board that forks: the shared flop is dealt once on the left, then
+             the turn + river branch off to the right — one row per run — so it
+             reads as a single board splitting into two runouts. -->
         <div class="rounded-xl border border-border-soft p-3 mb-3">
-          <div class="text-xs text-muted font-medium mb-1.5">{boardCount > 1 ? `Board ${b + 1} · ` : ''}{sharedCount === 3 ? 'Flop' : 'Flop + turn'} — dealt once</div>
-          {@render cardSlots(`board:${b}-shared`)}
-          {@render typeInput(`board:${b}-shared`)}
-          <div class="mt-3 pl-3 border-l-2 border-accent/30 flex flex-col gap-3">
-            {#each { length: runCount } as _, r}
-              <div>
-                <div class="text-xs text-muted font-medium mb-1.5">Run {r + 1} · {sharedCount === 3 ? 'turn + river' : 'river'}</div>
-                {@render cardSlots(`board:${b}-${r}`)}
-                {@render typeInput(`board:${b}-${r}`)}
-              </div>
-            {/each}
+          {#if boardCount > 1}<div class="text-xs text-muted font-medium mb-2">Board {b + 1}</div>{/if}
+          <div class="flex flex-wrap items-start gap-x-5 gap-y-4">
+            <!-- Shared flop (dealt once) -->
+            <div class="w-[152px] shrink-0">
+              <div class="text-xs text-muted font-medium mb-1.5">{sharedCount === 3 ? 'Flop' : 'Flop + turn'} — dealt once</div>
+              {@render cardSlots(`board:${b}-shared`)}
+              {@render typeInput(`board:${b}-shared`)}
+            </div>
+            <!-- Runs fork off to the right -->
+            <div class="flex-1 min-w-[150px] pl-4 border-l-2 border-accent/30 flex flex-col gap-3">
+              {#each { length: runCount } as _, r}
+                <div>
+                  <div class="text-xs text-muted font-medium mb-1.5">Run {r + 1} · {sharedCount === 3 ? 'turn + river' : 'river'}</div>
+                  {@render cardSlots(`board:${b}-${r}`)}
+                  {@render typeInput(`board:${b}-${r}`)}
+                </div>
+              {/each}
+            </div>
           </div>
         </div>
       {:else}
