@@ -25,7 +25,13 @@ export function GET({ params }) {
       send(withProfiles(getGame(id)));
 
       unsub = onChange((game: any) => {
-        if (game.id === id) send(withProfiles(game));
+        if (game.id !== id) return;
+        if (game._deleted) {
+          try { controller.enqueue(encoder.encode(`event: deleted\ndata: {}\n\n`)); } catch { /* closed */ }
+          cleanup();
+          return;
+        }
+        send(withProfiles(game));
       });
 
       hb = setInterval(() => {

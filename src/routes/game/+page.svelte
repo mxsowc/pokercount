@@ -216,6 +216,8 @@
         if (!game || (next.version ?? 0) >= (game.version ?? 0)) game = next;
       } catch {}
     });
+    // The game was deleted (empty/abandoned) — bounce anyone viewing it home.
+    es.addEventListener('deleted', () => { toast('This game was deleted'); goto('/'); });
     es.addEventListener('open', () => { if (liveStatus) { liveStatus = null; toast('Reconnected'); } });
     es.addEventListener('error', () => {
       liveStatus = es.readyState === EventSource.CLOSED ? 'Live sync stopped — refresh to reconnect.' : 'Reconnecting…';
@@ -561,14 +563,20 @@
     finally { savingHours = false; }
   }
 
-  // Remove this game from *your* view only: unlink your account seat (so it drops
-  // out of "My games") and forget it on this device. Anyone else who's linked
-  // keeps the game and their access — the game itself is not destroyed.
+  // Remove this game. If it has NO buy-ins it's an empty/abandoned table, so we
+  // destroy it server-side (otherwise it lingers as a phantom "active" game).
+  // Once there are buy-ins it has real history: we only unlink your account seat
+  // and forget it on this device — anyone else linked keeps their access.
   async function deleteGameForMe() {
-    if (!(await askConfirm('Remove this game from your games? Anyone else linked to it keeps their access.', 'Delete', true))) return;
-    if (myAccount && mySeat) {
-      try { await api('DELETE', `/api/games/${gameId}/claim`); } catch (e: any) { toast(e.message); return; }
-    }
+    const empty = !(game?.transactions?.length);
+    const prompt = empty
+      ? 'Delete this game? It has no buy-ins, so it will be removed for everyone.'
+      : 'Remove this game from your games? Anyone else linked to it keeps their access.';
+    if (!(await askConfirm(prompt, 'Delete', true))) return;
+    try {
+      if (empty) await api('DELETE', `/api/games/${gameId}`);
+      else if (myAccount && mySeat) await api('DELETE', `/api/games/${gameId}/claim`);
+    } catch (e: any) { toast(e.message); return; }
     if (browser) {
       try {
         const list = JSON.parse(localStorage.getItem('pc_games') || '[]').filter((g: any) => g.id !== gameId);
@@ -577,7 +585,7 @@
       localStorage.removeItem('pc_me_' + gameId);
       localStorage.removeItem('pc_host_' + gameId);
     }
-    toast('Removed from your games');
+    toast(empty ? 'Game deleted' : 'Removed from your games');
     goto('/');
   }
 

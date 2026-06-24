@@ -3,7 +3,7 @@
 // request handler's mutation atomic) and written through to disk after every
 // change. Plenty for home-game scale; no database to operate.
 
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 // Overridable so tests (and alternate deployments) can point at an isolated dir.
@@ -146,6 +146,23 @@ function touched(game) {
   persist(game);
   for (const fn of listeners) { try { fn(game); } catch (err) { console.error('[store] listener error:', err); } }
   return game;
+}
+
+/** Permanently remove a game: drop it from memory, release its code, delete the
+ *  file, and notify listeners (so open SSE streams can bounce viewers home).
+ *  Used to clean up empty/abandoned games — see the DELETE route's guard.
+ * @param {string} idOrCode @returns {boolean} whether a game was deleted */
+export function deleteGame(idOrCode) {
+  const game = getGame(idOrCode);
+  if (!game) return false;
+  games.delete(game.id);
+  if (codeToId.get(game.code) === game.id) codeToId.delete(game.code);
+  try { rmSync(filePath(game.id), { force: true }); }
+  catch (err) { console.error('[store] failed to delete game file:', err); }
+  for (const fn of listeners) {
+    try { fn({ id: game.id, _deleted: true }); } catch (err) { console.error('[store] listener error:', err); }
+  }
+  return true;
 }
 
 /** Look up by internal id (e.g. a shared link) OR by human code (e.g. typed to
