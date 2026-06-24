@@ -693,13 +693,20 @@
   // Share opens a sheet with the code, link and a QR — the QR is the in-person
   // win: pass the phone round and everyone scans to join, no typing the code.
   let shareOpen = $state(false);
-  const shareUrl = () => `${location.origin}/game?g=${gameId}`;
+  // Share the short, pretty code link (?g=3599) — it resolves to whichever game
+  // currently holds that code, which is exactly this live game. (gameId may be the
+  // long internal id if the host opened via a permanent link; prefer the code.)
+  const shareUrl = () => `${location.origin}/game?g=${game?.code ?? gameId}`;
   function shareLink() { shareOpen = true; }
   function copyShareLink() {
     navigator.clipboard.writeText(shareUrl()).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
   }
   function nativeShare() {
-    if (navigator.share) navigator.share({ title: 'potcount', text: `Join game #${game?.code ?? gameId}`, url: shareUrl() }).catch(() => {});
+    // Embed the link IN the text (not just the `url` field): some chat apps
+    // (Telegram, WhatsApp) keep only `text` and drop `url`, which strips the link
+    // and its rich preview — leaving a bare "Join game #1234". Inline always shows.
+    const msg = `Join game #${game?.code ?? gameId}\n${shareUrl()}`;
+    if (navigator.share) navigator.share({ title: 'potcount', text: msg }).catch(() => {});
     else copyShareLink();
   }
   async function toggleLock() {
