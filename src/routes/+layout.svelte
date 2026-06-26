@@ -2,8 +2,14 @@
   import '../app.css';
   import { toastMessage } from '$lib/stores/toast';
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import { captureAcq } from '$lib/utils/acq';
 
   let { children } = $props();
+
+  // Remember how this device first arrived (first-party, cookieless) so a game
+  // opened later can be attributed to its source. Runs once, on the entry page.
+  onMount(() => captureAcq($page.url.pathname, $page.url.search));
   let user = $derived($page.data?.user ?? null);
   let initial = $derived(user ? (user.displayName || '?').charAt(0).toUpperCase() : '');
 

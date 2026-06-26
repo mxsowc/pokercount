@@ -144,6 +144,23 @@ export async function POST(event) {
     for (const p of (g.players || [])) allPlayerCount.add(p.id);
   }
 
+  // Acquisition: where created games came from (first-party, cookieless). Only
+  // games created after source-tracking shipped carry g.acquisition; untracked
+  // legacy games are omitted. Attribution priority per game: explicit campaign
+  // tag → SEO landing page → external referrer host → "direct".
+  const sourceCounts: Record<string, number> = {};
+  let trackedGames = 0;
+  for (const g of games) {
+    const a = (g as any).acquisition;
+    if (!a) continue;
+    trackedGames++;
+    const bucket = a.ref || (a.landing && a.landing !== '/' ? a.landing : null) || a.referrer || 'direct';
+    sourceCounts[bucket] = (sourceCounts[bucket] || 0) + 1;
+  }
+  const sources = Object.entries(sourceCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([source, count]) => ({ source, count }));
+
   // Recent games (newest first) for the games table.
   const recentGames = [...games]
     .sort((a: any, b: any) => (String(b.updatedAt || b.createdAt) < String(a.updatedAt || a.createdAt) ? -1 : 1))
@@ -200,6 +217,7 @@ export async function POST(event) {
       ),
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
+      acquisition: { tracked: trackedGames, sources },
     },
     engagement: {
       playersWhoPlayed,

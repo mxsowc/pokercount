@@ -95,6 +95,10 @@ export interface Game {
   settlement?: Settlement;
   /** Optional series tag for recurring game groups. */
   series?: string | null;
+  /** First-party, cookieless acquisition: where the creator first arrived from
+   *  (campaign tag / external referrer host / first landing path). Set once at
+   *  creation; absent on games created before source-tracking shipped. */
+  acquisition?: { ref: string | null; referrer: string | null; landing: string | null };
   /** Post-game votes (e.g. "hardest to read"). */
   votes?: { hardestToRead?: Record<string, string> };
   /** Optional "nit game" side game: while `on`, every seated player holds a

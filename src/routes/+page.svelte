@@ -6,6 +6,7 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
+  import { getAcq } from '$lib/utils/acq';
 
   type View = 'intro' | 'open' | 'join';
   let view = $state<View>('intro');
@@ -66,7 +67,12 @@
     } catch {}
   }
 
-  onMount(() => { unitInput = defaultUnit(); loadAccountGames(); });
+  onMount(() => {
+    unitInput = defaultUnit();
+    loadAccountGames();
+    // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
+    if (browser && $page.url.searchParams.get('start') === 'open') showOpen();
+  });
 
   // Open game form
   let openName = $state('');
@@ -128,7 +134,7 @@
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined })
+        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined, source: getAcq() || undefined })
       });
       const game = await res.json();
       if (!res.ok) {
@@ -284,6 +290,9 @@
           </div>
           <p class="text-muted text-xs text-center mt-5 max-w-[48ch] mx-auto">
             Just splitting one pot right now? The <a href="/pot">Split tool</a> does it instantly — no game needed.
+          </p>
+          <p class="text-muted text-xs text-center mt-1.5 max-w-[48ch] mx-auto">
+            New to this? See how the <a href="/poker-chip-tracker">poker chip tracker</a> works.
           </p>
         </div>
       {/if}

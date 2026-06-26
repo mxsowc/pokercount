@@ -163,6 +163,27 @@
       </div>
       <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with 2+ buy-ins); empty/test/one-buy-in games are excluded. Money figures: real currencies are converted to EUR (monthly FX rates); big blinds, chips and custom units are play money, counted 1:1 together as "pts"; crypto (BTC etc.) is shown per coin.</p>
 
+      {#if data.games.acquisition}
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Where games come from</h2>
+        <div class="card mb-5">
+          {#if data.games.acquisition.sources?.length}
+            {@const tracked = data.games.acquisition.tracked}
+            {#each data.games.acquisition.sources as s (s.source)}
+              <div class="flex items-center justify-between gap-3 py-1.5 border-b border-border-soft last:border-0">
+                <span class="text-sm font-medium truncate">{s.source}</span>
+                <span class="flex items-center gap-2 shrink-0">
+                  <span class="text-muted text-xs tabular-nums">{tracked ? Math.round((s.count / tracked) * 100) : 0}%</span>
+                  <span class="font-bold tabular-nums">{s.count}</span>
+                </span>
+              </div>
+            {/each}
+            <p class="text-faint text-xs mt-2">{tracked} game{tracked === 1 ? '' : 's'} with a known source (first-party, cookieless). Older games created before tracking aren't counted. A leading <span class="font-mono">/path</span> means an SEO landing page; a host like <span class="font-mono">google.com</span> is an external referrer; <span class="font-mono">direct</span> = typed/bookmarked.</p>
+          {:else}
+            <p class="text-muted text-sm">No tracked sources yet — newly created games will show up here.</p>
+          {/if}
+        </div>
+      {/if}
+
       {#if data.games.recentGames?.length}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent games</h2>
         <div class="card !p-0 overflow-hidden mb-5">
