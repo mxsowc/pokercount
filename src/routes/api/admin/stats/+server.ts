@@ -4,6 +4,8 @@ import { allUsers } from '$lib/server/users.js';
 import { allGames } from '$lib/server/store.js';
 import { userResults } from '$lib/server/insights.js';
 import { isRealGame } from '$lib/engine/stats.js';
+import { converter } from '$lib/server/fx.js';
+import { isConvertibleUnit, cryptoTicker } from '$lib/utils/currencies.js';
 import { rateLimit, clientIp } from '$lib/server/ratelimit.js';
 
 // Gate: a single shared password from the env. No ADMIN_PASSWORD set = locked.
@@ -58,27 +60,59 @@ export async function POST(event) {
     if (day) perDay[day] = (perDay[day] || 0) + 1;
   }
 
+  // Money lands in one of three buckets:
+  //  - EUR: real fiat currencies, converted via the monthly FX rates.
+  //  - points: big blinds + chips + any custom unit — play money with no real
+  //    value, all counted 1:1 together.
+  //  - crypto: BTC/etc. — kept in the actual coin amount, never converted/lumped.
+  const conv = converter();
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6; // crypto amounts
+  /** classify a unit → 'eur' | 'pts' | a crypto ticker; returns the EUR-converted
+   *  amount for fiat, else the raw amount. */
+  const bucketOf = (unit: string, amount: number): { bucket: string; value: number } | null => {
+    if (isConvertibleUnit(unit)) {
+      const eur = conv(amount, unit, '€');
+      return eur == null ? null : { bucket: 'eur', value: eur };
+    }
+    const tk = cryptoTicker(unit);
+    if (tk) return { bucket: tk, value: amount };
+    return { bucket: 'pts', value: amount }; // BB / chips / custom — 1:1
+  };
+
   // Game-level aggregates — over actually-played games only (incl. anonymous players).
   const gameStatus: Record<string, number> = {};
   let totalSeats = 0;
   let totalBuyIns = 0;
-  let totalBuyInAmount = 0;
+  let eurSeats = 0, eurBuyInAmount = 0;
+  let ptsSeats = 0, ptsBuyInAmount = 0;
+  /** crypto ticker → { seats, amount } */
+  const cryptoBuyIn: Record<string, { seats: number; amount: number }> = {};
   for (const g of played) {
     gameStatus[g.status] = (gameStatus[g.status] || 0) + 1;
-    totalSeats += (g.players?.length || 0);
+    const seats = g.players?.length || 0;
+    totalSeats += seats;
     totalBuyIns += (g.transactions?.length || 0);
-    for (const t of (g.transactions || [])) totalBuyInAmount += (t.amount || 0);
+    const unit = g.unit || '€';
+    const gameTotal = (g.transactions || []).reduce((s: number, t: any) => s + (t.amount || 0), 0);
+    const b = bucketOf(unit, gameTotal);
+    if (!b) continue;
+    if (b.bucket === 'eur') { eurSeats += seats; eurBuyInAmount += b.value; }
+    else if (b.bucket === 'pts') { ptsSeats += seats; ptsBuyInAmount += b.value; }
+    else { (cryptoBuyIn[b.bucket] ??= { seats: 0, amount: 0 }); cryptoBuyIn[b.bucket].seats += seats; cryptoBuyIn[b.bucket].amount += b.value; }
   }
   const finishedGames = (gameStatus.ended || 0) + (gameStatus.settled || 0);
 
   // Per-account engagement: participation across ALL games (not just finished).
   let playersWhoPlayed = 0;
   let sumGames = 0;
-  // Net stats: finished games only (active games have no final stacks).
-  let sumProfit = 0;
-  let playersWithResults = 0;
-  let sumFinishedGames = 0;
-  let biggestNight: { net: number; handle: string; game: string } | null = null;
+  // Net stats: finished games only. Same three buckets as buy-ins.
+  let eurNetSum = 0, eurNetPlayers = 0;
+  let ptsNetSum = 0, ptsNetPlayers = 0;
+  /** crypto ticker → { sum, players } */
+  const cryptoNet: Record<string, { sum: number; players: number }> = {};
+  let biggestNight: { net: number; handle: string; game: string } | null = null; // EUR
   for (const u of users) {
     // Count seats across actually-played games (active included).
     let seatCount = 0;
@@ -88,14 +122,20 @@ export async function POST(event) {
     if (seatCount > 0) { playersWhoPlayed++; sumGames += seatCount; }
     // Net stats from finished games only.
     const results = userResults(played, u.id);
-    if (results.length) {
-      playersWithResults++;
-      sumFinishedGames += results.length;
-      for (const r of results) {
-        sumProfit += r.net;
-        if (!biggestNight || r.net > biggestNight.net) biggestNight = { net: r.net, handle: u.handle, game: r.name };
-      }
+    let uEur = 0, uHasEur = false, uPts = 0, uHasPts = false;
+    const uCrypto: Record<string, number> = {};
+    for (const r of results) {
+      const b = bucketOf(r.unit, r.net);
+      if (!b) continue;
+      if (b.bucket === 'eur') {
+        uEur += b.value; uHasEur = true;
+        if (!biggestNight || b.value > biggestNight.net) biggestNight = { net: round2(b.value), handle: u.handle, game: r.name };
+      } else if (b.bucket === 'pts') { uPts += b.value; uHasPts = true; }
+      else uCrypto[b.bucket] = (uCrypto[b.bucket] || 0) + b.value;
     }
+    if (uHasEur) { eurNetSum += uEur; eurNetPlayers++; }
+    if (uHasPts) { ptsNetSum += uPts; ptsNetPlayers++; }
+    for (const [tk, v] of Object.entries(uCrypto)) { (cryptoNet[tk] ??= { sum: 0, players: 0 }); cryptoNet[tk].sum += v; cryptoNet[tk].players++; }
   }
 
   // Distinct players who played (including anonymous — no account linked).
@@ -119,8 +159,6 @@ export async function POST(event) {
       unit: g.unit || '€',
       updatedAt: g.updatedAt || g.createdAt,
     }));
-  const round1 = (n: number) => Math.round(n * 10) / 10;
-  const round2 = (n: number) => Math.round(n * 100) / 100;
 
   // Newest first; never include pinHash.
   const recent = [...users]
@@ -152,17 +190,26 @@ export async function POST(event) {
       byStatus: gameStatus,
       avgPlayers: played.length ? round1(totalSeats / played.length) : 0,
       buyIns: totalBuyIns,
-      // Average money a person puts on the table (buy-ins + top-ups) per seat,
-      // across all played games. Combines currencies, like the net figures.
-      avgBuyInPerPlayer: totalSeats ? round1(totalBuyInAmount / totalSeats) : 0,
+      // Money a person puts on the table (buy-ins + top-ups) per seat. EUR =
+      // real currencies converted; pts = big blinds + chips + custom (1:1);
+      // crypto = per-coin amounts.
+      avgBuyInPerPlayerEUR: eurSeats ? round1(eurBuyInAmount / eurSeats) : 0,
+      avgBuyInPerPlayerPts: ptsSeats ? round1(ptsBuyInAmount / ptsSeats) : 0,
+      avgBuyInPerPlayerCrypto: Object.fromEntries(
+        Object.entries(cryptoBuyIn).map(([tk, v]) => [tk, v.seats ? round6(v.amount / v.seats) : 0])
+      ),
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
     },
     engagement: {
       playersWhoPlayed,
       avgGamesPerPlayer: playersWhoPlayed ? round1(sumGames / playersWhoPlayed) : 0,
-      avgNetPerPlayer: playersWithResults ? round2(sumProfit / playersWithResults) : 0,
-      biggestNight,
+      avgNetPerPlayerEUR: eurNetPlayers ? round2(eurNetSum / eurNetPlayers) : 0,
+      avgNetPerPlayerPts: ptsNetPlayers ? round2(ptsNetSum / ptsNetPlayers) : 0,
+      avgNetPerPlayerCrypto: Object.fromEntries(
+        Object.entries(cryptoNet).map(([tk, v]) => [tk, v.players ? round6(v.sum / v.players) : 0])
+      ),
+      biggestNight, // in EUR
     },
   });
 }

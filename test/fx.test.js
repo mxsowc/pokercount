@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { convertWith, convertSymbols } from '../src/lib/server/fx.js';
-import { isConvertibleUnit, currencyForCountry } from '../src/lib/utils/currencies.js';
+import { isConvertibleUnit, currencyForCountry, cryptoTicker } from '../src/lib/utils/currencies.js';
 import { computeUserStats } from '../src/lib/engine/stats.js';
 
 // €1 = $2 = 4 zł in this toy table (EUR base, units per €1).
@@ -23,6 +23,21 @@ test('convertSymbols: symbols map to ISO; non-money units → null', () => {
   assert.equal(convertSymbols(RATES, 10, 'chips', '€'), null, 'chips have no rate');
   assert.equal(convertSymbols(RATES, 10, 'BB', '€'), null, 'big blinds have no rate');
   assert.equal(convertSymbols(RATES, 10, '₿', '€'), null, 'Bitcoin is left out');
+});
+
+test('unit classification: fiat vs crypto vs play-money', () => {
+  // fiat we can convert
+  assert.equal(isConvertibleUnit('€'), true);
+  assert.equal(isConvertibleUnit('$'), true);
+  // crypto → its own ticker (symbol, lowercase, and uppercase all resolve)
+  assert.equal(cryptoTicker('₿'), 'BTC');
+  assert.equal(cryptoTicker('btc'), 'BTC');
+  assert.equal(cryptoTicker('ETH'), 'ETH');
+  // play money: big blinds, chips, and arbitrary custom text → not fiat, not crypto
+  assert.equal(isConvertibleUnit('BB'), false);
+  assert.equal(cryptoTicker('BB'), null);
+  assert.equal(cryptoTicker('chips'), null);
+  assert.equal(cryptoTicker('gummybears'), null);
 });
 
 test('isConvertibleUnit / currencyForCountry', () => {

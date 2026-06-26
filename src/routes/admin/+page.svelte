@@ -135,11 +135,19 @@
           <div class="text-muted text-xs mt-1">buy-in events</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.avgBuyInPerPlayer ?? 0}</div>
+          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">€{data.games.avgBuyInPerPlayerEUR ?? 0}</div>
+          {#if data.games.avgBuyInPerPlayerPts}<div class="text-sm font-bold text-muted tabular-nums">{data.games.avgBuyInPerPlayerPts} pts</div>{/if}
+          {#each Object.entries(data.games.avgBuyInPerPlayerCrypto ?? {}) as [tk, v]}
+            <div class="text-sm font-bold text-muted tabular-nums">{v} {tk}</div>
+          {/each}
           <div class="text-muted text-xs mt-1">avg buy-in / person</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayer >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{data.engagement.avgNetPerPlayer}</div>
+          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayerEUR >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">€{data.engagement.avgNetPerPlayerEUR}</div>
+          {#if data.engagement.avgNetPerPlayerPts}<div class="text-sm font-bold tabular-nums {data.engagement.avgNetPerPlayerPts >= 0 ? 'text-win' : 'text-danger'}">{data.engagement.avgNetPerPlayerPts} pts</div>{/if}
+          {#each Object.entries(data.engagement.avgNetPerPlayerCrypto ?? {}) as [tk, v]}
+            <div class="text-sm font-bold tabular-nums {(v as number) >= 0 ? 'text-win' : 'text-danger'}">{v} {tk}</div>
+          {/each}
           <div class="text-muted text-xs mt-1">avg net / player</div>
         </div>
         <div class="card text-center !mb-0">
@@ -148,12 +156,12 @@
         </div>
         {#if data.engagement.biggestNight}
           <div class="card text-center !mb-0">
-            <div class="text-2xl font-extrabold text-win" style="font-family:var(--font-display)">{data.engagement.biggestNight.net}</div>
+            <div class="text-2xl font-extrabold text-win" style="font-family:var(--font-display)">€{data.engagement.biggestNight.net}</div>
             <div class="text-muted text-xs mt-1 truncate">biggest night · @{data.engagement.biggestNight.handle}</div>
           </div>
         {/if}
       </div>
-      <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with 2+ buy-ins); empty/test/one-buy-in games are excluded. Net figures are from finished games only and combine all currencies.</p>
+      <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with 2+ buy-ins); empty/test/one-buy-in games are excluded. Money figures: real currencies are converted to EUR (monthly FX rates); big blinds, chips and custom units are play money, counted 1:1 together as "pts"; crypto (BTC etc.) is shown per coin.</p>
 
       {#if data.games.recentGames?.length}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent games</h2>

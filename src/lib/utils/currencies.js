@@ -39,10 +39,27 @@ export const ISO_TO_SYMBOL = {
   KRW: '₩', ILS: '₪', CZK: 'Kč', HUF: 'Ft', THB: '฿', ZAR: 'R',
 };
 
-/** Is this unit something we can attach an exchange rate to? (Bitcoin / chips /
- *  big blinds / custom text are not.)  @param {string} unit */
+/** Is this unit a fiat currency we can attach a EUR exchange rate to? (Crypto,
+ *  chips, big blinds, custom text are not.)  @param {string} unit */
 export function isConvertibleUnit(unit) {
   return Object.prototype.hasOwnProperty.call(SYMBOL_TO_ISO, unit);
+}
+
+// Cryptocurrencies have no fiat rate here: they're tallied in their own coin
+// amount (never converted to EUR, never lumped with play-money units). Maps a
+// unit symbol/ticker to a normalized ticker.
+/** @type {Record<string, string>} */
+export const CRYPTO_UNITS = {
+  '₿': 'BTC', BTC: 'BTC', SATS: 'SATS', ETH: 'ETH', SOL: 'SOL', XRP: 'XRP',
+  USDT: 'USDT', USDC: 'USDC', DOGE: 'DOGE', ADA: 'ADA', BNB: 'BNB', LTC: 'LTC', TRX: 'TRX',
+};
+/** The normalized crypto ticker for a unit, or null if it isn't a crypto we
+ *  recognise. Everything that's neither fiat nor crypto (BB, chips, custom text)
+ *  is "play money" — counted 1:1.  @param {string} unit @returns {string | null} */
+export function cryptoTicker(unit) {
+  if (!unit) return null;
+  const u = String(unit).trim();
+  return CRYPTO_UNITS[u] || CRYPTO_UNITS[u.toUpperCase()] || null;
 }
 
 // Countries for the searchable picker. `ccy` is the ISO currency; it only affects
