@@ -97,6 +97,10 @@ export interface Game {
   series?: string | null;
   /** Post-game votes (e.g. "hardest to read"). */
   votes?: { hardestToRead?: Record<string, string> };
+  /** Optional "nit game" side game: while `on`, every seated player holds a
+   *  button until they win a pot (their id goes in `cleared`). When exactly one
+   *  holder remains, that player has lost the nit game. No money attached. */
+  nitGame?: { on: boolean; cleared: string[] };
 }
 
 /** Payload accepted by createGame. */

@@ -120,6 +120,34 @@
   const invested = (pid: string) => (game?.transactions ?? []).filter((t: any) => t.playerId === pid).reduce((s: number, t: any) => s + Math.round(t.amount * 100), 0) / 100;
   const unit = $derived(game?.unit || '€');
 
+  // ---- Nit game (side game) -------------------------------------------------
+  // While on, every seated player "holds a button" until they win a pot. When
+  // exactly one holder remains, that player has lost. No money attached.
+  const nit = $derived(game?.nitGame ?? null);
+  const nitCleared = $derived(new Set<string>(nit?.cleared ?? []));
+  const nitHolders = $derived.by(() =>
+    nit?.on && game ? game.players.filter((p: any) => !nitCleared.has(p.id)) : []
+  );
+  const nitLoser = $derived(
+    nit?.on && game && game.players.length >= 2 && nitHolders.length === 1 ? nitHolders[0] : null
+  );
+  async function toggleNitGame() {
+    try { game = await api('POST', `/api/games/${gameId}/nit`, { on: !(game?.nitGame?.on) }); }
+    catch (err: any) { toast(err.message); }
+  }
+  async function markNitWon(pid: string) {
+    try { game = await api('POST', `/api/games/${gameId}/nit`, { playerId: pid }); }
+    catch (err: any) { toast(err.message); }
+  }
+  // Announce the loser once, for everyone (SSE keeps `game` in sync across devices).
+  let lastNitLoser = $state<string | null>(null);
+  $effect(() => {
+    if (!browser) return;
+    const id = nitLoser?.id ?? null;
+    if (id && id !== lastNitLoser) { haptic(25); toast(`🎯 ${nitLoser?.name} has lost the nit game`); }
+    lastNitLoser = id;
+  });
+
   // Account ↔ seat linkage (for claim / leave)
   const mySeat = $derived(myAccount && game ? game.players.find((p: any) => p.userId === myAccount.id) ?? null : null);
   // Which seat is "me": prefer the seat linked to my account, fall back to this
@@ -271,6 +299,10 @@
       case 'mark_unpaid': return `marked unsettled: ${d.from} → ${d.to} ${money(d.amount, unit)}`;
       case 'edit_settlement': return 'adjusted who pays who';
       case 'pay_actual': return `paid ${d.from} → ${d.to} ${money(d.amount, unit)} (recomputed the rest)`;
+      case 'nit_on': return 'turned the nit game on';
+      case 'nit_off': return 'turned the nit game off';
+      case 'nit_won': return `${d.name} won a pot (cleared their nit)`;
+      case 'nit_undo': return `undid ${d.name}'s nit clear`;
       default: return e.action;
     }
   }
@@ -1090,6 +1122,7 @@
           <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
         <div class="flex gap-1.5 shrink-0">
+          <button class="btn-small {nit?.on ? 'btn' : 'btn-ghost'}" onclick={toggleNitGame} title="Nit game — last player still holding a button (hasn't won a pot) loses">🎯{nit?.on && nitHolders.length > 1 ? ' ·' + nitHolders.length : ''}</button>
           <button class="btn-small btn-ghost" onclick={openUnitEdit} title="Change currency">💱 {unit}</button>
           <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
         </div>
@@ -1151,6 +1184,14 @@
         </div>
       {/if}
 
+      <!-- Nit game: the last player still holding a button has lost -->
+      {#if nitLoser}
+        <div class="banner banner-warn mt-2.5 flex items-center justify-between gap-2">
+          <span>🎯 <b>{nitLoser.name}</b> has lost the nit game</span>
+          <button class="btn-small btn-ghost shrink-0" onclick={toggleNitGame} title="End the nit game">End</button>
+        </div>
+      {/if}
+
       <!-- Players heading + take-a-seat / cash-out jump -->
       <div class="flex items-center justify-between mt-6 mb-3 gap-2">
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Players</h2>
@@ -1190,6 +1231,12 @@
             </button>
           </div>
           <div class="flex gap-1.5 shrink-0">
+            {#if nit?.on}
+              {@const cleared = nitCleared.has(p.id)}
+              <button class="btn-small {cleared ? 'btn-secondary opacity-60' : 'btn-ghost'} !px-2.5 min-w-[44px]"
+                      title={cleared ? `${p.name} has won a pot — tap to undo` : `Mark ${p.name} won a pot (clears their nit)`}
+                      onclick={() => markNitWon(p.id)}>{cleared ? '✓' : '🎯'}</button>
+            {/if}
             <button class="btn-small btn" onclick={() => quickBuyIn(p.id, p.name)} title="Quick {invested(p.id) > 0 ? 'top-up' : 'buy-in'} of {money(quickAmt, unit)}">+{money(quickAmt, unit)}</button>
             <button class="btn-small btn-secondary !px-2.5" onclick={() => openMoneyModal(p.id, p.name)} title="Custom amount">+{unit}</button>
             <button class="btn-small btn-ghost !px-2.5 min-w-[44px]" title={inv > 0 ? 'View & edit buy-ins' : 'No buy-ins yet'} onclick={() => { expanded.has(p.id) ? expanded.delete(p.id) : expanded.add(p.id); expanded = new Set(expanded); }}>
