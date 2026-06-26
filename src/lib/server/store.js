@@ -292,12 +292,12 @@ export function reapStaleGames() {
 }
 
 /** Hard-delete games that never became real and are now stale: created over 24
- *  hours ago and NOT a real table (one player or fewer, or no buy-ins at all) —
+ *  hours ago and NOT a real table (fewer than 2 players, or fewer than 2 buy-ins) —
  *  exactly the complement of isRealGame, the same games the stats engine refuses
  *  to count. These are abandoned setups / test tables with no settlement history
  *  worth keeping — the same "empty game is disposable" rule the DELETE route
  *  enforces by hand, applied automatically once they've aged out. A real game
- *  (2+ players AND a buy-in) is left alone; reapStaleGames just closes it.
+ *  (2+ players AND 2+ buy-ins) is left alone; reapStaleGames just closes it.
  *  @returns {number} count of games deleted */
 export function reapAbandonedGames() {
   const cutoff = Date.now() - STALE_MS;

@@ -38,8 +38,9 @@ export async function POST(event) {
 
   // A game only counts as "actually played" once there's a real table — see
   // isRealGame (shared with the stats engine and reaper): at least 2 players AND
-  // at least one buy-in. This keeps abandoned/test games (a single seat, or no
-  // money in) out of the played-game and engagement stats below.
+  // at least 2 buy-ins (you need two people to put money in to have a game). This
+  // keeps abandoned/test games (a single seat, or just one lone buy-in) out of the
+  // played-game and engagement stats below.
   // (The recent-games table still lists every game so admins can spot/clean them.)
   const played = games.filter(isRealGame);
 

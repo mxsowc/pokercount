@@ -40,7 +40,13 @@ test('reapAbandonedGames deletes an old multi-player game with no buy-ins', () =
   assert.equal(getGame(id), null);
 });
 
-test('reapAbandonedGames keeps a real old game (2+ players AND buy-ins)', () => {
+test('reapAbandonedGames deletes an old multi-player game with only one buy-in', () => {
+  const id = makeGame({ players: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], buyins: 1, ageMs: 2 * DAY });
+  reapAbandonedGames();
+  assert.equal(getGame(id), null, 'a lone single buy-in is not a real game');
+});
+
+test('reapAbandonedGames keeps a real old game (2+ players AND 2+ buy-ins)', () => {
   const id = makeGame({ players: [{ name: 'A' }, { name: 'B' }], buyins: 2, ageMs: 2 * DAY });
   reapAbandonedGames();
   assert.ok(getGame(id), 'a game with real history must survive');

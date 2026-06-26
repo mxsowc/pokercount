@@ -55,7 +55,7 @@ ESM with relative imports (no `$lib`), so it runs directly under node/Electron.
    high scoops when no qualifying low). Shared-flop/turn assembly never exceeds 5 cards.
 6. **Stats/FX** — `computeUserStats` picks the correct most-used convertible unit,
    converts others via the injected `convert`, excludes non-convertible units from
-   money totals (but lists them), and `isRealGame` (≥2 players AND ≥1 buy-in) gates
+   money totals (but lists them), and `isRealGame` (≥2 players AND ≥2 buy-ins) gates
    counting consistently with insights/reaper/admin. Leaderboard converts to EUR.
 7. **Edge cases** — empty/missing final stacks, single player, ties, negative nets,
    zero pots, malformed input. Confirm graceful handling, no NaN/Infinity leakage.

@@ -76,6 +76,31 @@ test('abandoned tables never count: single-seat or no-buy-in games are excluded'
   assert.equal(computeLeaderboard([emptyEnded], ['u', 'o']).length, 0, 'no leaderboard rows from a no-money game');
 });
 
+test('a lone single buy-in is not a real game (needs 2+ buy-ins to have played)', () => {
+  // 3 seats but only ONE buy-in ever went in — you need at least two people to put
+  // money in for a hand to play, so this never counts (stats, leaderboard, results).
+  const oneBuyIn = {
+    id: 'GY', name: 'one-buyin', status: 'ended', updatedAt: '2024-02-02',
+    players: [
+      { id: 'p0', name: 'u', userId: 'u' },
+      { id: 'p1', name: 'o', userId: 'o' },
+      { id: 'p2', name: 'q', userId: 'q' },
+    ],
+    transactions: [{ id: 't0', playerId: 'p0', amount: 20, type: 'buyin' }],
+    finalStacks: {},
+  };
+  const s = computeUserStats([oneBuyIn], 'u');
+  assert.equal(s.totalGames, 0, 'a single buy-in → not a counted game');
+  assert.equal(s.gamesPlayed, 0);
+  assert.equal(s.recent.length, 0);
+  assert.equal(userResults([oneBuyIn], 'u').length, 0);
+  assert.equal(computeLeaderboard([oneBuyIn], ['u', 'o', 'q']).length, 0);
+
+  // sanity: a second buy-in makes it a real, counted game
+  const twoBuyIns = { ...oneBuyIn, transactions: [...oneBuyIn.transactions, { id: 't1', playerId: 'p1', amount: 20, type: 'buyin' }] };
+  assert.equal(computeUserStats([twoBuyIns], 'u').totalGames, 1, 'two buy-ins → real game');
+});
+
 test('active game counts the moment YOU cash out (locked result)', () => {
   // live table: you cashed out +50, an opponent is still in
   const g = game({ u: { buyin: 100, final: 150 }, still: { buyin: 100, final: null } }, { status: 'active' });

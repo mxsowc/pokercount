@@ -17,14 +17,16 @@ import { computeSettlement } from './settle.js';
 const round2 = (/** @type {number} */ n) => Math.round(n * 100) / 100;
 
 /** The one definition of a game that counts: a real table has at least two
- *  players AND at least one buy-in. Single-seat or no-money tables are abandoned
- *  setups / tests — they never count toward anyone's stats or the leaderboard,
- *  and the reaper deletes them after 24h (the exact complement of this rule). The
- *  stats engine, insights/leaderboard, the reaper, and the admin aggregates all
- *  share this predicate so "counted" never drifts between surfaces.
+ *  players AND at least two buy-ins — you need at least two people to actually put
+ *  money in to have a game (a table with a single lone buy-in never played out).
+ *  Single-seat, no-money, or one-buy-in tables are abandoned setups / tests; they
+ *  never count toward anyone's stats or the leaderboard, and the reaper deletes
+ *  them after 24h (the exact complement of this rule). The stats engine,
+ *  insights/leaderboard, the reaper, and the admin aggregates all share this
+ *  predicate so "counted" never drifts between surfaces.
  * @param {{ players?: unknown[], transactions?: unknown[] }} g */
 export function isRealGame(g) {
-  return (g?.players?.length || 0) >= 2 && (g?.transactions?.length || 0) >= 1;
+  return (g?.players?.length || 0) >= 2 && (g?.transactions?.length || 0) >= 2;
 }
 
 /**

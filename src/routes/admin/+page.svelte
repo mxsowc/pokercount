@@ -133,7 +133,7 @@
           </div>
         {/if}
       </div>
-      <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with at least one buy-in); empty/test games are excluded. Net figures are from finished games only and combine all currencies.</p>
+      <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with 2+ buy-ins); empty/test/one-buy-in games are excluded. Net figures are from finished games only and combine all currencies.</p>
 
       {#if data.games.recentGames?.length}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent games</h2>
