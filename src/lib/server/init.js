@@ -1,5 +1,5 @@
 // One-time server initialization — called from hooks.server.ts.
-import { init as initStore, reapStaleGames } from './store.js';
+import { init as initStore, reapStaleGames, reapAbandonedGames } from './store.js';
 import { init as initUsers } from './users.js';
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
@@ -18,9 +18,12 @@ export function ensureInit() {
   const gamesLoaded = initStore();
   console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
 
-  // Auto-close games that have been active for over 24 hours.
-  reapStaleGames();
-  setInterval(reapStaleGames, 3_600_000); // every hour
+  // Housekeeping, hourly: first delete abandoned tables (≤1 player, or no
+  // buy-ins) older than 24h, then auto-close any real games still active past
+  // 24h. Order matters — reap junk before bothering to settle/close it.
+  const reap = () => { reapAbandonedGames(); reapStaleGames(); };
+  reap();
+  setInterval(reap, 3_600_000); // every hour
 
   done = true;
 }

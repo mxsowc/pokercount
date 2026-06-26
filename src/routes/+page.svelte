@@ -5,6 +5,7 @@
   import { ago } from '$lib/utils/time';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
 
   type View = 'intro' | 'open' | 'join';
   let view = $state<View>('intro');
@@ -65,7 +66,7 @@
     } catch {}
   }
 
-  onMount(() => { unitInput = detectCurrencySymbol(); loadAccountGames(); });
+  onMount(() => { unitInput = defaultUnit(); loadAccountGames(); });
 
   // Open game form
   let openName = $state('');
@@ -102,46 +103,11 @@
   }
   let generatedTitle = $state('');
 
-  // Currency: searchable, with custom entry. `unitInput` is what's used as the
-  // game's unit — pick from the list or just type your own (e.g. "BTC", "chips").
-  const CURRENCIES = [
-    { s: '€', n: 'Euro' }, { s: '$', n: 'US Dollar' }, { s: '£', n: 'British Pound' },
-    { s: 'zł', n: 'Polish Złoty' }, { s: 'CHF', n: 'Swiss Franc' }, { s: '¥', n: 'Japanese Yen / Chinese Yuan' },
-    { s: '₹', n: 'Indian Rupee' }, { s: 'kr', n: 'Scandinavian Krone/Krona' }, { s: 'C$', n: 'Canadian Dollar' },
-    { s: 'A$', n: 'Australian Dollar' }, { s: '₺', n: 'Turkish Lira' }, { s: 'R$', n: 'Brazilian Real' },
-    { s: '₽', n: 'Russian Ruble' }, { s: '₩', n: 'Korean Won' }, { s: '₪', n: 'Israeli Shekel' },
-    { s: 'Kč', n: 'Czech Koruna' }, { s: 'Ft', n: 'Hungarian Forint' }, { s: '฿', n: 'Thai Baht' },
-    { s: 'R', n: 'South African Rand' }, { s: '₿', n: 'Bitcoin' },
-    { s: 'BB', n: 'Big blinds' }, { s: 'chips', n: 'Chips (no money)' },
-  ];
+  // Currency: the game's unit. Defaults to EUR for everyone; when a signed-in host
+  // has set their country (in their account), we default to that country's
+  // currency instead. Still freely changeable in the CurrencyPicker below.
   let unitInput = $state('€');
-  // Default the currency to the visitor's region (still changeable in More options).
-  function detectCurrencySymbol(): string {
-    try {
-      const region = (navigator.language.split('-')[1] || '').toUpperCase();
-      const map: Record<string, string> = {
-        US: '$', GB: '£', CA: 'C$', AU: 'A$', NZ: '$', PL: 'zł', CH: 'CHF', JP: '¥',
-        CN: '¥', IN: '₹', BR: 'R$', RU: '₽', KR: '₩', IL: '₪', CZ: 'Kč', HU: 'Ft',
-        TH: '฿', ZA: 'R', TR: '₺', SE: 'kr', NO: 'kr', DK: 'kr',
-      };
-      return map[region] || '€';
-    } catch { return '€'; }
-  }
-  let showUnits = $state(false);
-  let unitActive = $state(-1);
-  let unitMatches = $derived.by(() => {
-    const q = unitInput.trim().toLowerCase();
-    if (!q) return CURRENCIES;
-    return CURRENCIES.filter((c) => c.s.toLowerCase().includes(q) || c.n.toLowerCase().includes(q));
-  });
-  function pickUnit(c: { s: string; n: string }) { unitInput = c.s; showUnits = false; unitActive = -1; }
-  function onUnitKey(e: KeyboardEvent) {
-    if (!showUnits || !unitMatches.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); unitActive = (unitActive + 1) % unitMatches.length; }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); unitActive = (unitActive - 1 + unitMatches.length) % unitMatches.length; }
-    else if (e.key === 'Enter' && unitActive >= 0) { e.preventDefault(); pickUnit(unitMatches[unitActive]); }
-    else if (e.key === 'Escape') { showUnits = false; }
-  }
+  function defaultUnit(): string { return user?.homeUnit || '€'; }
 
   // Join game form
   let joinCode = $state('');
@@ -343,25 +309,7 @@
 
         <!-- Currency: searchable + custom -->
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
-        <div class="relative">
-          <input class="input w-full" bind:value={unitInput} placeholder="€, $, zł, BB, chips…" autocomplete="off"
-                 oninput={() => { showUnits = true; unitActive = -1; }}
-                 onfocus={() => { showUnits = true; }}
-                 onkeydown={onUnitKey}
-                 onblur={() => setTimeout(() => showUnits = false, 150)} />
-          {#if showUnits && unitMatches.length}
-            <div class="absolute left-0 right-0 top-full mt-1 z-30 card !p-1 max-h-56 overflow-auto shadow-xl">
-              {#each unitMatches as c, i (c.s)}
-                <button type="button"
-                        class="flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-lg {i === unitActive ? 'bg-surface-2' : 'hover:bg-surface-2'} transition-colors"
-                        onmousedown={(e) => { e.preventDefault(); pickUnit(c); }}>
-                  <span class="w-9 shrink-0 font-bold tabular-nums">{c.s}</span>
-                  <span class="text-muted text-sm truncate">{c.n}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <CurrencyPicker bind:value={unitInput} />
         <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be “big blinds”, “chips”, anything.</p>
 
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Series (optional)</label>

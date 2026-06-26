@@ -119,8 +119,13 @@ export interface User {
   oauthAvatar?: string | null;
   /** Who can see this profile/stats: 'public' | 'members' | 'private'. Defaults 'public'. */
   privacy?: string;
+  /** How the account was originally created: 'local' (handle + PIN) | 'google' | 'apple'. */
   provider: string;
   providerSub: string | null;
+  /** OAuth identities linked AFTER signup, in addition to the primary one above.
+   *  Lets a PIN user add Google/Apple (and vice-versa) as extra ways to sign in.
+   *  Each is also indexed so signing in with it resolves to this same account. */
+  linkedProviders?: Array<{ provider: string; sub: string; linkedAt: string }>;
   pinHash: string | null;
   needsHandle?: boolean;
   /** Stored privately (never in PublicUser); used for account contact + opt-in newsletter. */

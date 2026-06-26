@@ -59,3 +59,17 @@ export function addComment(gameId, playerId, userId, text) {
 export function getComments(gameId, playerId) {
   return comments.get(keyOf(gameId, playerId)) || [];
 }
+
+/** Remove every comment a (deleted) account authored, across all results.
+ *  @param {string} userId @returns {boolean} whether anything changed */
+export function removeUser(userId) {
+  let changed = false;
+  for (const [k, arr] of comments) {
+    const kept = arr.filter((c) => c.userId !== userId);
+    if (kept.length === arr.length) continue;
+    if (kept.length) comments.set(k, kept); else comments.delete(k);
+    changed = true;
+  }
+  if (changed) persist();
+  return changed;
+}

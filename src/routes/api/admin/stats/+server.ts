@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { allUsers } from '$lib/server/users.js';
 import { allGames } from '$lib/server/store.js';
 import { userResults } from '$lib/server/insights.js';
+import { isRealGame } from '$lib/engine/stats.js';
 import { rateLimit, clientIp } from '$lib/server/ratelimit.js';
 
 // Gate: a single shared password from the env. No ADMIN_PASSWORD set = locked.
@@ -35,11 +36,11 @@ export async function POST(event) {
   const nowMs = Date.now();
   const DAY = 86_400_000;
 
-  // A game only counts as "actually played" once there's a real table: at least
-  // 2 players AND at least one buy-in. This keeps abandoned/test games (a single
-  // seat, or no money in) out of the played-game and engagement stats below.
+  // A game only counts as "actually played" once there's a real table — see
+  // isRealGame (shared with the stats engine and reaper): at least 2 players AND
+  // at least one buy-in. This keeps abandoned/test games (a single seat, or no
+  // money in) out of the played-game and engagement stats below.
   // (The recent-games table still lists every game so admins can spot/clean them.)
-  const isRealGame = (g: any) => (g.players?.length || 0) >= 2 && (g.transactions?.length || 0) >= 1;
   const played = games.filter(isRealGame);
 
   const providers: Record<string, number> = {};
@@ -60,10 +61,12 @@ export async function POST(event) {
   const gameStatus: Record<string, number> = {};
   let totalSeats = 0;
   let totalBuyIns = 0;
+  let totalBuyInAmount = 0;
   for (const g of played) {
     gameStatus[g.status] = (gameStatus[g.status] || 0) + 1;
     totalSeats += (g.players?.length || 0);
     totalBuyIns += (g.transactions?.length || 0);
+    for (const t of (g.transactions || [])) totalBuyInAmount += (t.amount || 0);
   }
   const finishedGames = (gameStatus.ended || 0) + (gameStatus.settled || 0);
 
@@ -148,6 +151,9 @@ export async function POST(event) {
       byStatus: gameStatus,
       avgPlayers: played.length ? round1(totalSeats / played.length) : 0,
       buyIns: totalBuyIns,
+      // Average money a person puts on the table (buy-ins + top-ups) per seat,
+      // across all played games. Combines currencies, like the net figures.
+      avgBuyInPerPlayer: totalSeats ? round1(totalBuyInAmount / totalSeats) : 0,
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
     },

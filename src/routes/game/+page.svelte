@@ -8,11 +8,13 @@
   import { haptic, celebrate } from '$lib/utils/fx';
   import { computeSettlement } from '$lib/engine/settle.js';
   import QrCode from '$lib/components/QrCode.svelte';
+  import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
 
   // ---- state ----------------------------------------------------------------
   let game = $state<any>(null);
   let myAccount = $state<any>(null);
+  let myStreak = $state<{ current: number; kind: 'win' | 'loss' | 'none' } | null>(null); // signed-in user's run, for the share message
   let showActivity = $state(false);
   let seriesData = $state<any>(null);
   let showShareBanner = $state(false);
@@ -131,6 +133,22 @@
     if (!myAccount) return null;
     const dn = (myAccount.displayName || '').trim().toLowerCase();
     return unclaimedSeats.find((p: any) => p.name.trim().toLowerCase() === dn) ?? null;
+  });
+
+  // Once the game is done, pull the signed-in user's current win/loss streak (it
+  // already includes this game) so the share message can flag a hot/cold run.
+  // Streaks only exist for signed-in users; fetched once per finished game.
+  let streakFetchedFor: string | null = null; // plain (non-reactive) guard
+  $effect(() => {
+    if (!browser) return;
+    const finished = !!game && game.status !== 'active';
+    const handle = myAccount?.handle;
+    const gid = game?.id;
+    if (!finished || !handle || !gid || streakFetchedFor === gid) return;
+    streakFetchedFor = gid;
+    api('GET', `/api/users/${encodeURIComponent(handle)}/stats`)
+      .then((r: any) => { myStreak = r?.stats?.streak ?? null; })
+      .catch(() => { streakFetchedFor = null; });
   });
   const totalIn = $derived(game ? game.transactions.reduce((s: number, t: any) => s + Math.round(t.amount * 100), 0) / 100 : 0);
   const totalCashedOut = $derived(game ? Object.values(game.finalStacks as Record<string, number>).reduce((s: number, v: number) => v != null ? s + Math.round(v * 100) : s, 0) / 100 : 0);
@@ -735,6 +753,16 @@
       .catch(() => toast('Could not copy'));
   }
 
+  // A "🔥 3W streak" / "❄️ 3L streak" tag for the signed-in user when they're on a
+  // run of 3+ (running hot or cold). Empty otherwise. Only signed-in users have a streak.
+  function myStreakTag(): string {
+    const s = myStreak;
+    if (!s || (s.current ?? 0) < 3) return '';
+    if (s.kind === 'win') return ` (🔥 ${s.current}W streak)`;
+    if (s.kind === 'loss') return ` (❄️ ${s.current}L streak)`;
+    return '';
+  }
+
   function shareResult() {
     if (!game?.settlement?.lines) return;
     const lines = game.settlement.lines.slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0));
@@ -743,7 +771,8 @@
     lines.forEach((l: any, i: number) => {
       const medal = i < 3 ? medals[i] + ' ' : '   ';
       const sign = l.net >= 0 ? '+' : '';
-      text += `${medal}${l.name}: ${sign}${money(l.net, unit)}\n`;
+      const tag = mySeat && l.playerId === mySeat.id ? myStreakTag() : '';
+      text += `${medal}${l.name}: ${sign}${money(l.net, unit)}${tag}\n`;
     });
     const transfers = (game.settlement.transfers || [])
       .filter((t: any) => !t.paid)
@@ -754,6 +783,9 @@
         text += `${t.fromName} → ${t.toName}: ${money(t.amount, unit)}\n`;
       }
     }
+    // Growth nudge for the group chat — the message is read mostly by people
+    // without an account, so always invite them to save their own history.
+    text += `\n🔒 Lock in your results — free account in 10s:`;
     text += `\npotcount.com/game?g=${gameId}`;
     const url = `${location.origin}/game?g=${gameId}`;
     if (navigator.share) {
@@ -775,6 +807,26 @@
         toast(err.message);
       }
     }
+  }
+
+  // Change the game's currency mid-session. This relabels the unit only — amounts
+  // already entered keep their numbers (no FX conversion), which is what you want
+  // when you simply picked the wrong symbol at the start.
+  let unitEditOpen = $state(false);
+  let unitDraft = $state('');
+  let savingUnit = $state(false);
+  function openUnitEdit() { unitDraft = unit; unitEditOpen = true; }
+  async function saveUnit() {
+    const next = unitDraft.trim();
+    if (!next || next === unit) { unitEditOpen = false; return; }
+    savingUnit = true;
+    try {
+      game = await api('PUT', `/api/games/${gameId}/meta`, { unit: next });
+      unitEditOpen = false;
+      toast(`Currency changed to ${next}`);
+    } catch (err: any) {
+      toast(err.message);
+    } finally { savingUnit = false; }
   }
 
   // Inline-rename a seat (e.g. the auto-generated "Player 2" → a real name).
@@ -1036,8 +1088,27 @@
           <h1 class="text-2xl font-bold cursor-text border-b border-dashed border-transparent hover:border-border focus:border-accent focus:outline-none" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
           <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
-        <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
+        <div class="flex gap-1.5 shrink-0">
+          <button class="btn-small btn-ghost" onclick={openUnitEdit} title="Change currency">💱 {unit}</button>
+          <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
+        </div>
       </div>
+
+      <!-- Change-currency popover -->
+      {#if unitEditOpen}
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+             onclick={(e) => { if (e.target === e.currentTarget) unitEditOpen = false; }}>
+          <div class="card max-w-xs w-full" onclick={(e) => e.stopPropagation()}>
+            <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Change currency</h3>
+            <p class="text-muted text-xs mb-3">This relabels the unit — amounts already entered keep their numbers (no conversion).</p>
+            <CurrencyPicker bind:value={unitDraft} />
+            <div class="flex gap-2 mt-3">
+              <button class="btn flex-1" disabled={savingUnit || !unitDraft.trim()} onclick={saveUnit}>{savingUnit ? 'Saving…' : 'Save'}</button>
+              <button class="btn-small btn-secondary" disabled={savingUnit} onclick={() => unitEditOpen = false}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <!-- Share banner -->
       {#if showShareBanner}

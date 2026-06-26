@@ -59,3 +59,17 @@ export function reactionSummary(gameId, playerId, viewerId) {
   for (const e of Object.values(m)) counts[e] = (counts[e] || 0) + 1;
   return { counts, mine: viewerId ? (m[viewerId] || null) : null };
 }
+
+/** Remove every reaction a (deleted) account left, across all results.
+ *  @param {string} userId @returns {boolean} whether anything changed */
+export function removeUser(userId) {
+  let changed = false;
+  for (const [k, m] of reactions) {
+    if (m[userId] === undefined) continue;
+    delete m[userId];
+    if (Object.keys(m).length === 0) reactions.delete(k);
+    changed = true;
+  }
+  if (changed) persist();
+  return changed;
+}

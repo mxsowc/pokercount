@@ -4,6 +4,8 @@
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
   import Sparkline from '$lib/components/Sparkline.svelte';
+  import CountryPicker from '$lib/components/CountryPicker.svelte';
+  import { countryName } from '$lib/utils/currencies.js';
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
 
@@ -66,7 +68,9 @@
   let selectMode = $state(false);
   const selectedStats = $derived.by(() => {
     if (!stats?.recent || selectedGames.size === 0) return null;
-    const picked = stats.recent.filter((r: any) => selectedGames.has(r.id) && r.net != null);
+    // Only sum games already in the display currency — non-convertible games
+    // (chips / big blinds / Bitcoin) keep their own unit and can't be totalled.
+    const picked = stats.recent.filter((r: any) => selectedGames.has(r.id) && r.net != null && r.unit === stats.unit);
     if (!picked.length) return null;
     const totalC = picked.reduce((s: number, r: any) => s + Math.round(r.net * 100), 0);
     const profitable = picked.filter((r: any) => r.net > 0).length;
@@ -228,6 +232,136 @@
 
   $effect(() => { if (user) loadStats(); });
 
+  // ---- account: email + linked sign-in methods + deletion -------------------
+  // Private self-only details (email, PIN/provider state) from GET /api/me — the
+  // page's `user` from $page.data is the public view and omits these.
+  let account = $state<any>(null);
+  let emailInput = $state('');
+  let savingEmail = $state(false);
+  const connected = $derived(account ? new Set<string>([account.primaryProvider, ...(account.linkedProviders || [])]) : new Set<string>());
+  const canDisconnect = (p: string) => !!account?.linkedProviders?.includes(p);
+
+  async function loadAccount() {
+    if (!user) { account = null; return; }
+    try {
+      const res = await fetch('/api/me');
+      const data = await res.json();
+      if (data?.user) { account = data; emailInput = data.email || ''; }
+    } catch {}
+  }
+  $effect(() => { if (user) loadAccount(); else account = null; });
+
+  async function saveEmail() {
+    savingEmail = true;
+    try {
+      const res = await fetch('/api/me', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not save email'); return; }
+      account = data; emailInput = data.email || '';
+      await invalidateAll();
+      toast(account.email ? 'Email saved' : 'Email removed');
+    } catch (e: any) { toast(e.message); }
+    finally { savingEmail = false; }
+  }
+
+  async function linkGoogle(credential: string) {
+    try {
+      const res = await fetch('/api/me/link/google', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not link Google'); return; }
+      await Promise.all([invalidateAll(), loadAccount()]);
+      toast('Google linked');
+    } catch (e: any) { toast(e.message); }
+  }
+
+  async function doAppleLink() {
+    if (appleBusy || !appleInited) return;
+    appleBusy = true;
+    try {
+      const AppleID = (window as any).AppleID;
+      const resp = await AppleID.auth.signIn();
+      const idToken = resp?.authorization?.id_token;
+      const res = await fetch('/api/me/link/apple', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not link Apple'); return; }
+      await Promise.all([invalidateAll(), loadAccount()]);
+      toast('Apple linked');
+    } catch (err: any) {
+      if (err?.error !== 'popup_closed_by_user') toast('Apple linking failed');
+    } finally { appleBusy = false; }
+  }
+
+  async function unlink(provider: 'google' | 'apple') {
+    const label = provider === 'apple' ? 'Apple' : 'Google';
+    if (!confirm(`Disconnect ${label} from your account? You'll still be able to sign in your original way.`)) return;
+    try {
+      const res = await fetch('/api/me/unlink', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not disconnect'); return; }
+      await Promise.all([invalidateAll(), loadAccount()]);
+      toast(`${label} disconnected`);
+    } catch (e: any) { toast(e.message); }
+  }
+
+  // Render Google's official button into the signed-in "link" slot (separate from
+  // the signed-out sign-in slot). The single global onGoogle callback branches on
+  // whether we're signed in, so the same init serves both.
+  async function renderGoogleLink() {
+    if (!config.googleClientId) return;
+    try {
+      await loadScript('https://accounts.google.com/gsi/client?hl=en');
+      const google = (window as any).google;
+      if (!googleInited) { google.accounts.id.initialize({ client_id: config.googleClientId, callback: onGoogle }); googleInited = true; }
+      const el = document.getElementById('google-link-btn');
+      if (el && !el.childElementCount) {
+        google.accounts.id.renderButton(el, { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'continue_with', width: 200, locale: 'en' });
+      }
+    } catch { /* button just won't appear */ }
+  }
+
+  // When signed in, prepare the OAuth widgets for any provider not yet connected.
+  $effect(() => {
+    if (!browser || !user || !account) return;
+    if (config.googleClientId && !connected.has('google')) renderGoogleLink();
+    if (config.appleClientId && !connected.has('apple')) initApple();
+  });
+
+  // ---- danger zone: delete account ------------------------------------------
+  let dangerOpen = $state(false);
+  let delConfirm = $state('');
+  let delPin = $state('');
+  let deleting = $state(false);
+  const delReady = $derived(
+    !!user &&
+    delConfirm.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') === user.handle &&
+    (!account?.hasPin || delPin.length >= 4)
+  );
+  async function deleteAccount() {
+    if (!delReady || deleting) return;
+    deleting = true;
+    try {
+      const res = await fetch('/api/me/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: delConfirm.trim(), pin: delPin }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not delete account'); return; }
+      await invalidateAll();
+      toast('Your account has been deleted');
+      await goto('/');
+    } catch (e: any) { toast(e.message); }
+    finally { deleting = false; }
+  }
+
   // ---- Social sign-in (Google / Apple) --------------------------------------
   function loadScript(src: string) {
     return new Promise<void>((resolve, reject) => {
@@ -241,6 +375,9 @@
   }
 
   async function onGoogle(resp: any) {
+    // Same Google button serves two purposes: when already signed in it LINKS the
+    // Google identity to this account; otherwise it signs in / signs up.
+    if (user) { await linkGoogle(resp.credential); return; }
     try {
       const res = await fetch('/api/auth/google', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -328,7 +465,7 @@
 
   // ---- one-time onboarding questions ----------------------------------------
   let obAge = $state('');
-  let obCountry = $state('');
+  let obCountry = $state(''); // ISO-2 country code from the picker
   let obHeard = $state('');
   let obSaving = $state(false);
 
@@ -343,6 +480,25 @@
       if (!skip) toast('Thanks!');
     } catch (e: any) { toast(e.message); }
     finally { obSaving = false; }
+  }
+
+  // ---- region (sets the default currency for games you open) ----------------
+  let editRegion = $state(false);
+  let regionCode = $state('');
+  let savingRegion = $state(false);
+  $effect(() => { if (user) regionCode = user.country || ''; });
+  async function saveRegion() {
+    savingRegion = true;
+    try {
+      await fetch('/api/me/onboarding', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country: regionCode }),
+      });
+      await invalidateAll();
+      editRegion = false;
+      toast('Region updated');
+    } catch (e: any) { toast(e.message); }
+    finally { savingRegion = false; }
   }
 </script>
 
@@ -407,6 +563,67 @@
         {/if}
       </div>
 
+      <!-- Region: sets the default currency for games you open -->
+      <div class="mt-4 pt-4 border-t border-border-soft">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs text-muted font-medium">Region · sets your default game currency ({user.homeUnit || '€'})</div>
+            <div class="font-semibold">{user.country ? countryName(user.country) : 'Not set — defaults to €'}</div>
+          </div>
+          <button class="btn-small btn-ghost shrink-0" onclick={() => { editRegion = !editRegion; regionCode = user.country || ''; }}>
+            {editRegion ? 'Done' : 'Change'}
+          </button>
+        </div>
+        {#if editRegion}
+          <div class="flex gap-2 mt-3">
+            <div class="flex-1"><CountryPicker bind:value={regionCode} /></div>
+            <button class="btn-small btn" disabled={savingRegion} onclick={saveRegion}>Save</button>
+          </div>
+        {/if}
+      </div>
+
+      {#if account}
+        <!-- Email: optional, unverified contact + newsletter enablement -->
+        <div class="mt-4 pt-4 border-t border-border-soft">
+          <label class="block text-xs text-muted font-medium mb-1" for="acct-email">Email <span class="text-faint font-normal">· optional</span></label>
+          <div class="flex gap-2">
+            <input id="acct-email" class="input flex-1" type="email" bind:value={emailInput} placeholder="you@example.com"
+                   autocapitalize="none" autocomplete="email"
+                   onkeydown={(e) => { if (e.key === 'Enter') saveEmail(); }} />
+            <button class="btn-small btn" disabled={savingEmail || emailInput.trim() === (account.email || '')} onclick={saveEmail}>Save</button>
+          </div>
+          <p class="text-muted text-xs mt-1">A way to reach you and to hold onto your stats if you forget your passcode. We don't verify it — for a guaranteed recovery login, connect Google or Apple below.</p>
+        </div>
+
+        <!-- Linked sign-in methods -->
+        {#if config.googleClientId || config.appleClientId}
+          <div class="mt-4 pt-4 border-t border-border-soft">
+            <div class="text-xs text-muted font-medium mb-2">Ways to sign in</div>
+            <div class="flex flex-col gap-2.5">
+              {#if config.googleClientId}
+                <div class="flex items-center justify-between gap-2 min-h-9">
+                  <span class="text-sm font-semibold">Google{#if connected.has('google')}<span class="text-faint font-normal"> · connected{account.primaryProvider === 'google' ? ' (primary)' : ''}</span>{/if}</span>
+                  {#if connected.has('google')}
+                    {#if canDisconnect('google')}<button class="btn-small btn-ghost shrink-0" onclick={() => unlink('google')}>Disconnect</button>{/if}
+                  {:else}
+                    <div id="google-link-btn" class="shrink-0"></div>
+                  {/if}
+                </div>
+              {/if}
+              {#if config.appleClientId}
+                <div class="flex items-center justify-between gap-2 min-h-9">
+                  <span class="text-sm font-semibold">Apple{#if connected.has('apple')}<span class="text-faint font-normal"> · connected{account.primaryProvider === 'apple' ? ' (primary)' : ''}</span>{/if}</span>
+                  {#if connected.has('apple')}
+                    {#if canDisconnect('apple')}<button class="btn-small btn-ghost shrink-0" onclick={() => unlink('apple')}>Disconnect</button>{/if}
+                  {:else}
+                    <button class="btn-small btn-secondary shrink-0" onclick={doAppleLink} disabled={appleBusy || !appleReady}>{appleBusy ? 'Connecting…' : 'Connect'}</button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      {/if}
 
       <p class="mt-4"><a href="/u/{user.handle}">View your public profile →</a></p>
     </div>
@@ -426,7 +643,8 @@
           <option value="55+">55+</option>
         </select>
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Where are you from?</label>
-        <input class="input" bind:value={obCountry} placeholder="e.g. Poland" maxlength="60" autocapitalize="words" />
+        <CountryPicker bind:value={obCountry} />
+        <p class="text-xs text-faint mt-1">We'll use this to default the currency when you open a game.</p>
         <label class="block text-xs text-muted font-medium mb-1 mt-3">How did you hear about potcount?</label>
         <select class="input" bind:value={obHeard}>
           <option value="">Prefer not to say</option>
@@ -443,14 +661,20 @@
     {/if}
 
     {#if stats}
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Your stats</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">
+        Your stats
+        {#if stats.gamesPlayed}<span class="normal-case tracking-normal text-faint font-normal">· in {stats.unit}</span>{/if}
+      </h2>
+      {#if stats.otherGames > 0}
+        <p class="text-xs text-faint mb-3">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included in the totals.</p>
+      {/if}
       <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
+          <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit, stats.unit)}</div>
           <div class="text-muted text-xs mt-1">total profit</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
           <div class="text-muted text-xs mt-1">avg / game</div>
         </div>
         <div class="card text-center !mb-0">
@@ -458,11 +682,11 @@
           <div class="text-muted text-xs mt-1">% profitable</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.best?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {(stats.best?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net, stats.unit) : '—'}</div>
           <div class="text-muted text-xs mt-1">best night</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.worst?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net) : '—'}</div>
+          <div class="text-xl font-extrabold tabular-nums {(stats.worst?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
           <div class="text-muted text-xs mt-1">worst night</div>
         </div>
         <div class="card text-center !mb-0">
@@ -477,7 +701,7 @@
         </div>
         {#if stats.hourly}
           <div class="card text-center !mb-0">
-            <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate)}<span class="text-sm text-muted">/h</span></div>
+            <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
             <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g</div>
           </div>
         {/if}
@@ -487,7 +711,7 @@
         <div class="card mt-3 text-win">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
-            <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit)}</span>
+            <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
           </div>
           <Sparkline points={stats.curve.map((p: any) => p.cum)} />
         </div>
@@ -523,11 +747,11 @@
             <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
             <div class="grid grid-cols-3 gap-2">
               <div class="text-center">
-                <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total)}</div>
+                <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total, stats.unit)}</div>
                 <div class="text-muted text-[.65rem]">total</div>
               </div>
               <div class="text-center">
-                <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg)}</div>
+                <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg, stats.unit)}</div>
                 <div class="text-muted text-[.65rem]">avg / game</div>
               </div>
               <div class="text-center">
@@ -547,7 +771,7 @@
               <span class="font-semibold truncate">{r.name}</span>
               <span class="text-muted text-sm shrink-0">#{r.id}</span>
               {#if r.net != null}
-                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
               {:else}
                 <span class="pill ml-auto shrink-0">in progress</span>
               {/if}
@@ -557,7 +781,7 @@
               <span class="font-semibold truncate">{r.name}</span>
               <span class="text-muted text-sm shrink-0">#{r.id}</span>
               {#if r.net != null}
-                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+                <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
               {:else}
                 <span class="pill ml-auto shrink-0">in progress</span>
               {/if}
@@ -566,6 +790,33 @@
         {/each}
       {/if}
     {/if}
+
+    <!-- Danger zone: delete account (kept low-key + behind a reveal so it isn't hit by accident) -->
+    <div class="card mt-6 !border-danger/30">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-danger">Delete account</div>
+          <div class="text-muted text-xs">Erases your profile, stats, email and follows. Games you played stay for everyone else — they just stop linking back to you.</div>
+        </div>
+        <button class="btn-small btn-ghost shrink-0" onclick={() => { dangerOpen = !dangerOpen; delConfirm = ''; delPin = ''; }}>
+          {dangerOpen ? 'Cancel' : 'Delete…'}
+        </button>
+      </div>
+      {#if dangerOpen}
+        <div class="mt-3 pt-3 border-t border-border-soft">
+          <p class="text-xs text-muted mb-2">
+            This can't be undone. To confirm, type your username <span class="font-semibold text-text">{user.handle}</span>{#if account?.hasPin} and your passcode{/if}.
+          </p>
+          <input class="input" bind:value={delConfirm} placeholder="your username" autocapitalize="none" autocomplete="off" spellcheck="false" />
+          {#if account?.hasPin}
+            <input class="input mt-2" type="password" bind:value={delPin} placeholder="your passcode" autocomplete="off" />
+          {/if}
+          <button class="btn-small btn-danger w-full mt-3" disabled={!delReady || deleting} onclick={deleteAccount}>
+            {deleting ? 'Deleting…' : 'Permanently delete my account'}
+          </button>
+        </div>
+      {/if}
+    </div>
 
   {:else}
     <!-- Not logged in -->
@@ -620,6 +871,12 @@
     <p class="text-muted text-xs text-center mt-1">An account just lets you follow your stats over time.</p>
     <p class="text-muted text-xs text-center mt-1">By creating an account you agree to our <a href="/privacy">privacy policy</a>.</p>
   {/if}
+
+  <!-- Help / contact — always shown (signed in or not) -->
+  <p class="text-muted text-xs text-center mt-8">
+    Found a bug or have a question?
+    <a href="mailto:info@fatcloud.nl?subject=potcount%20%E2%80%94%20bug%20%2F%20question">info@fatcloud.nl</a>
+  </p>
 </div>
 
 <!-- Avatar crop / position modal -->

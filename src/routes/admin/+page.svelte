@@ -115,6 +115,10 @@
           <div class="text-muted text-xs mt-1">buy-in events</div>
         </div>
         <div class="card text-center !mb-0">
+          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.avgBuyInPerPlayer ?? 0}</div>
+          <div class="text-muted text-xs mt-1">avg buy-in / person</div>
+        </div>
+        <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayer >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{data.engagement.avgNetPerPlayer}</div>
           <div class="text-muted text-xs mt-1">avg net / player</div>
         </div>

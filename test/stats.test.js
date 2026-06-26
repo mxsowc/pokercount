@@ -42,13 +42,38 @@ test('empty / no games', () => {
   assert.equal(s.worst, null);
 });
 
-test('active game with no cash-out yet: counts as a game but no result', () => {
-  const games = [game({ u: { buyin: 20, final: null } }, { status: 'active' })];
+test('active real game with no cash-out yet: counts as a game but no result', () => {
+  // a real table (2 seats, buy-ins in) that is still running — no one cashed out
+  const games = [game({ u: { buyin: 20, final: null }, opp: { buyin: 20, final: null } }, { status: 'active' })];
   const s = computeUserStats(games, 'u');
   assert.equal(s.totalGames, 1);
   assert.equal(s.gamesPlayed, 0, 'still in → no locked result');
   assert.equal(s.avgProfit, 0);
   assert.equal(s.recent[0].net, null, 'shows in-progress (null net)');
+});
+
+test('abandoned tables never count: single-seat or no-buy-in games are excluded', () => {
+  // A single seat is not a real game — even with a buy-in (settlement would be
+  // meaningless against no opponent). Excluded entirely, even when "finished".
+  const solo = computeUserStats([game({ u: { buyin: 20, final: 20 } })], 'u');
+  assert.equal(solo.totalGames, 0, 'one seat → not a counted game');
+  assert.equal(solo.gamesPlayed, 0);
+  assert.equal(solo.recent.length, 0);
+
+  // 2+ seats but ZERO buy-ins — e.g. an empty table the reaper auto-closed before
+  // the abandoned-game delete ran, or any close path. No money ever moved, so it
+  // must not pollute games-played, win-rate, streaks, or the leaderboard.
+  const emptyEnded = {
+    id: 'GX', name: 'empty', status: 'ended', updatedAt: '2024-02-01',
+    players: [{ id: 'p0', name: 'u', userId: 'u' }, { id: 'p1', name: 'o', userId: 'o' }],
+    transactions: [], finalStacks: {},
+  };
+  const s = computeUserStats([emptyEnded], 'u');
+  assert.equal(s.totalGames, 0, 'no buy-ins → not a played game');
+  assert.equal(s.gamesPlayed, 0);
+  assert.equal(s.recent.length, 0);
+  assert.equal(userResults([emptyEnded], 'u').length, 0, 'no result for a no-money game');
+  assert.equal(computeLeaderboard([emptyEnded], ['u', 'o']).length, 0, 'no leaderboard rows from a no-money game');
 });
 
 test('active game counts the moment YOU cash out (locked result)', () => {

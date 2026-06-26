@@ -54,6 +54,8 @@ function index(u) {
   byId.set(u.id, u);
   handleIndex.set(u.handle.toLowerCase(), u.id);
   if (u.provider && u.providerSub) providerIndex.set(`${u.provider}:${u.providerSub}`, u.id);
+  // Linked OAuth identities resolve to this same account on sign-in, too.
+  for (const lp of u.linkedProviders || []) providerIndex.set(`${lp.provider}:${lp.sub}`, u.id);
 }
 
 /** @param {string | null | undefined} id @returns {User | null} */
@@ -256,10 +258,24 @@ const MAX_AVATAR_BYTES = 200 * 1024; // cap inline data-URL avatars to keep user
 // (normalized, unique) handle. `avatar` is a data:image/* URL (custom upload) or
 // null/'' to reset to their OAuth photo. `privacy` is one of PRIVACY_LEVELS.
 // Each field is optional — only provided ones change. Editable any time.
-/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean }} input @returns {User} */
-export function updateProfile(userId, { name, avatar, privacy, newsletter } = {}) {
+/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean, email?: string|null }} input @returns {User} */
+export function updateProfile(userId, { name, avatar, privacy, newsletter, email } = {}) {
   const u = byId.get(userId);
   if (!u) fail('not signed in', 401);
+
+  if (email !== undefined) {
+    // Optional, UNVERIFIED contact email — a PIN user can add one so the account
+    // isn't tied to a single forgettable passcode (Google/Apple linking is the
+    // verified path). Empty clears it (and any newsletter opt-in, which needs one).
+    if (email === null || String(email).trim() === '') {
+      u.email = null;
+      u.newsletter = false;
+    } else {
+      const mail = cleanEmail(email);
+      if (!mail) fail("that doesn't look like an email address", 400);
+      u.email = mail;
+    }
+  }
 
   if (name !== undefined) {
     const h = normalizeHandle(name);
@@ -293,9 +309,104 @@ export function updateProfile(userId, { name, avatar, privacy, newsletter } = {}
   }
 
   if (newsletter !== undefined) {
-    u.newsletter = !!newsletter; // marketing opt-in, toggleable any time
+    u.newsletter = !!newsletter && !!u.email; // opt-in only counts with an email on file
   }
 
   persist();
   return u;
+}
+
+// ---- account linking & deletion ---------------------------------------------
+
+/** The OAuth providers this account can currently sign in with (its original
+ *  provider, if not a local PIN account, plus any later-linked ones).
+ *  @param {User} u @returns {string[]} */
+export function connectedProviders(u) {
+  const set = new Set();
+  if (u.provider && u.provider !== 'local') set.add(u.provider);
+  for (const lp of u.linkedProviders || []) set.add(lp.provider);
+  return [...set];
+}
+
+/** Attach a verified OAuth identity (Google/Apple) to an EXISTING account, as an
+ *  additional way to sign in — never destructive: the original login (PIN and/or
+ *  the primary provider) keeps working. Adopts the provider's email/photo only to
+ *  fill gaps. Throws 409 if that identity already belongs to a different account.
+ *  @param {string} userId
+ *  @param {{ provider: string, sub: string, email?: string|null, avatar?: string|null }} input
+ *  @returns {User} */
+export function linkProvider(userId, { provider, sub, email, avatar }) {
+  const u = byId.get(userId);
+  if (!u) fail('not signed in', 401);
+  if (!provider || !sub) fail('missing provider identity', 400);
+  const key = `${provider}:${sub}`;
+  const owner = providerIndex.get(key);
+  if (owner && owner !== userId) {
+    fail(`That ${provider === 'apple' ? 'Apple' : 'Google'} account is already linked to another profile`, 409);
+  }
+  const isPrimary = u.provider === provider && u.providerSub === sub;
+  const already = isPrimary || (u.linkedProviders || []).some((lp) => lp.provider === provider && lp.sub === sub);
+  if (!already) {
+    if (!u.linkedProviders) u.linkedProviders = [];
+    u.linkedProviders.push({ provider, sub, linkedAt: now() });
+    providerIndex.set(key, userId);
+  }
+  // Fill in a verified email if the account had none (gives PIN users a contact).
+  const mail = cleanEmail(email);
+  if (mail && !u.email) u.email = mail;
+  // Adopt the provider photo only if the user has no avatar of their own.
+  if (avatar && !u.avatar && !u.avatarCustom) { u.avatar = avatar; u.oauthAvatar = avatar; }
+  persist();
+  console.log(`[user] linked ${provider} to @${u.handle}`);
+  return u;
+}
+
+/** Disconnect a LATER-linked OAuth provider. Only touches linkedProviders, so an
+ *  account's original sign-in method can never be removed (no lock-out). No-op
+ *  error if that provider wasn't a linked extra. @param {string} userId
+ *  @param {string} provider @returns {User} */
+export function unlinkProvider(userId, provider) {
+  const u = byId.get(userId);
+  if (!u) fail('not signed in', 401);
+  const list = u.linkedProviders || [];
+  const keep = list.filter((lp) => lp.provider !== provider);
+  if (keep.length === list.length) fail('that account is not linked', 404);
+  for (const lp of list) {
+    if (lp.provider !== provider) continue;
+    const key = `${lp.provider}:${lp.sub}`;
+    // Don't drop the index if the primary identity still uses this exact key.
+    const stillPrimary = u.provider === lp.provider && u.providerSub === lp.sub;
+    if (!stillPrimary && providerIndex.get(key) === userId) providerIndex.delete(key);
+  }
+  if (keep.length) u.linkedProviders = keep; else delete u.linkedProviders;
+  persist();
+  return u;
+}
+
+/** Verify a local account's PIN (for re-confirming a sensitive action like
+ *  deletion). False for OAuth-only accounts with no PIN. @param {string} userId
+ *  @param {string} [pin] @returns {boolean} */
+export function verifyPin(userId, pin) {
+  const u = byId.get(userId);
+  return !!u && checkPin(pin, u.pinHash);
+}
+
+/** Permanently remove an account: drop it from memory and every index, then
+ *  persist. The caller is responsible for scrubbing the user's id out of games
+ *  (unlink seats), follows, comments and reactions FIRST — this only deletes the
+ *  account record itself. @param {string} userId @returns {boolean} */
+export function deleteUser(userId) {
+  const u = byId.get(userId);
+  if (!u) return false;
+  byId.delete(userId);
+  if (handleIndex.get(u.handle.toLowerCase()) === userId) handleIndex.delete(u.handle.toLowerCase());
+  if (u.provider && u.providerSub && providerIndex.get(`${u.provider}:${u.providerSub}`) === userId) {
+    providerIndex.delete(`${u.provider}:${u.providerSub}`);
+  }
+  for (const lp of u.linkedProviders || []) {
+    if (providerIndex.get(`${lp.provider}:${lp.sub}`) === userId) providerIndex.delete(`${lp.provider}:${lp.sub}`);
+  }
+  persist();
+  console.log(`[user] deleted account @${u.handle} — ${byId.size} total`);
+  return true;
 }

@@ -2,21 +2,34 @@ import { json } from '@sveltejs/kit';
 import { sessionUser } from '$lib/server/helpers.js';
 import { publicUser, updateProfile } from '$lib/server/users.js';
 
+// Private self-view: publicUser plus the fields only YOU should see (email +
+// account-linking state), so the account page can show/toggle them. Never use
+// this for anyone else's profile.
+function meView(u: any) {
+  return {
+    user: publicUser(u),
+    newsletter: !!u.newsletter,
+    hasEmail: !!u.email,
+    email: u.email || null,
+    hasPin: !!u.pinHash,
+    primaryProvider: u.provider,                                   // 'local' | 'google' | 'apple'
+    linkedProviders: (u.linkedProviders || []).map((lp: any) => lp.provider), // extras you can disconnect
+  };
+}
+
 export function GET({ request }) {
   const su = sessionUser(request);
   if (!su) return json({ user: null });
-  // newsletter/hasEmail are private (not in publicUser), returned only for yourself
-  // so the account page can show & toggle the preference.
-  return json({ user: publicUser(su), newsletter: !!su.newsletter, hasEmail: !!su.email });
+  return json(meView(su));
 }
 
 export async function PUT({ request }) {
   const su = sessionUser(request);
   if (!su) return json({ error: 'not signed in' }, { status: 401 });
-  const { name, avatar, privacy, newsletter } = await request.json();
+  const { name, avatar, privacy, newsletter, email } = await request.json();
   try {
-    const u = updateProfile(su.id, { name, avatar, privacy, newsletter });
-    return json({ user: publicUser(u), newsletter: !!u.newsletter, hasEmail: !!u.email });
+    const u = updateProfile(su.id, { name, avatar, privacy, newsletter, email });
+    return json(meView(u));
   } catch (e: any) {
     return json({ error: e.message }, { status: e.status || 400 });
   }

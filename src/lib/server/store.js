@@ -9,7 +9,10 @@ import { randomBytes } from 'node:crypto';
 // Overridable so tests (and alternate deployments) can point at an isolated dir.
 import { DATA_DIR } from "./paths.js";
 import { join } from "node:path";
-import { computeSettlement } from '$lib/engine/settle.js';
+// Relative (not $lib) so this module loads under plain `node --test` too — the
+// engine modules use relative imports for the same reason. Vite resolves both.
+import { computeSettlement } from '../engine/settle.js';
+import { isRealGame } from '../engine/stats.js';
 
 /** @typedef {import('../types').Game} Game */
 /** @typedef {import('../types').NewGameInput} NewGameInput */
@@ -107,6 +110,10 @@ export function init() {
       if (!Array.isArray(game.log)) game.log = []; // backfill older saves
       // Legacy games predate the id/code split — their id WAS the human code.
       if (!game.code) game.code = game.id;
+      // Reaping is age-based AND now destructive (deletes abandoned games), so a
+      // file missing createdAt must not read as age=NaN (→ treated as infinitely
+      // old → reaped). Fall back to updatedAt, else treat it as new.
+      if (!game.createdAt) game.createdAt = game.updatedAt || now();
       games.set(game.id, game);
       // Only an active game owns its code (for join-by-code + uniqueness).
       if (game.status === 'active' && !codeToId.has(game.code)) codeToId.set(game.code, game.id);
@@ -163,6 +170,30 @@ export function deleteGame(idOrCode) {
     try { fn({ id: game.id, _deleted: true }); } catch (err) { console.error('[store] listener error:', err); }
   }
   return true;
+}
+
+/** Sever a (deleted) account from every game without destroying any history: the
+ *  seats they held keep their name, buy-ins and results — they just lose their
+ *  `userId`, so there's no longer a profile to click through to from the game.
+ *  Also clears their ownership marker and any "hardest to read" votes they cast.
+ *  Games other people played are untouched. @param {string} userId
+ *  @returns {number} games changed */
+export function unlinkUser(userId) {
+  if (!userId) return 0;
+  let changed = 0;
+  for (const g of games.values()) {
+    let dirty = false;
+    for (const p of g.players || []) {
+      if (p.userId === userId) { delete p.userId; dirty = true; }
+    }
+    if (g.ownerId === userId) { delete g.ownerId; dirty = true; }
+    if (g.votes?.hardestToRead && g.votes.hardestToRead[userId] !== undefined) {
+      delete g.votes.hardestToRead[userId]; dirty = true;
+    }
+    if (dirty) { touched(g); changed++; }
+  }
+  if (changed > 0) console.log(`[store] unlinked deleted user from ${changed} game(s)`);
+  return changed;
 }
 
 /** Look up by internal id (e.g. a shared link) OR by human code (e.g. typed to
@@ -258,6 +289,27 @@ export function reapStaleGames() {
   }
   if (closed > 0) console.log(`[store] auto-closed ${closed} stale game(s)`);
   return closed;
+}
+
+/** Hard-delete games that never became real and are now stale: created over 24
+ *  hours ago and NOT a real table (one player or fewer, or no buy-ins at all) —
+ *  exactly the complement of isRealGame, the same games the stats engine refuses
+ *  to count. These are abandoned setups / test tables with no settlement history
+ *  worth keeping — the same "empty game is disposable" rule the DELETE route
+ *  enforces by hand, applied automatically once they've aged out. A real game
+ *  (2+ players AND a buy-in) is left alone; reapStaleGames just closes it.
+ *  @returns {number} count of games deleted */
+export function reapAbandonedGames() {
+  const cutoff = Date.now() - STALE_MS;
+  let deleted = 0;
+  // Snapshot first: deleteGame() mutates the games map as we go.
+  for (const g of [...games.values()]) {
+    if (new Date(g.createdAt).getTime() > cutoff) continue; // not old enough yet
+    if (isRealGame(g)) continue; // a real table has history — never auto-delete it
+    if (deleteGame(g.id)) deleted++;
+  }
+  if (deleted > 0) console.log(`[store] deleted ${deleted} abandoned game(s)`);
+  return deleted;
 }
 
 export { uid };

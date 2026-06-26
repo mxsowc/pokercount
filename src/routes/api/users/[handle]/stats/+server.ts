@@ -3,6 +3,7 @@ import { getByHandle, publicUser } from '$lib/server/users.js';
 import { privacyBlock } from '$lib/server/helpers.js';
 import { allGames } from '$lib/server/store.js';
 import { computeUserStats } from '$lib/engine/stats.js';
+import { converter } from '$lib/server/fx.js';
 
 export function GET({ params, request }) {
   const u = getByHandle(params.handle);
@@ -24,7 +25,7 @@ export function GET({ params, request }) {
 
   return json({
     user: publicUser(u),
-    stats: computeUserStats(games, u.id),
+    stats: computeUserStats(games, u.id, converter()),
     badges: { hardestToRead: hardestToReadCount },
   });
 }

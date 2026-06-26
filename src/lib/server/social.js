@@ -93,3 +93,18 @@ export function isFollowing(userId, targetId) {
   const set = following.get(userId);
   return set ? set.has(targetId) : false;
 }
+
+/** Erase a (deleted) account from the follow graph: drop who they followed, and
+ *  remove them from everyone else's following set. @param {string} userId
+ *  @returns {boolean} whether anything changed */
+export function removeUser(userId) {
+  let changed = following.delete(userId);
+  for (const [uid, set] of following) {
+    if (set.delete(userId)) {
+      if (set.size === 0) following.delete(uid);
+      changed = true;
+    }
+  }
+  if (changed) persist();
+  return changed;
+}

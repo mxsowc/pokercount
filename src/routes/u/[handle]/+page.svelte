@@ -23,7 +23,9 @@
   let selectMode = $state(false);
   const selectedStats = $derived.by(() => {
     if (!stats?.recent || selectedGames.size === 0) return null;
-    const picked = stats.recent.filter((r: any) => selectedGames.has(r.id) && r.net != null);
+    // Only games already in the display currency can be totalled (non-convertible
+    // units like chips / big blinds / Bitcoin keep their own unit).
+    const picked = stats.recent.filter((r: any) => selectedGames.has(r.id) && r.net != null && r.unit === stats.unit);
     if (!picked.length) return null;
     const totalC = picked.reduce((s: number, r: any) => s + Math.round(r.net * 100), 0);
     const profitable = picked.filter((r: any) => r.net > 0).length;
@@ -130,14 +132,20 @@
     </div>
 
     <!-- Stats grid -->
-    <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">Stats</h2>
+    <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">
+      Stats
+      {#if stats.gamesPlayed}<span class="normal-case tracking-normal text-faint font-normal">· in {stats.unit}</span>{/if}
+    </h2>
+    {#if stats.otherGames > 0}
+      <p class="text-xs text-faint mb-3">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included in the totals.</p>
+    {/if}
     <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit)}</div>
+        <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit, stats.unit)}</div>
         <div class="text-muted text-xs mt-1">total profit</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg / game</div>
       </div>
       <div class="card text-center !mb-0">
@@ -145,11 +153,11 @@
         <div class="text-muted text-xs mt-1">% profitable</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">best night</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">worst night</div>
       </div>
       <div class="card text-center !mb-0">
@@ -164,7 +172,7 @@
       </div>
       {#if stats.hourly}
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate)}<span class="text-sm text-muted">/h</span></div>
+          <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
           <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g</div>
         </div>
       {/if}
@@ -175,7 +183,7 @@
       <div class="card mt-3 text-win">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
-          <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit)}</span>
+          <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
         </div>
         <Sparkline points={stats.curve.map((p: any) => p.cum)} />
       </div>
@@ -211,11 +219,11 @@
           <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
           <div class="grid grid-cols-3 gap-2">
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total)}</div>
+              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total, stats.unit)}</div>
               <div class="text-muted text-[.65rem]">total</div>
             </div>
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg)}</div>
+              <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg, stats.unit)}</div>
               <div class="text-muted text-[.65rem]">avg / game</div>
             </div>
             <div class="text-center">
@@ -235,7 +243,7 @@
             <span class="font-semibold truncate">{r.name}</span>
             <span class="text-muted text-sm shrink-0">#{r.id}</span>
             {#if r.net != null}
-              <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+              <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
             {:else}
               <span class="pill ml-auto shrink-0">in progress</span>
             {/if}
@@ -245,7 +253,7 @@
             <span class="font-semibold truncate">{r.name}</span>
             <span class="text-muted text-sm shrink-0">#{r.id}</span>
             {#if r.net != null}
-              <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net)}</span>
+              <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
             {:else}
               <span class="pill ml-auto shrink-0">in progress</span>
             {/if}

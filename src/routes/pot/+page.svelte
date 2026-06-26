@@ -545,7 +545,11 @@
 
       resultHTML = html;
     } catch (e: any) {
-      resultHTML = `<div class="banner banner-warn mt-4">${e.message}</div>`;
+      // Escape: error messages embed the user's raw card text (e.g. "Invalid card:
+      // ..."), and this string is rendered with {@html}, so an unescaped message
+      // would be an HTML-injection vector.
+      const msg = String(e?.message ?? 'Could not compute that').replace(/[&<>"]/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c));
+      resultHTML = `<div class="banner banner-warn mt-4">${msg}</div>`;
     }
   }
 
@@ -718,35 +722,53 @@
         {/each}
       </div>
     {/snippet}
-    {#snippet typeInput(ref: string)}
-      <input class="input !py-1.5 !px-3 !text-sm mt-2 font-mono" placeholder="or type — e.g. Th 9h 4c"
-        value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
+    {#snippet typeInput(ref: string, label?: string)}
+      {#if label}
+        <!-- Inline label variant — used by the run-it-twice fork, where the type
+             fields sit in a compact stack under the card fork. -->
+        <div class="flex items-center gap-2 mt-1.5">
+          <span class="text-[11px] text-muted w-16 shrink-0">{label}</span>
+          <input class="input !py-1.5 !px-3 !text-sm font-mono flex-1 min-w-0" placeholder="or type — e.g. Th 9h"
+            value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
+        </div>
+      {:else}
+        <input class="input !py-1.5 !px-3 !text-sm mt-2 font-mono" placeholder="or type — e.g. Th 9h 4c"
+          value={fieldValue(ref)} oninput={(e) => setFieldValue(ref, (e.target as HTMLInputElement).value)} autocapitalize="none" autocomplete="off" spellcheck="false" />
+      {/if}
     {/snippet}
 
     {#each { length: boardCount } as _, b}
       {#if sharedCount > 0 && runCount > 1}
-        <!-- One board that forks: the shared flop is dealt once on the left, then
-             the turn + river branch off to the right — one row per run — so it
-             reads as a single board splitting into two runouts. -->
+        <!-- One board that forks: the shared flop is dealt once, and the turn+river
+             runs branch straight off it. The runs are centred against the flop so
+             each one straddles the flop's line (one nudged up, one down) — it reads
+             as a single continuous board diverging into its runouts, not as
+             separate rows. -->
         <div class="rounded-xl border border-border-soft p-3 mb-3">
           {#if boardCount > 1}<div class="text-xs text-muted font-medium mb-2">Board {b + 1}</div>{/if}
-          <div class="flex flex-wrap items-start gap-x-5 gap-y-4">
-            <!-- Shared flop (dealt once) -->
-            <div class="w-[152px] shrink-0">
-              <div class="text-xs text-muted font-medium mb-1.5">{sharedCount === 3 ? 'Flop' : 'Flop + turn'} — dealt once</div>
+          <!-- Card fork (the type-to-enter fields live in the stack below). -->
+          <div class="flex items-center gap-x-2 overflow-x-auto pb-1">
+            <!-- Shared flop, dealt once -->
+            <div class="shrink-0">
+              <div class="text-xs text-muted font-medium mb-1.5">{sharedCount === 3 ? 'Flop' : 'Flop + turn'} · dealt once</div>
               {@render cardSlots(`board:${b}-shared`)}
-              {@render typeInput(`board:${b}-shared`)}
             </div>
-            <!-- Runs fork off to the right -->
-            <div class="flex-1 min-w-[150px] pl-4 border-l-2 border-accent/30 flex flex-col gap-3">
+            <!-- Runs branch off, vertically straddling the flop line -->
+            <div class="shrink-0 flex flex-col gap-1.5">
               {#each { length: runCount } as _, r}
                 <div>
-                  <div class="text-xs text-muted font-medium mb-1.5">Run {r + 1} · {sharedCount === 3 ? 'turn + river' : 'river'}</div>
+                  <div class="text-[11px] text-accent/90 font-semibold mb-1">Run {r + 1} · {sharedCount === 3 ? 'turn + river' : 'river'}</div>
                   {@render cardSlots(`board:${b}-${r}`)}
-                  {@render typeInput(`board:${b}-${r}`)}
                 </div>
               {/each}
             </div>
+          </div>
+          <!-- Optional type-to-enter, one compact labelled row per part -->
+          <div class="mt-2">
+            {@render typeInput(`board:${b}-shared`, sharedCount === 3 ? 'Flop' : 'Flop+T')}
+            {#each { length: runCount } as _, r}
+              {@render typeInput(`board:${b}-${r}`, `Run ${r + 1}`)}
+            {/each}
           </div>
         </div>
       {:else}

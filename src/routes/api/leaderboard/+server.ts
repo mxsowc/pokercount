@@ -4,6 +4,7 @@ import { getFollowing } from '$lib/server/social.js';
 import { getUser, publicUser } from '$lib/server/users.js';
 import { allGames } from '$lib/server/store.js';
 import { computeLeaderboard } from '$lib/server/insights.js';
+import { converter } from '$lib/server/fx.js';
 
 export function GET({ request }) {
   const su = sessionUser(request);
@@ -17,7 +18,8 @@ export function GET({ request }) {
     const u = getUser(id);
     if (u && u.privacy === 'private') set.delete(id);
   }
-  const rows = computeLeaderboard(allGames(), set)
+  // Ranked across everyone, so nets are converted to a common currency (EUR).
+  const rows = computeLeaderboard(allGames(), set, converter())
     .map((r) => { const u = getUser(r.id); return u ? { ...r, user: publicUser(u), you: r.id === su.id } : null; })
     .filter(Boolean);
   return json({ rows });
