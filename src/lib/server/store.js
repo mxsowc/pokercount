@@ -101,12 +101,25 @@ function persist(game) {
   renameSync(tmp, filePath(game.id));
 }
 
+// Sidecar JSON files that live alongside the per-game files in DATA_DIR but are
+// NOT games. They must never be parsed as games (doing so created a "ghost" game
+// with id=undefined that couldn't be opened or deleted, re-stamped every boot).
+const NON_GAME_FILES = new Set(['users.json', 'follows.json', 'reactions.json', 'comments.json', 'fx-rates.json']);
+
 export function init() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   for (const f of readdirSync(DATA_DIR)) {
-    if (!f.endsWith('.json') || f === 'users.json' || f === 'follows.json') continue;
+    if (!f.endsWith('.json') || NON_GAME_FILES.has(f)) continue;
     try {
       const game = JSON.parse(readFileSync(join(DATA_DIR, f), 'utf8'));
+      // Only ingest objects that are actually games. A sidecar file, an empty {},
+      // or a half-written/corrupt file must never surface as a blank ghost game —
+      // a real game always has a string id, a players array, and a known status.
+      if (!game || typeof game.id !== 'string' || !Array.isArray(game.players) ||
+          !['active', 'ended', 'settled'].includes(game.status)) {
+        console.error(`[store] skipping non-game/malformed file ${f}`);
+        continue;
+      }
       if (!Array.isArray(game.log)) game.log = []; // backfill older saves
       // Legacy games predate the id/code split — their id WAS the human code.
       if (!game.code) game.code = game.id;
