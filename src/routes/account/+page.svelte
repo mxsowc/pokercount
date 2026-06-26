@@ -336,6 +336,7 @@
   });
 
   // ---- danger zone: delete account ------------------------------------------
+  let showDanger = $state(false); // the whole section is collapsed by default
   let dangerOpen = $state(false);
   let delConfirm = $state('');
   let delPin = $state('');
@@ -465,7 +466,6 @@
 
   // ---- one-time onboarding questions ----------------------------------------
   let obAge = $state('');
-  let obCountry = $state(''); // ISO-2 country code from the picker
   let obHeard = $state('');
   let obSaving = $state(false);
 
@@ -474,7 +474,7 @@
     try {
       await fetch('/api/me/onboarding', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(skip ? {} : { ageRange: obAge, country: obCountry, heardFrom: obHeard }),
+        body: JSON.stringify(skip ? {} : { ageRange: obAge, heardFrom: obHeard }),
       });
       await invalidateAll();
       if (!skip) toast('Thanks!');
@@ -642,9 +642,6 @@
           <option value="45-54">45–54</option>
           <option value="55+">55+</option>
         </select>
-        <label class="block text-xs text-muted font-medium mb-1 mt-3">Where are you from?</label>
-        <CountryPicker bind:value={obCountry} />
-        <p class="text-xs text-faint mt-1">We'll use this to default the currency when you open a game.</p>
         <label class="block text-xs text-muted font-medium mb-1 mt-3">How did you hear about potcount?</label>
         <select class="input" bind:value={obHeard}>
           <option value="">Prefer not to say</option>
@@ -791,29 +788,44 @@
       {/if}
     {/if}
 
-    <!-- Danger zone: delete account (kept low-key + behind a reveal so it isn't hit by accident) -->
-    <div class="card mt-6 !border-danger/30">
-      <div class="flex items-center justify-between gap-3">
-        <div class="min-w-0">
-          <div class="text-sm font-semibold text-danger">Delete account</div>
-          <div class="text-muted text-xs">Erases your profile, stats, email and follows. Games you played stay for everyone else — they just stop linking back to you.</div>
-        </div>
-        <button class="btn-small btn-ghost shrink-0" onclick={() => { dangerOpen = !dangerOpen; delConfirm = ''; delPin = ''; }}>
-          {dangerOpen ? 'Cancel' : 'Delete…'}
-        </button>
-      </div>
-      {#if dangerOpen}
-        <div class="mt-3 pt-3 border-t border-border-soft">
-          <p class="text-xs text-muted mb-2">
-            This can't be undone. To confirm, type your username <span class="font-semibold text-text">{user.handle}</span>{#if account?.hasPin} and your passcode{/if}.
-          </p>
-          <input class="input" bind:value={delConfirm} placeholder="your username" autocapitalize="none" autocomplete="off" spellcheck="false" />
-          {#if account?.hasPin}
-            <input class="input mt-2" type="password" bind:value={delPin} placeholder="your passcode" autocomplete="off" />
+    <!-- Dangerous actions — collapsed by default so destructive options aren't one tap away -->
+    <div class="mt-8">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 mx-auto text-xs font-semibold uppercase tracking-widest text-faint hover:text-muted transition-colors"
+        aria-expanded={showDanger}
+        onclick={() => { showDanger = !showDanger; if (!showDanger) { dangerOpen = false; delConfirm = ''; delPin = ''; } }}
+      >
+        <span class="inline-block transition-transform {showDanger ? 'rotate-90' : ''}">▸</span>
+        Dangerous actions
+      </button>
+
+      {#if showDanger}
+        <!-- Delete account (further behind its own reveal so it isn't hit by accident) -->
+        <div class="card mt-3 !border-danger/30">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-danger">Delete account</div>
+              <div class="text-muted text-xs">Erases your profile, stats, email and follows. Games you played stay for everyone else — they just stop linking back to you.</div>
+            </div>
+            <button class="btn-small btn-ghost shrink-0" onclick={() => { dangerOpen = !dangerOpen; delConfirm = ''; delPin = ''; }}>
+              {dangerOpen ? 'Cancel' : 'Delete…'}
+            </button>
+          </div>
+          {#if dangerOpen}
+            <div class="mt-3 pt-3 border-t border-border-soft">
+              <p class="text-xs text-muted mb-2">
+                This can't be undone. To confirm, type your username <span class="font-semibold text-text">{user.handle}</span>{#if account?.hasPin} and your passcode{/if}.
+              </p>
+              <input class="input" bind:value={delConfirm} placeholder="your username" autocapitalize="none" autocomplete="off" spellcheck="false" />
+              {#if account?.hasPin}
+                <input class="input mt-2" type="password" bind:value={delPin} placeholder="your passcode" autocomplete="off" />
+              {/if}
+              <button class="btn-small btn-danger w-full mt-3" disabled={!delReady || deleting} onclick={deleteAccount}>
+                {deleting ? 'Deleting…' : 'Permanently delete my account'}
+              </button>
+            </div>
           {/if}
-          <button class="btn-small btn-danger w-full mt-3" disabled={!delReady || deleting} onclick={deleteAccount}>
-            {deleting ? 'Deleting…' : 'Permanently delete my account'}
-          </button>
         </div>
       {/if}
     </div>

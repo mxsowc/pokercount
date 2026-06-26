@@ -787,9 +787,10 @@
     // without an account, so always invite them to save their own history.
     text += `\n🔒 Lock in your results — free account in 10s:`;
     text += `\npotcount.com/game?g=${gameId}`;
-    const url = `${location.origin}/game?g=${gameId}`;
+    // The link is already inlined at the bottom of `text`; passing `url` too makes
+    // the share sheet show it a second time (up top), so we leave it out.
     if (navigator.share) {
-      navigator.share({ title: `${game.name} — Results`, text, url }).catch(() => {});
+      navigator.share({ title: `${game.name} — Results`, text }).catch(() => {});
     } else {
       navigator.clipboard.writeText(text).then(() => toast('Results copied — paste in your group chat')).catch(() => {});
     }
@@ -1381,7 +1382,9 @@
             </span>
           </div>
         </div>
-        <button class="btn-small btn-ghost shrink-0" onclick={shareLink}>Share</button>
+        <!-- The game's over — Share the results (standings, who-pays-who, account
+             nudge), not the join link, matching the "Share your night" button. -->
+        <button class="btn-small btn-ghost shrink-0" onclick={shareResult}>Share</button>
       </div>
 
       {@render claimBanner()}
