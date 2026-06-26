@@ -30,6 +30,26 @@
   function unlock() { if (password) load(password); }
   function lock() { data = null; password = ''; if (browser) sessionStorage.removeItem('pc_admin_pw'); }
 
+  // Operator-only hard delete of a game (e.g. test tables). Reuses the held admin
+  // password; refreshes the panel after.
+  let deletingId = $state<string | null>(null);
+  async function deleteGameAdmin(g: any) {
+    const label = `#${g.code ?? g.id}${g.name ? ` "${g.name}"` : ''}`;
+    if (!confirm(`Delete game ${label} permanently? This removes it for everyone and cannot be undone.`)) return;
+    deletingId = g.id;
+    error = '';
+    try {
+      const res = await fetch('/api/admin/delete-game', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, id: g.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { error = d.error || 'Delete failed'; return; }
+      await load(password); // refresh list + stats
+    } catch (e: any) { error = e.message; }
+    finally { deletingId = null; }
+  }
+
   onMount(() => {
     const saved = browser ? sessionStorage.getItem('pc_admin_pw') : null;
     if (saved) { password = saved; load(saved); }
@@ -140,16 +160,18 @@
         <div class="card !p-0 overflow-hidden mb-5">
           {#each data.games.recentGames as g (g.id)}
             <div class="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-border last:border-0">
-              <div class="min-w-0">
+              <!-- Tap the game to open its summary (works for ended/past games too) -->
+              <a href="/game?g={g.id}" target="_blank" rel="noopener" class="min-w-0 no-underline text-text hover:opacity-80 transition-opacity" title="Open game #{g.code ?? g.id}">
                 <div class="font-semibold text-sm truncate">
                   <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{g.code ?? g.id}</span>
-                  {g.name || 'Untitled'}
+                  {g.name || 'Untitled'} <span class="text-faint">↗</span>
                 </div>
                 <div class="text-muted text-xs truncate">{g.players} players · {g.transactions} buy-ins · pot {g.unit}{g.pot}</div>
-              </div>
+              </a>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="pill {g.status === 'active' ? 'pill-win' : g.status === 'settled' ? 'pill-info' : ''}">{g.status}</span>
-                <span class="text-muted text-xs">{fmtDate(g.updatedAt)}</span>
+                <span class="text-muted text-xs hidden sm:inline">{fmtDate(g.updatedAt)}</span>
+                <button class="btn-small btn-danger !px-2.5" title="Delete this game permanently" disabled={deletingId === g.id} onclick={() => deleteGameAdmin(g)}>{deletingId === g.id ? '…' : '✕'}</button>
               </div>
             </div>
           {/each}
