@@ -76,7 +76,7 @@ function shareForBoard(game, holes, board, hiLo) {
  * @returns {{ runouts:number, street:string, cardsToCome:number,
  *            equity:Array<{id, equity, scoop, winHigh, winLow}> }}
  */
-export function equityAt({ game, players, board, hiLo = false }) {
+export function equityAt({ game, players, board, hiLo = false, dead = [] }) {
   const known = parseCards(board);
   if (known.length < 3 || known.length > 5) throw new Error('board must be 3–5 cards');
   if (!players || players.length < 2) throw new Error('need at least two players');
@@ -87,7 +87,11 @@ export function equityAt({ game, players, board, hiLo = false }) {
   // its deals the same way.)
   assertNoDuplicates(known, ...holes);
 
-  const used = new Set([...known, ...holes.flat()].map((c) => c.str));
+  // `dead` = cards dealt elsewhere (e.g. a sibling board in a double-board hand)
+  // that are out of the deck but not part of THIS board. Removing them keeps the
+  // runout enumeration honest — without it each board is computed against a fresh
+  // deck and the two boards' equities overlap and are individually wrong.
+  const used = new Set([...known, ...holes.flat(), ...parseCards(dead)].map((c) => c.str));
   const deck = fullDeck().filter((s) => !used.has(s)).map(parseCard);
   const toCome = 5 - known.length;
   const runs = toCome === 0 ? [[]] : combinations(deck, toCome);

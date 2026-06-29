@@ -105,9 +105,13 @@ export function computeUserStats(games, userId, convert) {
     moneyResults.push({ at: r.at, net: converted, hours: r.hours });
   }
 
-  recent.sort((a, b) => (a.at < b.at ? 1 : -1));
+  // Newest first, by ISO timestamp (lexical order == chronological). A missing
+  // timestamp coerces to '' → sorts oldest, so a legacy game without updatedAt
+  // can't wrongly float to the top of "your games".
+  const keyAt = (/** @type {{ at: string }} */ x) => x.at || '';
+  recent.sort((a, b) => (keyAt(a) < keyAt(b) ? 1 : keyAt(a) > keyAt(b) ? -1 : 0));
   // Oldest → newest for the running curve / streaks.
-  moneyResults.sort((a, b) => (a.at < b.at ? -1 : 1));
+  moneyResults.sort((a, b) => (keyAt(a) < keyAt(b) ? -1 : keyAt(a) > keyAt(b) ? 1 : 0));
 
   // Cumulative profit over time (a bankroll sparkline), accumulated in cents.
   let cumC = 0;

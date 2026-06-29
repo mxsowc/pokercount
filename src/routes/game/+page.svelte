@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { toast } from '$lib/stores/toast';
-  import { money } from '$lib/utils/money';
+  import { money, parseAmount } from '$lib/utils/money';
   import { ago, shortDate } from '$lib/utils/time';
   import { haptic, celebrate } from '$lib/utils/fx';
   import { computeSettlement } from '$lib/engine/settle.js';
@@ -398,13 +398,11 @@
     goto(`/account?next=${encodeURIComponent(`/game?g=${gameId}&claim=1`)}`);
   }
 
-  // Parse a typed amount, accepting a comma decimal separator. Many phone
-  // keypads only offer ',' (not '.'), and a type="number" field silently drops
-  // it — so amount inputs are type="text" and normalised here instead.
-  // Also strips spaces and grouping separators ("1.234,56", "1 000", "1,000")
-  // so a thousands-separated number isn't mangled into NaN or a wrong value.
-  const decAmt = (v: any): number =>
-    Number(String(v ?? '').trim().replace(/\s/g, '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
+  // Parse a typed amount, accepting a comma decimal separator (many phone keypads
+  // only offer ',') and thousands separators. Shared, unit-tested parser — see
+  // parseAmount in $lib/utils/money. Old inline version silently 1000×-mangled any
+  // 3-decimal entry like "10.000".
+  const decAmt = (v: any): number => parseAmount(v);
 
   // The table's standard buy-in, used for the one-tap quick button (and the bulk
   // tool). Defaults from localStorage; kept in `bulkAmount`.
@@ -796,8 +794,12 @@
   }
 
   function shareResult() {
-    if (!game?.settlement?.lines) return;
-    const lines = game.settlement.lines.slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0));
+    // Prefer the frozen, locked-in settlement; before lock-in (active game), fall
+    // back to the LIVE one so you can still share the night the same way if you
+    // forgot to lock in. Same text format either way.
+    const src = game?.settlement?.lines ? game.settlement : settlement;
+    if (!src?.lines?.length) { toast('Nothing to share yet — enter some cash-outs first'); return; }
+    const lines = src.lines.slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0));
     const medals = ['🥇', '🥈', '🥉'];
     let text = `${game.name} #${game.code}\n\n`;
     lines.forEach((l: any, i: number) => {
@@ -806,7 +808,7 @@
       const tag = mySeat && l.playerId === mySeat.id ? myStreakTag() : '';
       text += `${medal}${l.name}: ${sign}${money(l.net, unit)}${tag}\n`;
     });
-    const transfers = (game.settlement.transfers || [])
+    const transfers = (src.transfers || [])
       .filter((t: any) => !t.paid)
       .slice().sort((a: any, b: any) => b.amount - a.amount);
     if (transfers.length) {
@@ -1111,22 +1113,32 @@
       <div class="border-t border-border-soft mt-6 pt-4">
         <button class="btn-small btn-ghost w-full" onclick={closeGame}>Lock in & track who's paid</button>
         <p class="text-muted text-xs text-center mt-2">Optional — saves these final standings so everyone can tick off payments. Switches the whole game to the final summary (any player can reopen it).</p>
+        <!-- Share even without locking in — same shared format as the final summary. -->
+        <button class="btn btn-secondary w-full mt-3" onclick={shareResult}>Share your night</button>
       </div>
 
      {:else}
 
       <!-- Header -->
-      <div class="flex items-center justify-between gap-2.5">
-        <div>
+      <div class="flex items-start justify-between gap-2.5">
+        <div class="min-w-0">
           <h1 class="text-2xl font-bold cursor-text border-b border-dashed border-transparent hover:border-border focus:border-accent focus:outline-none" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
           <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
-        <div class="flex gap-1.5 shrink-0">
-          <button class="btn-small {nit?.on ? 'btn' : 'btn-ghost'}" onclick={toggleNitGame} title="Nit game — last player still holding a button (hasn't won a pot) loses">🎯{nit?.on && nitHolders.length > 1 ? ' ·' + nitHolders.length : ''}</button>
+        <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
+          <button class="btn-small {nit?.on ? 'btn' : 'btn-ghost'}" onclick={toggleNitGame} title="Nit game — a fun side game: the last player still holding a button (who hasn't won a pot) loses">🎯 Nit game{nit?.on && nitHolders.length > 1 ? ' · ' + nitHolders.length : ''}</button>
           <button class="btn-small btn-ghost" onclick={openUnitEdit} title="Change currency">💱 {unit}</button>
           <button class="btn-small btn-ghost" onclick={shareLink}>Share</button>
         </div>
       </div>
+
+      <!-- Nit game: explain it while it's running (so the 🎯 buttons make sense) -->
+      {#if nit?.on}
+        <p class="text-muted text-xs mt-1.5 flex items-start gap-1.5">
+          <span aria-hidden="true">🎯</span>
+          <span><b class="text-text">Nit game on.</b> Tap a player's 🎯 each time they win a pot. The last one still holding it (never won a pot) loses.</span>
+        </p>
+      {/if}
 
       <!-- Change-currency popover -->
       {#if unitEditOpen}
@@ -1604,6 +1616,7 @@
           <button class="btn btn-secondary w-full" onclick={shareResult}>
             Share your night
           </button>
+          <p class="text-muted text-xs text-center mt-1.5">Shares the final podium and who pays who.</p>
         </div>
       {/if}
 

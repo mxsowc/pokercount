@@ -18,9 +18,16 @@ export function rateLimit(key, limit, windowMs) {
 }
 
 /** Best-effort client IP from a SvelteKit RequestEvent.
+ *
+ * X-Forwarded-For is attacker-controlled: anyone hitting the server directly can
+ * spoof it to mint a fresh rate-limit bucket per request. So we only trust it
+ * when the operator asserts a trusted reverse proxy via TRUST_PROXY=1 (which
+ * should overwrite/strip inbound XFF). Otherwise we use the real socket address.
  * @param {import('@sveltejs/kit').RequestEvent} event @returns {string} */
 export function clientIp(event) {
-  const xff = event.request.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0].trim();
+  if (process.env.TRUST_PROXY === '1') {
+    const xff = event.request.headers.get('x-forwarded-for');
+    if (xff) return xff.split(',')[0].trim();
+  }
   try { return event.getClientAddress(); } catch { return 'unknown'; }
 }

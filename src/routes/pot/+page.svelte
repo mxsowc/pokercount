@@ -509,13 +509,17 @@
           let eqHTML = '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-6 mb-2">Chances of winning</h3>';
           for (let b = 0; b < boards.length; b++) {
             const full = boards[b].runs[0];
+            // Cards on the OTHER board(s) are out of the deck for this board's
+            // runout enumeration — pass them as `dead` so a double board's two
+            // equities use one consistent remaining deck (not a fresh 52 each).
+            const dead = boards.flatMap((bd, j) => (j === b ? [] : bd.runs[0]));
             const streets: { label: string; board: any[]; unit: string }[] = [];
             if (full.length >= 3) streets.push({ label: 'After the flop', board: full.slice(0, 3), unit: 'turn+river combos' });
             if (full.length >= 4) streets.push({ label: 'After the turn', board: full.slice(0, 4), unit: 'possible rivers' });
 
             for (const st of streets) {
               let eq;
-              try { eq = equityAt({ game, players: eqPlayers, board: st.board, hiLo }); }
+              try { eq = equityAt({ game, players: eqPlayers, board: st.board, hiLo, dead }); }
               catch { continue; }
               const head = (boards.length > 1 ? `Board ${b + 1} · ` : '') + st.label;
               eqHTML += `<div class="bg-surface-2 border-l-[3px] p-3 rounded-r-[9px] mb-2" style="border-left-color:var(--color-gold)">`;

@@ -3,7 +3,6 @@
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
   import Sparkline from '$lib/components/Sparkline.svelte';
-  import { onMount } from 'svelte';
 
   let handle = $derived($page.params.handle ?? '');
   let me = $derived($page.data?.user ?? null);
@@ -43,27 +42,45 @@
   }
   function clearSelection() { selectedGames = new Set(); selectMode = false; }
 
-  onMount(async () => {
-    try {
-      const res = await fetch(`/api/users/${encodeURIComponent(handle)}/stats`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      profileUser = data.user;
-      stats = data.stats;
-      badges = data.badges || null;
-    } catch (e: any) {
-      error = e.message?.includes('no such') ? `No player @${handle}` : e.message;
-      loading = false;
-      return;
-    }
-    // Load social data
-    if (me) {
+  // Load (re-load) whenever the profile handle changes. Using $effect rather than
+  // onMount is essential: navigating profile→profile (social list, feed, player
+  // links) REUSES this component, so onMount wouldn't re-run and every visitor
+  // after the first would see the previous person's stats — and could follow the
+  // wrong account. We reset state up front and ignore stale/out-of-order responses.
+  $effect(() => {
+    const h = handle;
+    const signedIn = !!me; // read synchronously so the effect tracks it
+    if (!h) return;
+    loading = true; error = '';
+    profileUser = null; stats = null; badges = null; social = null; socialList = null;
+    selectedGames = new Set(); selectMode = false;
+    let cancelled = false;
+    const fresh = () => !cancelled && h === handle; // bail if we've navigated on
+    (async () => {
       try {
-        const res = await fetch(`/api/users/${encodeURIComponent(handle)}/social`);
-        social = await res.json();
-      } catch {}
-    }
-    loading = false;
+        const res = await fetch(`/api/users/${encodeURIComponent(h)}/stats`);
+        const data = await res.json();
+        if (!fresh()) return;
+        if (!res.ok) throw new Error(data.error);
+        profileUser = data.user;
+        stats = data.stats;
+        badges = data.badges || null;
+      } catch (e: any) {
+        if (!fresh()) return;
+        error = e.message?.includes('no such') ? `No player @${h}` : e.message;
+        loading = false;
+        return;
+      }
+      if (signedIn) {
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(h)}/social`);
+          const s = await res.json();
+          if (fresh()) social = s;
+        } catch {}
+      }
+      if (fresh()) loading = false;
+    })();
+    return () => { cancelled = true; };
   });
 
   async function toggleFollow() {

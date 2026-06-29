@@ -1,9 +1,10 @@
 // Follow relationships. Same pattern as users.js: in-memory Map, written
 // through to a single JSON file on every change.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 
 import { DATA_DIR } from "./paths.js";
+import { writeFileDurable } from "./fsutil.js";
 import { join } from "node:path";
 const FILE = join(DATA_DIR, 'follows.json');
 
@@ -17,9 +18,7 @@ function persist() {
   for (const [uid, set] of following) {
     if (set.size > 0) obj[uid] = [...set];
   }
-  const tmp = FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  renameSync(tmp, FILE);
+  writeFileDurable(FILE, JSON.stringify(obj, null, 2));
 }
 
 export function init() {

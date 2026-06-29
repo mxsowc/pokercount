@@ -18,9 +18,9 @@ export function ensureInit() {
   const gamesLoaded = initStore();
   console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
 
-  // Housekeeping, hourly: first delete abandoned tables (≤1 player, or no
-  // buy-ins) older than 24h, then auto-close any real games still active past
-  // 24h. Order matters — reap junk before bothering to settle/close it.
+  // Housekeeping, hourly: first delete abandoned tables (not real, 24h+ old),
+  // then auto-close any game left active with no activity for 12h+. Order matters
+  // — reap junk before bothering to settle/close it.
   const reap = () => { reapAbandonedGames(); reapStaleGames(); };
   reap();
   setInterval(reap, 3_600_000); // every hour

@@ -161,9 +161,12 @@ export async function POST(event) {
     .sort((a, b) => b[1] - a[1])
     .map(([source, count]) => ({ source, count }));
 
-  // Recent games (newest first) for the games table.
+  // Recent games (newest first) for the games table. ISO timestamps compare
+  // chronologically as strings; a game missing both dates coerces to '' → sorts
+  // oldest (so it can't float to the top).
+  const recencyKey = (g: any) => String(g.updatedAt || g.createdAt || '');
   const recentGames = [...games]
-    .sort((a: any, b: any) => (String(b.updatedAt || b.createdAt) < String(a.updatedAt || a.createdAt) ? -1 : 1))
+    .sort((a: any, b: any) => { const ka = recencyKey(a), kb = recencyKey(b); return ka < kb ? 1 : ka > kb ? -1 : 0; })
     .slice(0, 20)
     .map((g: any) => ({
       id: g.id,

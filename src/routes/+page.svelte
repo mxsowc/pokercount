@@ -39,6 +39,7 @@
 
   let games = $state(listMyGames());
   let actor = $state(getActor());
+  let nudgeDismissed = $state(false); // reactive mirror of the pc_host_nudge_dismissed flag
 
   // For a signed-in user, fold in games their account is seated in (any device,
   // even ones never opened here) so ongoing sessions surface on login.
@@ -69,6 +70,7 @@
 
   onMount(() => {
     unitInput = defaultUnit();
+    nudgeDismissed = !!localStorage.getItem('pc_host_nudge_dismissed');
     loadAccountGames();
     // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
     if (browser && $page.url.searchParams.get('start') === 'open') showOpen();
@@ -190,7 +192,9 @@
     localStorage.setItem('pc_games', JSON.stringify(listMyGames().filter((g: any) => g.id !== id)));
     localStorage.removeItem('pc_me_' + id);
     localStorage.removeItem('pc_host_' + id);
-    games = listMyGames();
+    // Drop just this game from the in-memory list. Re-reading listMyGames() here
+    // would wipe account-linked games (which live server-side, not in pc_games).
+    games = games.filter((g: any) => g.id !== id);
   }
 
   function showOpen() {
@@ -244,14 +248,14 @@
       {/if}
 
       <!-- "Host your own" nudge — shown once after a player's first completed game -->
-      {#if games.length > 0 && games.some((g: any) => g.status === 'ended' || g.status === 'settled') && !games.some((g: any) => g.isHost) && browser && !localStorage.getItem('pc_host_nudge_dismissed')}
+      {#if games.length > 0 && games.some((g: any) => g.status === 'ended' || g.status === 'settled') && !games.some((g: any) => g.isHost) && browser && !nudgeDismissed}
         <div class="card !bg-surface !border-accent/25 !p-3 w-full mb-3">
           <div class="flex items-center justify-between gap-2">
             <div>
               <div class="text-sm font-semibold">Now you know how it works 🎴</div>
               <p class="text-muted text-xs mt-0.5">Open a game for your own group — they just need the code to join.</p>
             </div>
-            <button class="text-xs text-faint hover:text-text p-2 -m-1 shrink-0" onclick={() => { localStorage.setItem('pc_host_nudge_dismissed', '1'); games = listMyGames(); }}>✕</button>
+            <button class="text-xs text-faint hover:text-text p-2 -m-1 shrink-0" onclick={() => { localStorage.setItem('pc_host_nudge_dismissed', '1'); nudgeDismissed = true; }}>✕</button>
           </div>
         </div>
       {/if}

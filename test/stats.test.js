@@ -156,6 +156,19 @@ test('recent is newest-first and capped at 30', () => {
   for (let i = 1; i < s.recent.length; i++) assert.ok(s.recent[i - 1].at >= s.recent[i].at, 'newest first');
 });
 
+test('your-games order: a game missing updatedAt sorts oldest, never newest', () => {
+  const mk = (id, at) => ({
+    id, name: id, status: 'ended', updatedAt: at,
+    players: [{ id: 'p0', name: 'u', userId: 'u' }, { id: 'p1', name: 'o', userId: 'o' }],
+    transactions: [{ id: 'a' + id, playerId: 'p0', amount: 100, type: 'buyin' }, { id: 'b' + id, playerId: 'p1', amount: 100, type: 'buyin' }],
+    finalStacks: { p0: 110, p1: 90 },
+  });
+  const games = [mk('OLD', '2024-01-01'), mk('NEW', '2024-06-01'), mk('LEGACY', undefined)];
+  const order = computeUserStats(games, 'u').recent.map((r) => r.id);
+  assert.equal(order[0], 'NEW', 'newest updatedAt first');
+  assert.equal(order[order.length - 1], 'LEGACY', 'missing timestamp sorts last, not first');
+});
+
 test('leaderboard: integer-cent totals, sorted by net, drops no-result players', () => {
   const games = [
     game({ a: { buyin: 100, final: 130 }, b: { buyin: 100, final: 70 } }), // a +30, b -30

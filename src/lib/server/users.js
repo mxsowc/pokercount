@@ -2,10 +2,11 @@
 // written through on change. Supports local (handle + PIN) accounts and OAuth
 // accounts (Google now, Apple slot reserved) keyed by provider + subject id.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { DATA_DIR } from "./paths.js";
+import { writeFileDurable } from "./fsutil.js";
 import { join } from "node:path";
 const FILE = join(DATA_DIR, 'users.json');
 
@@ -31,9 +32,7 @@ function uid(n = 10) {
 
 function persist() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify([...byId.values()], null, 2));
-  renameSync(tmp, FILE);
+  writeFileDurable(FILE, JSON.stringify([...byId.values()], null, 2));
 }
 
 export function init() {

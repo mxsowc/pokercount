@@ -198,6 +198,13 @@ test('isMoney rejects negative, NaN, sub-cent and non-numeric values', () => {
   }
 });
 
+test('isMoney caps absurd amounts that would break integer-cent precision', () => {
+  assert.equal(helpers.isMoney(1e12), true, 'at the cap is fine');
+  assert.equal(helpers.isMoney(2e12), false, 'above the cap is rejected');
+  assert.equal(helpers.isMoney(1e13), false);
+  assert.equal(helpers.isMoney(9e15), false);
+});
+
 // ---------------------------------------------------------------------------
 // Host authorization tokens — unguessable, bound to the exact game.
 // ---------------------------------------------------------------------------

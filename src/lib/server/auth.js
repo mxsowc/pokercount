@@ -139,6 +139,10 @@ export async function verifyGoogleIdToken(credential, clientId) {
   if (payload.iss !== 'accounts.google.com' && payload.iss !== 'https://accounts.google.com') throw new Error('bad issuer');
   if (clientId && payload.aud !== clientId) throw new Error('token not for this app');
   if (payload.exp * 1000 < Date.now()) throw new Error('token expired');
+  // Replay guard: a freshly-minted sign-in token is seconds old, so reject any
+  // that's more than a few minutes old (clock-skew tolerant) — shrinks the
+  // window in which a captured token could be replayed from ~1h to minutes.
+  if (payload.iat && Date.now() - payload.iat * 1000 > 10 * 60_000) throw new Error('stale token');
   return payload; // { sub, name, email, picture, ... }
 }
 
@@ -176,5 +180,9 @@ export async function verifyAppleIdToken(idToken, clientId) {
   const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   if (clientId && !aud.includes(clientId)) throw new Error('token not for this app');
   if (payload.exp * 1000 < Date.now()) throw new Error('token expired');
+  // Replay guard: a freshly-minted sign-in token is seconds old, so reject any
+  // that's more than a few minutes old (clock-skew tolerant) — shrinks the
+  // window in which a captured token could be replayed from ~1h to minutes.
+  if (payload.iat && Date.now() - payload.iat * 1000 > 10 * 60_000) throw new Error('stale token');
   return payload; // { sub, email, ... }  (no name — that arrives separately on first sign-in)
 }

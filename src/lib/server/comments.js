@@ -2,9 +2,10 @@
 // in-memory Map written through to one JSON file. Keyed by `${gameId}:${playerId}`
 // → ordered array of { id, userId, text, at }.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { DATA_DIR } from './paths.js';
+import { writeFileDurable } from './fsutil.js';
 import { join } from 'node:path';
 
 const FILE = join(DATA_DIR, 'comments.json');
@@ -23,9 +24,7 @@ function persist() {
   /** @type {Record<string, Comment[]>} */
   const obj = {};
   for (const [k, arr] of comments) if (arr.length) obj[k] = arr;
-  const tmp = FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  renameSync(tmp, FILE);
+  writeFileDurable(FILE, JSON.stringify(obj, null, 2));
 }
 
 export function init() {

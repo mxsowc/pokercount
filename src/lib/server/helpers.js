@@ -82,9 +82,13 @@ export function areConnected(a, b) {
  * @param {Game | null} game @returns {Game | null} */
 export function withProfiles(game) {
   if (!game || !Array.isArray(game.players)) return game;
+  // `acquisition` is the creator's private first-touch source (campaign tag /
+  // referrer host / landing path) — for the admin dashboard only, never the
+  // player-facing body. Strip it from everything served to joiners/SSE.
+  const { acquisition, ...safe } = game;
   return {
-    ...game,
-    players: game.players.map((p) => {
+    ...safe,
+    players: safe.players.map((p) => {
       if (!p.userId) return p;
       const u = getUser(p.userId);
       return u ? { ...p, handle: u.handle, displayName: u.displayName } : p;
@@ -107,6 +111,10 @@ export const isMoney = (v) => {
   if (v === '' || v == null || typeof v === 'boolean' || typeof v === 'object') return false;
   const n = num(v);
   if (!Number.isFinite(n) || n < 0) return false;
+  // Domain cap: keep every accepted amount well inside exact integer-cent
+  // precision (n*100 must stay < 2^53). 1e12 units is absurdly above any home
+  // game yet leaves the cent math exact, so settlement sums never drift.
+  if (n > 1e12) return false;
   const cents = n * 100;
   return Math.abs(cents - Math.round(cents)) < 1e-6 && (n === 0 || Math.round(cents) >= 1);
 };

@@ -4,8 +4,9 @@
 // Keyed by `${gameId}:${playerId}` (a single player's result in one game) →
 // { [reactorUserId]: emoji }. One reaction per user per result (toggle/switch).
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { DATA_DIR } from './paths.js';
+import { writeFileDurable } from './fsutil.js';
 import { join } from 'node:path';
 
 const FILE = join(DATA_DIR, 'reactions.json');
@@ -21,9 +22,7 @@ function persist() {
   /** @type {Record<string, Record<string, string>>} */
   const obj = {};
   for (const [k, m] of reactions) if (Object.keys(m).length) obj[k] = m;
-  const tmp = FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  renameSync(tmp, FILE);
+  writeFileDurable(FILE, JSON.stringify(obj, null, 2));
 }
 
 export function init() {

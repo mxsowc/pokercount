@@ -3,11 +3,12 @@
 // request handler's mutation atomic) and written through to disk after every
 // change. Plenty for home-game scale; no database to operate.
 
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, renameSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 // Overridable so tests (and alternate deployments) can point at an isolated dir.
 import { DATA_DIR } from "./paths.js";
+import { writeFileDurable } from "./fsutil.js";
 import { join } from "node:path";
 // Relative (not $lib) so this module loads under plain `node --test` too — the
 // engine modules use relative imports for the same reason. Vite resolves both.
@@ -96,9 +97,7 @@ function filePath(id) {
 
 /** @param {Game} game */
 function persist(game) {
-  const tmp = filePath(game.id) + '.tmp';
-  writeFileSync(tmp, JSON.stringify(game, null, 2));
-  renameSync(tmp, filePath(game.id));
+  writeFileDurable(filePath(game.id), JSON.stringify(game, null, 2));
 }
 
 // Sidecar JSON files that live alongside the per-game files in DATA_DIR but are
@@ -127,6 +126,9 @@ export function init() {
       // file missing createdAt must not read as age=NaN (→ treated as infinitely
       // old → reaped). Fall back to updatedAt, else treat it as new.
       if (!game.createdAt) game.createdAt = game.updatedAt || now();
+      // …and a file missing updatedAt must not sort as "newest" in recency lists
+      // (e.g. profile "your games"). Fall back to createdAt.
+      if (!game.updatedAt) game.updatedAt = game.createdAt;
       games.set(game.id, game);
       // Only an active game owns its code (for join-by-code + uniqueness).
       if (game.status === 'active' && !codeToId.has(game.code)) codeToId.set(game.code, game.id);
@@ -146,22 +148,36 @@ export function onChange(fn) {
 }
 
 /** Keep the code index in sync with the game's status: an active game owns its
- *  code; a closed one releases it (so it can be reused). Reopening reclaims the
- *  code only if it's still free (a newer game may have taken it meanwhile). */
+ *  code; a closed one releases it (so it can be reused). On reopen, if the code
+ *  is still free it's reclaimed; if a newer game grabbed it meanwhile, a fresh
+ *  unique code is minted so the reopened game stays reachable by code. */
 /** @param {Game} game */
 function syncCodeIndex(game) {
   if (!game.code) return;
   if (game.status === 'active') {
-    if (!codeToId.has(game.code)) codeToId.set(game.code, game.id);
+    const owner = codeToId.get(game.code);
+    if (owner === game.id) return;                  // already owns its code
+    if (owner === undefined) { codeToId.set(game.code, game.id); return; } // free → claim
+    // Conflict: while this game was closed its (reusable) code was taken by a
+    // different active game. Reopening as-is would leave it unreachable by code
+    // (two active games sharing one code). Mint a fresh unique code instead.
+    game.code = gameCode();
+    codeToId.set(game.code, game.id);
   } else if (codeToId.get(game.code) === game.id) {
     codeToId.delete(game.code);
   }
 }
 
+/** Cap the per-game audit log: it's rewritten in full on every mutation (and sent
+ *  to every SSE subscriber), so an unbounded log makes each write/frame grow
+ *  without limit. Keep a generous recent window — far more than any real night. */
+const MAX_LOG = 1000;
+
 /** @param {Game} game @returns {Game} */
 function touched(game) {
   game.updatedAt = now();
   game.version = (game.version || 0) + 1;
+  if (Array.isArray(game.log) && game.log.length > MAX_LOG) game.log = game.log.slice(-MAX_LOG);
   syncCodeIndex(game);
   persist(game);
   for (const fn of listeners) { try { fn(game); } catch (err) { console.error('[store] listener error:', err); } }
@@ -272,35 +288,48 @@ export function mutate(idOrCode, fn) {
   return touched(game);
 }
 
-const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STALE_MS = 24 * 60 * 60 * 1000;     // 24h — abandoned-game DELETION window (by createdAt)
+const INACTIVE_MS = 12 * 60 * 60 * 1000;  // 12h — auto-CLOSE an active game after this much silence
 
-/** Close any active game whose createdAt is older than 24 hours.
- *  @returns {number} count of games auto-closed */
+/** Compute and freeze a game's settlement, flip it to ended/settled, and append a
+ *  log line. Mutates `g` in place; the CALLER persists (via mutate()/touched()).
+ *  Shared by the all-cashed-out auto-close (the /final route) and the inactivity
+ *  reaper, so both produce exactly the settlement the manual "Lock in" does.
+ *  @param {Game} g @param {{ actorId?: string, actorName?: string, action?: string }} [by]
+ *  @returns {Game} */
+export function settleAndClose(g, by = {}) {
+  const s = computeSettlement(g.players, g.transactions, g.finalStacks);
+  g.settlement = {
+    computedAt: now(),
+    lines: s.lines,
+    transfers: s.transfers.map((t) => ({ id: uid(8), ...t, paid: false, paidAt: null, paidBy: null })),
+    totalInvested: s.totalInvested, totalFinal: s.totalFinal,
+    discrepancy: s.discrepancy, balanced: s.balanced,
+  };
+  g.status = (s.balanced && s.transfers.length === 0) ? 'settled' : 'ended';
+  g.log.push({
+    id: uid(8), at: now(),
+    actorId: by.actorId || 'system', actorName: by.actorName || 'potcount',
+    action: by.action || 'auto_close', detail: {},
+  });
+  return g;
+}
+
+/** Auto-close any active game that's gone SILENT for over 12 hours — a table
+ *  someone opened and forgot to lock in. Any activity (buy-in, cash-out, edit)
+ *  bumps updatedAt and resets the clock, so a live game is never closed under
+ *  anyone. @returns {number} count of games auto-closed */
 export function reapStaleGames() {
-  const cutoff = Date.now() - STALE_MS;
+  const cutoff = Date.now() - INACTIVE_MS;
   let closed = 0;
   for (const g of games.values()) {
     if (g.status !== 'active') continue;
-    if (new Date(g.createdAt).getTime() > cutoff) continue;
-
-    const s = computeSettlement(g.players, g.transactions, g.finalStacks);
-    g.settlement = {
-      computedAt: new Date().toISOString(),
-      lines: s.lines,
-      transfers: s.transfers.map(t => ({ id: uid(8), ...t, paid: false, paidAt: null, paidBy: null })),
-      totalInvested: s.totalInvested, totalFinal: s.totalFinal,
-      discrepancy: s.discrepancy, balanced: s.balanced,
-    };
-    g.status = (s.balanced && s.transfers.length === 0) ? 'settled' : 'ended';
-    g.log.push({
-      id: uid(8), at: new Date().toISOString(),
-      actorId: 'system', actorName: 'potcount',
-      action: 'auto_close', detail: {},
-    });
+    if (new Date(g.updatedAt || g.createdAt).getTime() > cutoff) continue; // active recently
+    settleAndClose(g, { action: 'auto_close' });
     touched(g);
     closed++;
   }
-  if (closed > 0) console.log(`[store] auto-closed ${closed} stale game(s)`);
+  if (closed > 0) console.log(`[store] auto-closed ${closed} inactive game(s)`);
   return closed;
 }
 

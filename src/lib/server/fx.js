@@ -11,9 +11,10 @@
 // Conversion is pure (convertWith / convertSymbols) so it's trivially testable;
 // the fetch/persist/schedule plumbing wraps that core.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from './paths.js';
+import { writeFileDurable } from './fsutil.js';
 import { SYMBOL_TO_ISO } from '../utils/currencies.js';
 
 const FILE = join(DATA_DIR, 'fx-rates.json');
@@ -108,9 +109,7 @@ export async function refreshRates() {
     rates.EUR = 1;
     const snapshot = { base: 'EUR', rates, fetchedAt: new Date().toISOString() };
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    const tmp = FILE + '.tmp';
-    writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
-    renameSync(tmp, FILE); // atomic publish
+    writeFileDurable(FILE, JSON.stringify(snapshot, null, 2)); // atomic + durable publish
     cache = snapshot;
     console.log(`[fx] refreshed ${Object.keys(rates).length} rates (€ base)`);
     return true;

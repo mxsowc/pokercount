@@ -62,6 +62,11 @@ export function resolve(input) {
     for (const runout of b.runs) {
       assertNoDuplicates(...players.map((p) => p.hole), runout);
     }
+    // Run-it-twice: every run comes off ONE deck, so cards dealt AFTER the shared
+    // street (the runs' identical leading prefix) must be distinct across runs.
+    // The per-run check above can't see this; without it a hand-typed deal that
+    // repeats a turn/river between runs would settle from an impossible board.
+    if (b.runs.length > 1) assertRunsDisjoint(b.runs);
   }
 
   const { pots, returned } = buildPots(players);
@@ -213,6 +218,27 @@ function topByCmp(entries, better) {
     if (best === null || better(e.score, best.score) > 0) best = e;
   }
   return entries.filter((e) => better(e.score, best.score) === 0);
+}
+
+/** For a run-it-twice board, assert that cards beyond the shared street are
+ *  globally unique across runs. The shared street = the identical leading prefix
+ *  of every run (flop if run from the flop, flop+turn if run from the turn). Any
+ *  card after that prefix is dealt fresh per run, so it can't repeat between runs.
+ * @param {Card[][]} runs */
+function assertRunsDisjoint(runs) {
+  let prefix = runs[0].length;
+  for (let i = 0; i < prefix; i++) {
+    const s = runs[0][i] && runs[0][i].str;
+    if (!runs.every((r) => r[i] && r[i].str === s)) { prefix = i; break; }
+  }
+  const seen = new Set();
+  for (let i = 0; i < prefix; i++) seen.add(runs[0][i].str); // shared street counts once
+  for (const r of runs) {
+    for (let i = prefix; i < r.length; i++) {
+      if (seen.has(r[i].str)) throw new Error(`Card repeats across run-it-twice runs: ${r[i].str}`);
+      seen.add(r[i].str);
+    }
+  }
 }
 
 /** Normalize the many board/run input shorthands into [{ runs: Card[][] }]. */
