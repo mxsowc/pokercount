@@ -1458,9 +1458,6 @@
             </span>
           </div>
         </div>
-        <!-- The game's over — Share the results (standings, who-pays-who, account
-             nudge), not the join link, matching the "Share your night" button. -->
-        <button class="btn-small btn-ghost shrink-0" onclick={shareResult}>Share</button>
       </div>
 
       {@render claimBanner()}
@@ -1483,6 +1480,11 @@
             </div>
           {/each}
         </div>
+      {/if}
+
+      <!-- Share your night — the viral moment, kept up top so it isn't missed. -->
+      {#if standings.length >= 2}
+        <button class="btn btn-secondary w-full mt-4" onclick={shareResult}>Share your night</button>
       {/if}
 
       {#if myAccount && mySeat}
@@ -1625,16 +1627,6 @@
             <button class="btn-small btn-secondary !px-2.5" onclick={() => forgiveMax++}>+</button>
           </div>
         {/if}
-      {/if}
-
-      <!-- Share your result — the viral moment -->
-      {#if standings.length >= 2}
-        <div class="mt-4">
-          <button class="btn btn-secondary w-full" onclick={shareResult}>
-            Share your night
-          </button>
-          <p class="text-muted text-xs text-center mt-1.5">Shares the final podium and who pays who.</p>
-        </div>
       {/if}
 
       <!-- Series leaderboard — running scoreboard across recurring games -->
