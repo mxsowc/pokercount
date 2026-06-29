@@ -1122,8 +1122,8 @@
            this (host isn't special); it switches everyone to the final summary. Not required —
            the standings above are already live for everyone. -->
       <div class="border-t border-border-soft mt-6 pt-4">
-        <button class="btn-small btn-ghost w-full" onclick={closeGame}>Lock in & track who's paid</button>
-        <p class="text-muted text-xs text-center mt-2">Optional — saves these final standings so everyone can tick off payments. Switches the whole game to the final summary (any player can reopen it).</p>
+        <button class="btn w-full" onclick={closeGame}>Lock in & track who's paid</button>
+        <p class="text-muted text-xs text-center mt-2">Finishes the game and freezes these standings so everyone can tick off who's paid. <b>Until you tap this the game stays open</b>, so you can keep fixing cash-outs or even out a miscount. Any player can reopen it later.</p>
         <!-- Share even without locking in — same shared format as the final summary. -->
         <button class="btn btn-secondary w-full mt-3" onclick={shareResult}>Share your night</button>
       </div>
@@ -1408,7 +1408,13 @@
         <p class="text-muted text-sm">No payments needed — everyone's even.</p>
       {/if}
 
-      <!-- See my summary — a personal, live view. Doesn't end the game for anyone else. -->
+      <!-- Finish the game — explicit, never automatic. Only once everyone's cashed
+           out, so corrections/even-out happen first. "See my summary" is just a
+           preview (doesn't end the game). -->
+      {#if allEntered}
+        <button class="btn w-full mt-3" onclick={closeGame}>Lock in & track who's paid</button>
+        <p class="text-muted text-xs text-center mt-1.5">Finishes the game. It stays open until you tap this — fix a cash-out or even out a miscount above first.</p>
+      {/if}
       <button class="btn btn-secondary w-full mt-2.5" onclick={() => { activeView = 'standings'; window.scrollTo({ top: 0 }); }}>🏆 See my summary</button>
 
       <!-- Activity log -->

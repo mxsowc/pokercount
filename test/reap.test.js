@@ -80,7 +80,8 @@ test('settleAndClose freezes the settlement and flips status (all-cashed-out pat
     game.finalStacks[game.players[0].id] = 30;
     game.finalStacks[game.players[1].id] = 10;
   });
-  // This is exactly what the /final route runs once every seat has cashed out.
+  // settleAndClose is what the 12h inactivity reaper runs (and mirrors the manual
+  // /close). Entering the last stack no longer auto-closes — the host taps Lock in.
   mutate(g.id, (game) => settleAndClose(game, { action: 'auto_close' }));
   const done = getGame(g.id);
   assert.notEqual(done.status, 'active', 'game closed');

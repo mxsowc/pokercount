@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { getGame, mutate, settleAndClose } from '$lib/server/store.js';
+import { getGame, mutate } from '$lib/server/store.js';
 import { getActor, logEntry, isSafeId, isMoney, num, httpError } from '$lib/server/helpers.js';
 
 export async function PUT({ request, params }) {
@@ -39,11 +39,11 @@ export async function PUT({ request, params }) {
         const pname = g.players.find((p: any) => p.id === u.playerId)?.name;
         if (from !== to) g.log.push(logEntry(actor, 'set_final', { playerId: u.playerId, playerName: pname, detail: { from, to } }));
       }
-      // Everyone's cashed out → auto lock-in & close, so the host doesn't have to
-      // tap "Lock in" separately. Any player can still reopen to keep editing.
-      if (g.players.length > 0 && g.players.every((p: any) => g.finalStacks[p.id] != null)) {
-        settleAndClose(g, { actorId: actor.id, actorName: actor.name, action: 'auto_close' });
-      }
+      // NB: entering the last stack does NOT auto-close the game. The settlement
+      // shows live as a preview while still active, so the table can fix a
+      // miscount / even out a discrepancy and review the standings BEFORE anyone
+      // taps "Lock in & track who's paid" (the explicit /close). A forgotten
+      // active game is still swept by the 12h inactivity reaper.
     });
     return json(game);
   } catch (e: any) {
