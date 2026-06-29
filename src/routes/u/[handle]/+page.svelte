@@ -195,7 +195,7 @@
       {#if stats.hourly}
         <div class="card text-center !mb-0">
           <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
-          <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g</div>
+          <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
         </div>
       {/if}
     </div>
