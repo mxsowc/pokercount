@@ -818,14 +818,16 @@
         text += `${t.fromName} → ${t.toName}: ${money(t.amount, unit)}\n`;
       }
     }
-    // Growth nudge for the group chat — the message is read mostly by people
-    // without an account, so always invite them to save their own history.
-    text += `\n🔒 Lock in your results — free account in 10s:`;
+    // Growth nudge for the group chat — read mostly by people without an account.
+    // "Lock in your results" (ownership + loss-aversion) with a concrete, in-voice
+    // benefit rather than salesy "free account" ad-speak.
+    text += `\n🔒 Lock in your results — keep track of your sessions:`;
     text += `\npotcount.com/game?g=${gameId}`;
-    // The link is already inlined at the bottom of `text`; passing `url` too makes
-    // the share sheet show it a second time (up top), so we leave it out.
+    // Pass only `text`: the game name + code is already its first line, and the
+    // link is inlined at the bottom — passing `title`/`url` makes the share sheet
+    // repeat them (the doubled header / second link).
     if (navigator.share) {
-      navigator.share({ title: `${game.name} — Results`, text }).catch(() => {});
+      navigator.share({ text }).catch(() => {});
     } else {
       navigator.clipboard.writeText(text).then(() => toast('Results copied — paste in your group chat')).catch(() => {});
     }
