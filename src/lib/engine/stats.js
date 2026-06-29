@@ -43,7 +43,7 @@ export function computeUserStats(games, userId, convert) {
   let totalGames = 0;
   /** @type {Array<{id:string,name:string,net:number|null,unit:string,at:string,status:string}>} */
   const recent = [];
-  /** @type {Array<{id:string,name:string,unit:string,net:number,at:string,hours:number|null,status:string}>} */
+  /** @type {Array<{id:string,name:string,unit:string,net:number,invested:number,at:string,hours:number|null,status:string}>} */
   const finishedAll = [];
 
   for (const g of games) {
@@ -74,14 +74,19 @@ export function computeUserStats(games, userId, convert) {
       const ln = s.lines.find((l) => l.playerId === seat.id);
       net = ln ? ln.net : 0;
     }
+    // Total this user put on the table across the WHOLE game — buy-ins + top-ups
+    // (every transaction on their seat), in cents to avoid drift.
+    const invested = (g.transactions || []).reduce(
+      (s, t) => t.playerId === seat.id ? s + Math.round((t.amount || 0) * 100) : s, 0) / 100;
     const hrs = g.hours && seat ? g.hours[seat.id] : null;
-    finishedAll.push({ id: g.id, name: g.name, unit, net, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status });
+    finishedAll.push({ id: g.id, name: g.name, unit, net, invested, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status });
   }
 
   // Report in the player's most-used convertible currency (default €).
   const displayUnit = pickDisplayUnit(finishedAll, convertible);
 
   let totalProfitC = 0; // integer cents so many games can't drift a fractional cent
+  let investedC = 0;    // total invested across money games (for avg buy-in)
   let profitable = 0, gamesPlayed = 0, otherGames = 0;
   let best = null, worst = null;
   /** @type {Array<{at:string, net:number, hours:number|null}>} */
@@ -98,6 +103,7 @@ export function computeUserStats(games, userId, convert) {
     }
     gamesPlayed++;
     totalProfitC += Math.round(converted * 100);
+    investedC += Math.round((conv(r.invested, r.unit, displayUnit) || 0) * 100);
     if (converted > 0) profitable++;
     if (!best || converted > best.net) best = { id: r.id, name: r.name, net: round2(converted) };
     if (!worst || converted < worst.net) worst = { id: r.id, name: r.name, net: round2(converted) };
@@ -136,6 +142,7 @@ export function computeUserStats(games, userId, convert) {
     otherGames,
     totalProfit: round2(totalProfit),
     avgProfit: gamesPlayed ? round2(totalProfit / gamesPlayed) : 0,
+    avgBuyIn: gamesPlayed ? round2((investedC / 100) / gamesPlayed) : 0,
     profitable,
     profitablePct: gamesPlayed ? Math.round((profitable / gamesPlayed) * 100) : 0,
     best,

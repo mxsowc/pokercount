@@ -9,9 +9,11 @@
   let loading = $state(true);
 
   let tab = $state<'feed' | 'leaderboard'>('feed');
-  let board = $state<any[]>([]);
-  let boardLoaded = $state(false);
-  let boardLoading = $state(false);
+  let boardScope = $state<'following' | 'global'>('following');
+  let boards = $state<Record<string, any[]>>({}); // scope -> rows (cached per scope)
+  let boardLoadingScope = $state<string | null>(null);
+  const board = $derived(boards[boardScope] ?? []);
+  const boardLoading = $derived(boardLoadingScope === boardScope && !boards[boardScope]);
 
   // Search
   let query = $state('');
@@ -31,17 +33,17 @@
     loading = false;
   });
 
-  async function showLeaderboard() {
-    tab = 'leaderboard';
-    if (boardLoaded || boardLoading) return;
-    boardLoading = true;
+  async function loadBoard(scope: 'following' | 'global') {
+    if (boards[scope] || boardLoadingScope === scope) return; // cached or in flight
+    boardLoadingScope = scope;
     try {
-      const data = await (await fetch('/api/leaderboard')).json();
-      board = data.rows || [];
-      boardLoaded = true; // only mark loaded on success, so a failed fetch retries
+      const data = await (await fetch(`/api/leaderboard?scope=${scope}`)).json();
+      boards = { ...boards, [scope]: data.rows || [] }; // only cache on success → a failed fetch retries
     } catch {}
-    boardLoading = false;
+    if (boardLoadingScope === scope) boardLoadingScope = null;
   }
+  function showLeaderboard() { tab = 'leaderboard'; loadBoard(boardScope); }
+  function setScope(s: 'following' | 'global') { boardScope = s; loadBoard(s); }
 
   let commentDraft = $state<Record<string, string>>({});
 
@@ -189,16 +191,28 @@
       {/if}
 
     {:else}
-      <!-- Leaderboard -->
-      <p class="text-muted text-xs mb-3">You and the players you follow · all time</p>
+      <!-- Leaderboard scope -->
+      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3 max-w-xs">
+        <button class="py-1.5 rounded-lg font-semibold text-xs transition-all {boardScope === 'following' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow' : 'text-muted hover:text-text'}"
+          onclick={() => setScope('following')}>Following</button>
+        <button class="py-1.5 rounded-lg font-semibold text-xs transition-all {boardScope === 'global' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow' : 'text-muted hover:text-text'}"
+          onclick={() => setScope('global')}>Everyone</button>
+      </div>
+      <p class="text-muted text-xs mb-3">{boardScope === 'global' ? 'Everyone on potcount with a public profile · all time' : 'You and the players you follow · all time'}</p>
       {#if boardLoading}
         <p class="text-muted">Loading...</p>
       {:else if board.length === 0}
         <div class="banner banner-info">
-          <p class="font-semibold mb-1">Nothing to rank yet</p>
-          <p class="mb-2">The leaderboard ranks <b>you and the players you follow</b> by all-time profit, with profit-per-game alongside. It fills in once you've played some games and followed a few people.</p>
-          <p class="mb-2">Head to the <b>Feed</b> tab and use its search to find and follow players — they'll show up here as soon as they have finished games.</p>
-          <p class="text-sm opacity-80">Don't want to appear on others' leaderboards? Set your profile to <b>private</b> on your <a href="/account">account</a> page.</p>
+          {#if boardScope === 'global'}
+            <p class="font-semibold mb-1">Nothing to rank yet</p>
+            <p class="mb-2">This ranks <b>everyone on potcount with a public profile</b> by all-time profit. It fills in as players finish their games.</p>
+            <p class="text-sm opacity-80">You only appear here if your profile is <b>public</b> — change that any time on your <a href="/account">account</a> page.</p>
+          {:else}
+            <p class="font-semibold mb-1">Nothing to rank yet</p>
+            <p class="mb-2">The leaderboard ranks <b>you and the players you follow</b> by all-time profit, with profit-per-game alongside. It fills in once you've played some games and followed a few people.</p>
+            <p class="mb-2">Head to the <b>Feed</b> tab and use its search to find and follow players — they'll show up here as soon as they have finished games.</p>
+            <p class="text-sm opacity-80">Don't want to appear on others' leaderboards? Set your profile to <b>private</b> on your <a href="/account">account</a> page.</p>
+          {/if}
         </div>
       {:else}
         {#each board as row, i (row.user.id)}

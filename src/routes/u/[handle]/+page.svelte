@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
+  import { AWARDS } from '$lib/awards';
   import Sparkline from '$lib/components/Sparkline.svelte';
 
   let handle = $derived($page.params.handle ?? '');
@@ -182,6 +183,10 @@
         <div class="text-muted text-xs mt-1">games played</div>
       </div>
       <div class="card text-center !mb-0">
+        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
+        <div class="text-muted text-xs mt-1">avg buy-in</div>
+      </div>
+      <div class="card text-center !mb-0">
         <div class="text-xl font-extrabold tabular-nums {stats.streak?.kind === 'win' ? 'text-win' : stats.streak?.kind === 'loss' ? 'text-danger' : ''}" style="font-family:var(--font-display)">
           {stats.streak && stats.streak.current > 0 ? `${stats.streak.kind === 'win' ? '🔥' : '❄️'} ${stats.streak.current}${stats.streak.kind === 'win' ? 'W' : 'L'}` : '—'}
         </div>
@@ -206,14 +211,18 @@
       </div>
     {/if}
 
-    <!-- Badges -->
-    {#if badges?.hardestToRead > 0}
+    <!-- Award badges (peer-voted, across all games) -->
+    {#if badges && AWARDS.some((a) => badges[a.key] > 0)}
       <div class="flex flex-wrap gap-2 mt-4">
-        <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
-          <span>🎭</span>
-          <span class="font-semibold">Hardest to read</span>
-          <span class="text-muted">× {badges.hardestToRead}</span>
-        </div>
+        {#each AWARDS as award (award.key)}
+          {#if badges[award.key] > 0}
+            <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
+              <span>{award.emoji}</span>
+              <span class="font-semibold">{award.label}</span>
+              <span class="text-muted">× {badges[award.key]}</span>
+            </div>
+          {/if}
+        {/each}
       </div>
     {/if}
 

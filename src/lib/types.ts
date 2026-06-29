@@ -99,8 +99,9 @@ export interface Game {
    *  (campaign tag / external referrer host / first landing path). Set once at
    *  creation; absent on games created before source-tracking shipped. */
   acquisition?: { ref: string | null; referrer: string | null; landing: string | null };
-  /** Post-game votes (e.g. "hardest to read"). */
-  votes?: { hardestToRead?: Record<string, string> };
+  /** Post-game peer-voted awards. Outer key = award key (see $lib/awards), inner
+   *  map = voterUserId → votedPlayerId. e.g. votes.hardestToRead[voter] = player. */
+  votes?: Record<string, Record<string, string>>;
   /** Optional "nit game" side game: while `on`, every seated player holds a
    *  button until they win a pot (their id goes in `cleared`). When exactly one
    *  holder remains, that player has lost the nit game. No money attached. */
@@ -138,8 +139,11 @@ export interface User {
   needsHandle?: boolean;
   /** Stored privately (never in PublicUser); used for account contact + opt-in newsletter. */
   email?: string | null;
-  /** Explicit opt-in to receive newsletter/marketing email. Defaults false. */
+  /** Subscribed to the monthly summary email. Auto-enrolled on account creation
+   *  when an email is present; one-click unsubscribe sets it false. */
   newsletter?: boolean;
+  /** When the last monthly summary email was sent (rolling 30-day cadence). */
+  lastSummaryEmailAt?: string | null;
   // Optional onboarding answers (private — never in PublicUser).
   ageRange?: string | null;
   country?: string | null;

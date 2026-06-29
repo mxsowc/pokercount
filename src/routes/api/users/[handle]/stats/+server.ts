@@ -12,20 +12,23 @@ export function GET({ params, request }) {
   const blocked = privacyBlock(u, request);
   if (blocked) return json({ error: blocked.error, privacy: u.privacy }, { status: blocked.status });
 
-  // Count "hardest to read" votes received across all games
+  // Tally award votes received across all games, keyed by award (hardestToRead,
+  // mostTilted, …). Generic over every category present in game.votes.
   const games = allGames();
-  const hardestToReadCount = games.reduce((count: number, g: any) => {
-    if (!g.votes?.hardestToRead) return count;
-    const votedPlayerIds = Object.values(g.votes.hardestToRead) as string[];
-    // Find the player seat linked to this user
+  const badges: Record<string, number> = {};
+  for (const g of games) {
+    if (!g.votes) continue;
     const seat = g.players.find((p: any) => p.userId === u.id);
-    if (!seat) return count;
-    return count + votedPlayerIds.filter((pid: string) => pid === seat.id).length;
-  }, 0);
+    if (!seat) continue;
+    for (const [award, map] of Object.entries(g.votes as Record<string, Record<string, string>>)) {
+      const got = Object.values(map).filter((pid) => pid === seat.id).length;
+      if (got) badges[award] = (badges[award] || 0) + got;
+    }
+  }
 
   return json({
     user: publicUser(u),
     stats: computeUserStats(games, u.id, converter()),
-    badges: { hardestToRead: hardestToReadCount },
+    badges,
   });
 }

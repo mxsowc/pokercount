@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { sessionUser, httpError } from '$lib/server/helpers.js';
+import { sessionUser } from '$lib/server/helpers.js';
+import { AWARD_KEYS } from '$lib/awards';
 
-// "Hardest to read" post-game vote. Signed-in users only.
-// Each signed-in user can vote once per game. The vote is stored on the game
-// object as `votes: { hardestToRead: { oderId: votedPlayerId } }`.
+// Post-game peer awards (hardest to read, most tilted, …). Signed-in + seated
+// users only; one vote each per award per game. Stored on the game as
+// `votes: { <award>: { voterUserId: votedPlayerId } }`. The award set lives in
+// $lib/awards; this endpoint just validates `category` against it.
 
 export async function POST({ request, params }) {
   const id = params.id.toUpperCase();
@@ -18,7 +20,11 @@ export async function POST({ request, params }) {
   // Game must be ended/settled
   if (g0.status === 'active') return json({ error: 'Game is still active' }, { status: 409 });
 
-  const { playerId } = await request.json();
+  const body = await request.json();
+  const playerId = body?.playerId;
+  // Default to hardestToRead so a pre-awards client still works; reject unknown.
+  const category = body?.category || 'hardestToRead';
+  if (!AWARD_KEYS.has(category)) return json({ error: 'Unknown award' }, { status: 400 });
 
   // Voter must be seated in this game (linked account)
   const voterSeat = g0.players.find((p: any) => p.userId === su.id);
@@ -33,19 +39,19 @@ export async function POST({ request, params }) {
   try {
     const game = mutate(id, (g: any) => {
       if (!g.votes) g.votes = {};
-      if (!g.votes.hardestToRead) g.votes.hardestToRead = {};
-      g.votes.hardestToRead[su.id] = playerId;
+      if (!g.votes[category]) g.votes[category] = {};
+      g.votes[category][su.id] = playerId;
     });
-    return json({ ok: true, votes: game?.votes?.hardestToRead || {} });
+    return json({ ok: true, category, votes: game?.votes?.[category] || {} });
   } catch (e: any) {
     return json({ error: e.message || 'failed' }, { status: e.status || 400 });
   }
 }
 
-// GET: return current votes for this game
-export async function GET({ request, params }) {
+// GET: return all award votes for this game ({ <award>: { voter: player } }).
+export async function GET({ params }) {
   const id = params.id.toUpperCase();
   const g0 = getGame(id);
   if (!g0) return json({ error: 'game not found' }, { status: 404 });
-  return json({ votes: g0.votes?.hardestToRead || {} });
+  return json({ votes: g0.votes || {} });
 }

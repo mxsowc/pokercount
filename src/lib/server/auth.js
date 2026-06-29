@@ -110,6 +110,22 @@ export function verifyGameToken(token, gameId) {
   return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
+// ---- Email unsubscribe tokens ------------------------------------------------
+// A one-click unsubscribe link in an email can't lean on a session cookie. We
+// sign the userId with the server secret so the link works while logged out, yet
+// can't be forged to unsubscribe someone else's account.
+/** @param {string} userId @returns {string} */
+export function signUnsubToken(userId) {
+  return hmac('unsub:' + userId);
+}
+/** @param {string} userId @param {string | null | undefined} token @returns {boolean} */
+export function verifyUnsubToken(userId, token) {
+  if (!userId || !token) return false;
+  const expected = Buffer.from(signUnsubToken(userId));
+  const provided = Buffer.from(String(token));
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
+}
+
 // ---- Google ID token verification -------------------------------------------
 /** @type {{ keys: any[], at: number }} */
 let jwks = { keys: [], at: 0 };

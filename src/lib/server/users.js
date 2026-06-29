@@ -177,7 +177,12 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
     oauthAvatar: null,
     privacy: 'public',
     email: mail,
-    newsletter: !!newsletter && !!mail, // opt-in only counts if we actually have an email
+    // Monthly summary is OPT-IN: enrol only when the user actively ticked the box
+    // at signup AND we have an address to send to. No pre-ticked consent.
+    newsletter: !!newsletter && !!mail,
+    // Stamp now so the first monthly summary lands ~30 days after signup, not on
+    // the next scheduler tick.
+    lastSummaryEmailAt: now(),
     lastSeenAt: now(),
     createdAt: now(),
   };
@@ -224,7 +229,8 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
     oauthAvatar: avatar || null,
     privacy: 'public',
     email: mail,
-    newsletter: !!newsletter && !!mail,
+    newsletter: !!newsletter && !!mail, // opt-IN only (consent checkbox at sign-in)
+    lastSummaryEmailAt: now(), // first summary ~30 days out, not on the next tick
     needsHandle: true, // they get a suggested handle but choose their own on first sign-in
     lastSeenAt: now(),
     createdAt: now(),
@@ -273,6 +279,8 @@ export function updateProfile(userId, { name, avatar, privacy, newsletter, email
       const mail = cleanEmail(email);
       if (!mail) fail("that doesn't look like an email address", 400);
       u.email = mail;
+      // Adding an email does NOT auto-subscribe — enrolment is always an explicit
+      // opt-in (the signup checkbox, or the toggle in account settings).
     }
   }
 
@@ -351,6 +359,7 @@ export function linkProvider(userId, { provider, sub, email, avatar }) {
     providerIndex.set(key, userId);
   }
   // Fill in a verified email if the account had none (gives PIN users a contact).
+  // Linking never auto-subscribes — the monthly summary is always an explicit opt-in.
   const mail = cleanEmail(email);
   if (mail && !u.email) u.email = mail;
   // Adopt the provider photo only if the user has no avatar of their own.
@@ -380,6 +389,26 @@ export function unlinkProvider(userId, provider) {
   if (keep.length) u.linkedProviders = keep; else delete u.linkedProviders;
   persist();
   return u;
+}
+
+/** Set a user's monthly-summary subscription. Used by the one-click unsubscribe
+ *  link (logged-out) and the account toggle. Enabling only sticks if there's an
+ *  email to send to. @param {string} userId @param {boolean} on @returns {boolean} */
+export function setNewsletter(userId, on) {
+  const u = byId.get(userId);
+  if (!u) return false;
+  u.newsletter = !!on && !!u.email;
+  persist();
+  return true;
+}
+
+/** Record that we just sent this user their monthly summary (rolling 30-day
+ *  cadence, idempotent across restarts). @param {string} userId @param {number} [atMs] */
+export function markSummarySent(userId, atMs = Date.now()) {
+  const u = byId.get(userId);
+  if (!u) return;
+  u.lastSummaryEmailAt = new Date(atMs).toISOString();
+  persist();
 }
 
 /** Verify a local account's PIN (for re-confirming a sensitive action like

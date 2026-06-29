@@ -4,6 +4,7 @@
   import { browser } from '$app/environment';
   import { toast } from '$lib/stores/toast';
   import { money, parseAmount } from '$lib/utils/money';
+  import { AWARDS } from '$lib/awards';
   import { ago, shortDate } from '$lib/utils/time';
   import { haptic, celebrate } from '$lib/utils/fx';
   import { computeSettlement } from '$lib/engine/settle.js';
@@ -830,6 +831,16 @@
     }
   }
 
+  // Cast an end-of-night award vote (one per award per game).
+  async function castVote(award: { key: string; emoji: string; label: string }, p: any) {
+    try {
+      const res = await api('POST', `/api/games/${gameId}/vote`, { category: award.key, playerId: p.id });
+      game = { ...game, votes: { ...game.votes, [award.key]: res.votes } };
+      haptic(14);
+      toast(`${award.emoji} ${award.label}: ${p.name}`);
+    } catch (e: any) { toast(e.message); }
+  }
+
   async function updateGameName(e: Event) {
     const el = e.target as HTMLElement;
     const name = el.textContent?.trim();
@@ -1639,31 +1650,31 @@
         </div>
       {/if}
 
-      <!-- "Hardest to read" vote — signed-in users with a seat only -->
+      <!-- End-of-night awards — peer-voted, signed-in players with a seat only -->
       {#if myAccount && mySeat && standings.length >= 3}
-        {@const myVote = game.votes?.hardestToRead?.[myAccount.id]}
         {@const eligiblePlayers = game.players.filter((p: any) => p.userId && p.userId !== myAccount.id)}
         {#if eligiblePlayers.length > 0}
           <div class="card mt-4 !p-3">
-            <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Who was hardest to read?</div>
-            {#if myVote}
-              {@const votedPlayer = game.players.find((p: any) => p.id === myVote)}
-              <p class="text-sm text-muted">You voted for <b class="text-text">{votedPlayer?.name || '?'}</b> 🎭</p>
-            {:else}
-              <div class="flex flex-wrap gap-1.5">
-                {#each eligiblePlayers as p (p.id)}
-                  <button class="btn-small btn-secondary" onclick={async () => {
-                    try {
-                      const res = await api('POST', `/api/games/${gameId}/vote`, { playerId: p.id });
-                      game = { ...game, votes: { ...game.votes, hardestToRead: res.votes } };
-                      haptic(14);
-                      toast(`Voted for ${p.name} 🎭`);
-                    } catch (e: any) { toast(e.message); }
-                  }}>{p.name}</button>
-                {/each}
-              </div>
-              <p class="text-xs text-faint mt-1.5">Only you and other signed-in players can vote.</p>
-            {/if}
+            <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2.5">End-of-night awards</div>
+            <div class="flex flex-col gap-3">
+              {#each AWARDS as award (award.key)}
+                {@const myVote = game.votes?.[award.key]?.[myAccount.id]}
+                <div>
+                  <div class="text-sm font-semibold mb-1.5">{award.emoji} {award.q}</div>
+                  {#if myVote}
+                    {@const votedPlayer = game.players.find((p: any) => p.id === myVote)}
+                    <p class="text-sm text-muted">You voted for <b class="text-text">{votedPlayer?.name || '?'}</b></p>
+                  {:else}
+                    <div class="flex flex-wrap gap-1.5">
+                      {#each eligiblePlayers as p (p.id)}
+                        <button class="btn-small btn-secondary" onclick={() => castVote(award, p)}>{p.name}</button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+            <p class="text-xs text-faint mt-2.5">Only you and other signed-in players can vote. One vote each per award.</p>
           </div>
         {/if}
       {/if}

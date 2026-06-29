@@ -12,7 +12,7 @@
   <h2 class="text-lg font-bold mt-6 mb-2">What we store</h2>
   <ul class="list-disc pl-5 space-y-1 mb-4">
     <li><b>Your account:</b> your name/handle, and — if you sign in with Google or Apple — the ID and profile photo they share with us. You can connect more than one sign-in method (a passcode plus Google and/or Apple) so you don't lose access; you can disconnect the extra ones any time.</li>
-    <li><b>Email (optional):</b> if you sign in with Google/Apple we receive your email; with a passcode account it's optional. We store it to identify your account and, <b>only if you tick the box</b>, to send occasional updates.</li>
+    <li><b>Email (optional):</b> if you sign in with Google/Apple we receive your email; with a passcode account it's optional. We store it to identify your account and, <b>only if you opt in</b>, to send your monthly summary (see below).</li>
     <li><b>Optional answers:</b> if you choose to, an age range, where you're from, and how you heard about us. You can skip these.</li>
     <li><b>Your games:</b> the buy-ins, results and settlements you enter, and reactions/comments you post.</li>
     <li><b>A login cookie:</b> a single signed cookie that keeps you logged in. No third-party tracking or advertising cookies.</li>
@@ -22,7 +22,7 @@
   <ul class="list-disc pl-5 space-y-1 mb-4">
     <li>To run the app, keep you signed in, and show your stats and history.</li>
     <li>To contact you about your account if needed.</li>
-    <li>To send a newsletter <b>only</b> if you explicitly opted in — and you can opt out at any time.</li>
+    <li><b>Monthly summary email:</b> <b>only if you opt in</b> (an unticked checkbox when you sign up, or the toggle in your <a href="/account">account settings</a>) we send a once-a-month recap of <i>your own</i> stats — your best and worst night, average profit and a few highlights from the last 30 days. Every email also has a one-tap <b>unsubscribe</b> link, and you can turn it off any time. We don't send any other marketing email, and we never share your address.</li>
     <li>The optional answers help us understand who uses potcount. They're never required.</li>
   </ul>
 

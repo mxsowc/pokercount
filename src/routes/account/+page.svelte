@@ -3,6 +3,7 @@
   import { invalidateAll, goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
+  import { AWARDS } from '$lib/awards';
   import Sparkline from '$lib/components/Sparkline.svelte';
   import CountryPicker from '$lib/components/CountryPicker.svelte';
   import { countryName } from '$lib/utils/currencies.js';
@@ -22,6 +23,10 @@
   // Signup form
   let signupName = $state('');
   let signupPin = $state('');
+  let signupEmail = $state('');
+  // Monthly-summary opt-in shown at sign-up only. Unticked by default (explicit
+  // consent — no pre-ticked boxes); applies to the form AND Google/Apple sign-up.
+  let signupNewsletter = $state(false);
   let showPin = $state(false);
   let handlePreview = $derived(signupName.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
 
@@ -47,7 +52,7 @@
     if (handlePreview.length < 3 || handlePreview.length > 20) { toast('Name must be 3-20 characters'); return; }
     if (signupPin.length < 4) { toast('Passcode must be at least 4 characters'); return; }
     try {
-      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin }) });
+      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: signupName, displayName: signupName, pin: signupPin, email: signupEmail.trim() || undefined, newsletter: signupNewsletter }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Signup failed'); return; }
       await afterAuth('Account created');
@@ -267,6 +272,18 @@
     finally { savingEmail = false; }
   }
 
+  async function saveNewsletter(on: boolean) {
+    try {
+      const res = await fetch('/api/me', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newsletter: on }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not save'); return; }
+      account = data;
+      toast(on ? 'Subscribed to the monthly summary' : 'Unsubscribed');
+    } catch (e: any) { toast(e.message); }
+  }
+
   async function linkGoogle(credential: string) {
     try {
       const res = await fetch('/api/me/link/google', {
@@ -382,7 +399,7 @@
     try {
       const res = await fetch('/api/auth/google', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: resp.credential }),
+        body: JSON.stringify({ credential: resp.credential, newsletter: signupNewsletter }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Google sign-in failed'); return; }
@@ -438,7 +455,7 @@
       const nm = resp?.user?.name ? [resp.user.name.firstName, resp.user.name.lastName].filter(Boolean).join(' ') : undefined;
       const res = await fetch('/api/auth/apple', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, name: nm }),
+        body: JSON.stringify({ idToken, name: nm, newsletter: signupNewsletter }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || 'Apple sign-in failed'); return; }
@@ -593,6 +610,12 @@
             <button class="btn-small btn" disabled={savingEmail || emailInput.trim() === (account.email || '')} onclick={saveEmail}>Save</button>
           </div>
           <p class="text-muted text-xs mt-1">A way to reach you and to hold onto your stats if you forget your passcode. We don't verify it — for a guaranteed recovery login, connect Google or Apple below.</p>
+          <!-- Monthly summary opt-in (auto-on once you have an email; toggle off anytime) -->
+          <label class="flex items-center gap-2 mt-3 {account.email ? 'cursor-pointer' : 'opacity-50'}">
+            <input type="checkbox" class="w-4 h-4 accent-accent" checked={!!account.newsletter} disabled={!account.email}
+                   onchange={(e) => saveNewsletter((e.currentTarget as HTMLInputElement).checked)} />
+            <span class="text-sm">Email me a monthly summary of my stats{#if !account.email} <span class="text-faint">— add an email first</span>{/if}</span>
+          </label>
         </div>
 
         <!-- Linked sign-in methods -->
@@ -691,6 +714,10 @@
           <div class="text-muted text-xs mt-1">games played</div>
         </div>
         <div class="card text-center !mb-0">
+          <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
+          <div class="text-muted text-xs mt-1">avg buy-in</div>
+        </div>
+        <div class="card text-center !mb-0">
           <div class="text-xl font-extrabold tabular-nums {stats.streak?.kind === 'win' ? 'text-win' : stats.streak?.kind === 'loss' ? 'text-danger' : ''}" style="font-family:var(--font-display)">
             {stats.streak && stats.streak.current > 0 ? `${stats.streak.kind === 'win' ? '🔥' : '❄️'} ${stats.streak.current}${stats.streak.kind === 'win' ? 'W' : 'L'}` : '—'}
           </div>
@@ -714,14 +741,18 @@
         </div>
       {/if}
 
-      <!-- Badges -->
-      {#if badges?.hardestToRead > 0}
+      <!-- Award badges (peer-voted, across all games) -->
+      {#if badges && AWARDS.some((a) => badges[a.key] > 0)}
         <div class="flex flex-wrap gap-2 mt-4">
-          <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
-            <span>🎭</span>
-            <span class="font-semibold">Hardest to read</span>
-            <span class="text-muted">× {badges.hardestToRead}</span>
-          </div>
+          {#each AWARDS as award (award.key)}
+            {#if badges[award.key] > 0}
+              <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
+                <span>{award.emoji}</span>
+                <span class="font-semibold">{award.label}</span>
+                <span class="text-muted">× {badges[award.key]}</span>
+              </div>
+            {/if}
+          {/each}
         </div>
       {/if}
 
@@ -859,6 +890,14 @@
             onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
           <button type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-text" onclick={() => showPin = !showPin}>{showPin ? 'Hide' : 'Show'}</button>
         </div>
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">Email <span class="text-muted">(optional)</span></label>
+        <input class="input" type="email" bind:value={signupEmail} placeholder="you@example.com" autocapitalize="none" autocomplete="email"
+          onkeydown={(e) => { if (e.key === 'Enter') doSignup(); }} />
+        <!-- Explicit, unticked monthly-summary opt-in (also applies to Google/Apple sign-up below). -->
+        <label class="flex items-start gap-2 mt-3 cursor-pointer">
+          <input type="checkbox" class="w-4 h-4 mt-0.5 accent-accent shrink-0" bind:checked={signupNewsletter} />
+          <span class="text-xs text-muted">Email me a once-a-month summary of my stats — best/worst night, profit, streaks. Optional, and you can unsubscribe any time.</span>
+        </label>
         <button class="btn w-full mt-4" onclick={doSignup}>Create account</button>
       {/if}
 

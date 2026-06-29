@@ -5,6 +5,8 @@ import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
 import { initAuth } from './auth.js';
+import { emailConfigured } from './email.js';
+import { sendDueMonthlySummaries } from './summary.js';
 
 let done = false;
 
@@ -24,6 +26,17 @@ export function ensureInit() {
   const reap = () => { reapAbandonedGames(); reapStaleGames(); };
   reap();
   setInterval(reap, 3_600_000); // every hour
+
+  // Monthly summary emails — only if email is configured. Each subscribed user is
+  // sent at most once per 30 days (stamped on the account), so a frequent tick is
+  // cheap: nearly everyone is skipped by the cadence guard.
+  if (emailConfigured()) {
+    const mailSummaries = () => { sendDueMonthlySummaries().catch((e) => console.error('[summary] tick failed:', e)); };
+    setTimeout(mailSummaries, 60_000);          // shortly after boot
+    setInterval(mailSummaries, 6 * 3_600_000);  // then every 6 hours
+  } else {
+    console.log('[init] email not configured (set RESEND_API_KEY) — monthly summaries off');
+  }
 
   done = true;
 }

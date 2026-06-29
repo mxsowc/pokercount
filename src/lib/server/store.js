@@ -216,8 +216,9 @@ export function unlinkUser(userId) {
       if (p.userId === userId) { delete p.userId; dirty = true; }
     }
     if (g.ownerId === userId) { delete g.ownerId; dirty = true; }
-    if (g.votes?.hardestToRead && g.votes.hardestToRead[userId] !== undefined) {
-      delete g.votes.hardestToRead[userId]; dirty = true;
+    // Drop any award votes this user cast, across every category.
+    for (const map of Object.values(g.votes || {})) {
+      if (map && map[userId] !== undefined) { delete map[userId]; dirty = true; }
     }
     if (dirty) { touched(g); changed++; }
   }
