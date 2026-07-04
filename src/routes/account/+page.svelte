@@ -600,8 +600,15 @@
       </div>
 
       {#if account}
+        <!-- Email + sign-in methods: tucked behind a disclosure to keep the
+             account page calm — most people set these once and never touch them. -->
+        <details class="mt-4 pt-4 border-t border-border-soft group">
+          <summary class="flex items-center justify-between cursor-pointer select-none text-xs text-muted font-medium list-none [&::-webkit-details-marker]:hidden">
+            <span>Email &amp; sign-in options</span>
+            <span class="text-faint text-base leading-none transition-transform group-open:rotate-90">›</span>
+          </summary>
         <!-- Email: optional, unverified contact + newsletter enablement -->
-        <div class="mt-4 pt-4 border-t border-border-soft">
+        <div class="mt-4">
           <label class="block text-xs text-muted font-medium mb-1" for="acct-email">Email <span class="text-faint font-normal">· optional</span></label>
           <div class="flex gap-2">
             <input id="acct-email" class="input flex-1" type="email" bind:value={emailInput} placeholder="you@example.com"
@@ -646,6 +653,7 @@
             </div>
           </div>
         {/if}
+        </details>
       {/if}
 
       <p class="mt-4"><a href="/u/{user.handle}">View your public profile →</a></p>
