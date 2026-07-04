@@ -6,6 +6,13 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
+  import { currencyForCountry } from '$lib/utils/currencies';
+
+  // Focus a field as soon as it mounts (e.g. the Join view's code input) so the
+  // keypad pops without an extra tap. Used via use:autofocus.
+  function autofocus(node: HTMLInputElement) {
+    requestAnimationFrame(() => node.focus());
+  }
   import { getAcq } from '$lib/utils/acq';
 
   type View = 'intro' | 'open' | 'join';
@@ -120,11 +127,17 @@
   }
   let generatedTitle = $state('');
 
-  // Currency: the game's unit. Defaults to EUR for everyone; when a signed-in host
-  // has set their country (in their account), we default to that country's
-  // currency instead. Still freely changeable in the CurrencyPicker below.
+  // Currency: the game's unit. A signed-in host's saved country wins; otherwise
+  // guess from the device locale (so a $/£/zł host isn't silently stamped with
+  // euros); EUR as the final fallback. Still freely changeable in the picker.
   let unitInput = $state('€');
-  function defaultUnit(): string { return user?.homeUnit || '€'; }
+  function defaultUnit(): string {
+    if (user?.homeUnit) return user.homeUnit;
+    try {
+      const region = new Intl.Locale(navigator.language).maximize().region;
+      return currencyForCountry(region);
+    } catch { return '€'; }
+  }
 
   // Join game form
   let joinCode = $state('');
@@ -325,7 +338,7 @@
         <button type="button" class="btn-small btn-secondary !py-1.5 !px-2.5 shrink-0" onclick={() => generatedTitle = gameTitle()} title="Shuffle title">🔀</button>
       </div>
       <label class="block text-xs text-muted font-medium mb-1">Your name</label>
-      <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" />
+      <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" autocapitalize="words" autocomplete="name" enterkeyhint="done" />
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
 
@@ -362,10 +375,12 @@
     <p class="text-muted mb-4">Enter the code the host shared and your name.</p>
     <div class="card">
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Game code</label>
-      <input class="input tracking-widest text-xl" bind:value={joinCode} inputmode="numeric" placeholder="2137" maxlength="6"
+      <input class="input tracking-widest text-xl" bind:value={joinCode} inputmode="numeric" enterkeyhint="next" placeholder="2137" maxlength="6"
+             use:autofocus
              onkeydown={(e) => { if (e.key === 'Enter') joinGame(); }} />
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Your name</label>
       <input class="input" bind:value={joinName} placeholder="e.g. Max" maxlength="40"
+             autocapitalize="words" autocomplete="name" enterkeyhint="go"
              onkeydown={(e) => { if (e.key === 'Enter') joinGame(); }} />
       <button class="btn w-full mt-4" disabled={busy} onclick={joinGame}>{busy ? 'Joining...' : 'Join game'}</button>
     </div>

@@ -3,7 +3,7 @@
   import { haptic } from '$lib/utils/fx';
   import { toast } from '$lib/stores/toast';
   import { browser } from '$app/environment';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   onMount(() => { loadActiveGame(); });
 
@@ -554,6 +554,13 @@
       // would be an HTML-injection vector.
       const msg = String(e?.message ?? 'Could not compute that').replace(/[&<>"]/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c));
       resultHTML = `<div class="banner banner-warn mt-4">${msg}</div>`;
+    }
+    // Reveal the answer: results (or the error banner) render below a form that's
+    // several screens tall, so bring them into view once Svelte flushes the {@html}.
+    await tick();
+    if (browser) {
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      document.getElementById('result')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     }
   }
 

@@ -469,6 +469,9 @@
 
   onMount(async () => {
     if (!browser) return;
+    // Arriving with a ?next= (e.g. "sign in to claim your seat") is almost always
+    // a new guest, so open on Create account — they can still switch to Log in.
+    if (!user && $page.url.searchParams.has('next')) tab = 'signup';
     try { config = await (await fetch('/api/config')).json(); } catch {}
   });
 
@@ -872,6 +875,9 @@
   {:else}
     <!-- Not logged in -->
     <div class="card">
+      {#if $page.url.searchParams.has('next')}
+        <p class="text-sm text-muted mb-3">Create an account (or log in) to claim your seat and keep your stats.</p>
+      {/if}
       <div class="flex gap-2 mb-3.5">
         <button class="btn-small flex-1 {tab === 'login' ? 'btn' : 'btn-secondary'}" onclick={() => tab = 'login'}>Log in</button>
         <button class="btn-small flex-1 {tab === 'signup' ? 'btn' : 'btn-secondary'}" onclick={() => tab = 'signup'}>Create account</button>
