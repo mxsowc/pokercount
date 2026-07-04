@@ -89,6 +89,13 @@ export async function POST(event) {
   let ptsSeats = 0, ptsBuyInAmount = 0;
   /** crypto ticker → { seats, amount } */
   const cryptoBuyIn: Record<string, { seats: number; amount: number }> = {};
+  // Pot-per-player: each game's (pot ÷ its players), then averaged across games
+  // so every game counts equally regardless of size (distinct from the pooled
+  // avg-buy-in/person above). Same three currency buckets.
+  let eurPotPP = 0, eurPotPPGames = 0;
+  let ptsPotPP = 0, ptsPotPPGames = 0;
+  /** crypto ticker → { sum, games } */
+  const cryptoPotPP: Record<string, { sum: number; games: number }> = {};
   for (const g of played) {
     gameStatus[g.status] = (gameStatus[g.status] || 0) + 1;
     const seats = g.players?.length || 0;
@@ -98,9 +105,13 @@ export async function POST(event) {
     const gameTotal = (g.transactions || []).reduce((s: number, t: any) => s + (t.amount || 0), 0);
     const b = bucketOf(unit, gameTotal);
     if (!b) continue;
-    if (b.bucket === 'eur') { eurSeats += seats; eurBuyInAmount += b.value; }
-    else if (b.bucket === 'pts') { ptsSeats += seats; ptsBuyInAmount += b.value; }
-    else { (cryptoBuyIn[b.bucket] ??= { seats: 0, amount: 0 }); cryptoBuyIn[b.bucket].seats += seats; cryptoBuyIn[b.bucket].amount += b.value; }
+    const perPlayer = seats > 0 ? b.value / seats : 0;
+    if (b.bucket === 'eur') { eurSeats += seats; eurBuyInAmount += b.value; eurPotPP += perPlayer; eurPotPPGames++; }
+    else if (b.bucket === 'pts') { ptsSeats += seats; ptsBuyInAmount += b.value; ptsPotPP += perPlayer; ptsPotPPGames++; }
+    else {
+      (cryptoBuyIn[b.bucket] ??= { seats: 0, amount: 0 }); cryptoBuyIn[b.bucket].seats += seats; cryptoBuyIn[b.bucket].amount += b.value;
+      (cryptoPotPP[b.bucket] ??= { sum: 0, games: 0 }); cryptoPotPP[b.bucket].sum += perPlayer; cryptoPotPP[b.bucket].games++;
+    }
   }
   const finishedGames = (gameStatus.ended || 0) + (gameStatus.settled || 0);
 
@@ -217,6 +228,12 @@ export async function POST(event) {
       avgBuyInPerPlayerPts: ptsSeats ? round1(ptsBuyInAmount / ptsSeats) : 0,
       avgBuyInPerPlayerCrypto: Object.fromEntries(
         Object.entries(cryptoBuyIn).map(([tk, v]) => [tk, v.seats ? round6(v.amount / v.seats) : 0])
+      ),
+      // Pot per player: average of each game's (pot ÷ players).
+      avgPotPerPlayerEUR: eurPotPPGames ? round2(eurPotPP / eurPotPPGames) : 0,
+      avgPotPerPlayerPts: ptsPotPPGames ? round2(ptsPotPP / ptsPotPPGames) : 0,
+      avgPotPerPlayerCrypto: Object.fromEntries(
+        Object.entries(cryptoPotPP).map(([tk, v]) => [tk, v.games ? round6(v.sum / v.games) : 0])
       ),
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
