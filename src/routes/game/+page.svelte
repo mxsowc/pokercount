@@ -1230,6 +1230,9 @@
           {/if}
         </div>
       </div>
+      {#if game.status === 'active' && game.players.length > 0}
+        <p class="text-xs text-faint mb-3 -mt-1">Tap <b class="text-accent-2 font-semibold">+{money(quickAmt, unit)}</b> to add a buy-in, or <b class="text-accent-2 font-semibold">Other</b> for a different amount.</p>
+      {/if}
 
       <!-- Player rows -->
       {#each game.players as p (p.id)}
@@ -1263,7 +1266,7 @@
                       onclick={() => markNitWon(p.id)}>{cleared ? '✓' : '🎯'}</button>
             {/if}
             <button class="btn-small btn" onclick={() => quickBuyIn(p.id, p.name)} title="Quick {invested(p.id) > 0 ? 'top-up' : 'buy-in'} of {money(quickAmt, unit)}">+{money(quickAmt, unit)}</button>
-            <button class="btn-small btn-secondary !px-2.5" onclick={() => openMoneyModal(p.id, p.name)} title="Custom amount">+{unit}</button>
+            <button class="btn-small !px-3 font-semibold text-accent border border-accent/45 bg-accent/10 hover:bg-accent/20" onclick={() => openMoneyModal(p.id, p.name)} title="Add a different amount">Other</button>
             <button class="btn-small btn-ghost !px-2.5 min-w-[44px]" title={inv > 0 ? 'View & edit buy-ins' : 'No buy-ins yet'} onclick={() => { expanded.has(p.id) ? expanded.delete(p.id) : expanded.add(p.id); expanded = new Set(expanded); }}>
               {#if inv > 0}<span class="text-xs tabular-nums">{game.transactions.filter((t: any) => t.playerId === p.id).length}</span>{/if}
               {isExpanded ? '▴' : '▾'}
@@ -1428,7 +1431,7 @@
           <div class="mt-3 flex flex-col gap-2">
             {#each (game.log || []).slice().reverse() as e (e.id)}
               <div class="text-sm border-l-2 border-border-soft pl-2.5">
-                {#if e.playerName}<b>{e.playerName}</b> {/if}{describe(e)}<br/>
+                {#if e.playerName}<b>{e.playerName}</b>{' '}{/if}{describe(e)}<br/>
                 <span class="text-muted text-xs">by {e.actorName} · {shortDate(e.at)}</span>
               </div>
             {:else}
