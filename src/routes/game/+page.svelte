@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { browser } from '$app/environment';
   import { toast } from '$lib/stores/toast';
   import { money, parseAmount } from '$lib/utils/money';
@@ -191,6 +191,9 @@
     } catch { return null; }
   });
   const allEntered = $derived(game ? game.players.length > 0 && game.players.every((p: any) => game.finalStacks[p.id] != null) : false);
+  // Everyone's cashed out but the game is still open (in the play view): float a
+  // sticky "Lock in" bar so the finish action isn't buried at the end of a long scroll.
+  const stickyLockin = $derived(!!game && game.status === 'active' && allEntered && activeView === 'play');
 
   // Live standings: rank the players who've cashed out by net; the rest are "still in".
   // Updates live for everyone as cash-outs come in over SSE.
@@ -271,9 +274,14 @@
     });
     unsub = () => es.close();
 
-    // Returned here from sign-in to claim a seat → open the picker.
+    // Returned here from sign-in to claim a seat. If exactly ONE unclaimed seat
+    // matches the account name, link it automatically (they already said "that's
+    // me" by signing in); anything ambiguous (0 or >1) still opens the picker.
     if ($page.url.searchParams.get('claim') === '1' && myAccount && !mySeat) {
-      claimOpen = true;
+      const dn = (myAccount.displayName || '').trim().toLowerCase();
+      const matches = unclaimedSeats.filter((p: any) => p.name.trim().toLowerCase() === dn);
+      if (matches.length === 1) claimSeat(matches[0].id);
+      else claimOpen = true;
     }
     // Note: we no longer auto-pop the join modal. Viewing a shared game shouldn't
     // hit a name-entry wall — people opt in via the "Take a seat" button instead.
@@ -395,8 +403,61 @@
     } catch (e: any) { toast(e.message); }
   }
 
+  // Sign in / sign up WITHOUT leaving the game — a full-page hop to /account tore
+  // down the live view and SSE and dropped the win card. A PIN-first inline modal
+  // signs in, refreshes the account in place, and claims the seat. Google/Apple
+  // (their own SDK lifecycle) still route to /account via the modal's link.
+  let authOpen = $state(false);
+  let authTab = $state<'login' | 'signup'>('signup');
+  let authHandle = $state('');
+  let authName = $state('');
+  let authPin = $state('');
+  let authBusy = $state(false);
+
   function signInToClaim() {
+    authName = getActor().name || '';
+    authHandle = '';
+    authPin = '';
+    authTab = 'signup';
+    authOpen = true;
+  }
+  function oauthClaim() {
     goto(`/account?next=${encodeURIComponent(`/game?g=${gameId}&claim=1`)}`);
+  }
+
+  async function submitAuth() {
+    if (authBusy) return;
+    let res: Response;
+    if (authTab === 'login') {
+      if (!authHandle.trim() || !authPin) { toast('Enter your name and passcode'); return; }
+    } else {
+      if (authName.trim().length < 3) { toast('Name must be at least 3 characters'); return; }
+      if (authPin.length < 4) { toast('Passcode must be at least 4 digits'); return; }
+    }
+    authBusy = true;
+    try {
+      res = authTab === 'login'
+        ? await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: authHandle.trim(), pin: authPin }) })
+        : await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: authName.trim(), displayName: authName.trim(), pin: authPin, newsletter: false }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || (authTab === 'login' ? 'Login failed' : 'Sign-up failed')); authBusy = false; return; }
+      // Refresh the account locally (no reload / no SSE teardown) + the nav.
+      myAccount = (await api('GET', '/api/me')).user;
+      invalidateAll();
+      authOpen = false;
+      toast(authTab === 'login' ? 'Signed in' : 'Account created');
+      await claimAfterAuth();
+    } catch (e: any) { toast(e.message); }
+    finally { authBusy = false; }
+  }
+
+  // After signing in, link the matching seat automatically when unambiguous.
+  async function claimAfterAuth() {
+    if (!myAccount || mySeat) return;
+    const dn = (myAccount.displayName || '').trim().toLowerCase();
+    const matches = unclaimedSeats.filter((p: any) => p.name.trim().toLowerCase() === dn);
+    if (matches.length === 1) await claimSeat(matches[0].id);
+    else if (unclaimedSeats.length > 0) claimOpen = true;
   }
 
   // Parse a typed amount, accepting a comma decimal separator (many phone keypads
@@ -458,6 +519,7 @@
 
   // Remove a single buy-in/top-up entered by mistake (server keeps an audit log).
   async function delTx(t: any) {
+    if (!(await askConfirm(`Remove this ${t.type === 'topup' ? 'top-up' : 'buy-in'} of ${money(t.amount, unit)}? It stays in the activity log.`, 'Remove', true))) return;
     try {
       game = await api('DELETE', `/api/games/${gameId}/transactions/${t.id}`);
       haptic(9);
@@ -925,7 +987,7 @@
   <title>{game ? `potcount — ${game.name} #${game.code}` : 'potcount — game'}</title>
 </svelte:head>
 
-<div class="wrap">
+<div class="wrap" style={stickyLockin ? 'padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px))' : undefined}>
   {#if loading}
     <p class="text-muted">Loading…</p>
   {:else if error}
@@ -1367,17 +1429,18 @@
                 onchange={(e) => setFinal(p.id, (e.target as HTMLInputElement).value)}
                 onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinal(p.id, el.value); const next = document.querySelector(`[data-cashidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
               <input class="input !w-[86px] !py-2 !px-2.5 tabular-nums {pl != null && pl > 0 ? '!text-win' : ''} {pl != null && pl < 0 ? '!text-danger' : ''}" type="text" inputmode="decimal" placeholder="+/- P/L"
+                enterkeyhint={i < game.players.length - 1 ? 'next' : 'done'} data-plidx={i}
                 title="Profit / loss — type a number here to set the stack from it"
                 value={pl ?? ''}
                 onchange={(e) => setFinalFromProfit(p.id, (e.target as HTMLInputElement).value)}
-                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinalFromProfit(p.id, el.value); const next = document.querySelector(`[data-cashidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
+                onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; setFinalFromProfit(p.id, el.value); const next = document.querySelector(`[data-plidx="${i + 1}"]`) as HTMLInputElement | null; if (next) next.focus(); else el.blur(); } }} />
             </div>
           </div>
         {:else}
           <p class="text-muted">Add players first.</p>
         {/each}
-        {#if game.players.some((p: any) => game.finalStacks[p.id] == null) && game.players.some((p: any) => game.finalStacks[p.id] != null)}
-          <button class="btn-small btn-ghost w-full mt-1" onclick={markRestOut}>Mark everyone left as out (0)</button>
+        {#if game.players.length > 0 && game.players.some((p: any) => game.finalStacks[p.id] == null)}
+          <button class="btn-small btn-ghost w-full mt-1" onclick={markRestOut}>{game.players.every((p: any) => game.finalStacks[p.id] == null) ? 'Mark everyone as out (0)' : 'Mark everyone left as out (0)'}</button>
         {/if}
       </div>
 
@@ -1740,6 +1803,16 @@
   {/if}
 </div>
 
+<!-- Sticky "Lock in" bar — floats above the bottom nav once everyone's cashed
+     out, so finishing the night doesn't require scrolling to the very bottom. -->
+{#if stickyLockin}
+  <div class="fixed left-0 right-0 z-40 px-4" style="bottom: calc(62px + env(safe-area-inset-bottom, 0px))">
+    <div class="max-w-[560px] mx-auto">
+      <button class="btn w-full shadow-xl" onclick={closeGame}>Lock in &amp; track who's paid</button>
+    </div>
+  </div>
+{/if}
+
 <!-- Live sync status banner -->
 {#if liveStatus}
   <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 banner banner-warn max-w-[90%] text-center">{liveStatus}</div>
@@ -1779,9 +1852,33 @@
     <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px]" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Join this game</h3>
       <p class="text-muted text-sm mb-3">Game #{game?.code ?? gameId} — enter your name to take a seat.</p>
-      <input class="input mb-3" bind:value={joinNameVal} placeholder="Your name" maxlength="40" onkeydown={(e) => { if (e.key === 'Enter') joinAsPlayer(); }} />
+      <input class="input mb-3" bind:value={joinNameVal} placeholder="Your name" maxlength="40" autocapitalize="words" autocomplete="name" enterkeyhint="go" onkeydown={(e) => { if (e.key === 'Enter') joinAsPlayer(); }} />
       <button class="btn w-full" onclick={joinAsPlayer}>Join as player</button>
       <button class="btn-small btn-ghost w-full mt-2" onclick={() => joinOpen = false}>Just watch</button>
+    </div>
+  </div>
+{/if}
+
+<!-- Claim/sign-in Modal — inline PIN sign-in so you never leave the game -->
+{#if authOpen}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) authOpen = false }}>
+    <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px]" onclick={(e) => e.stopPropagation()}>
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">{authTab === 'login' ? 'Log in' : 'Claim your seat'}</h3>
+      <p class="text-muted text-sm mb-3">{authTab === 'login' ? 'Sign in to link your seat and save your stats.' : 'Create an account to link your seat and keep your stats — just a name and a passcode.'}</p>
+      <div class="flex gap-2 mb-3">
+        <button class="btn-small flex-1 {authTab === 'signup' ? 'btn' : 'btn-secondary'}" onclick={() => authTab = 'signup'}>Create account</button>
+        <button class="btn-small flex-1 {authTab === 'login' ? 'btn' : 'btn-secondary'}" onclick={() => authTab = 'login'}>Log in</button>
+      </div>
+      {#if authTab === 'login'}
+        <input class="input mb-2" bind:value={authHandle} placeholder="Your name / @handle" maxlength="40" autocapitalize="none" autocomplete="username" enterkeyhint="next" />
+        <input class="input mb-3" bind:value={authPin} type="password" inputmode="numeric" placeholder="Passcode" autocomplete="current-password" enterkeyhint="go" onkeydown={(e) => { if (e.key === 'Enter') submitAuth(); }} />
+      {:else}
+        <input class="input mb-2" bind:value={authName} placeholder="Your name" maxlength="40" autocapitalize="words" autocomplete="name" enterkeyhint="next" />
+        <input class="input mb-3" bind:value={authPin} type="password" inputmode="numeric" placeholder="Choose a passcode (4+ digits)" autocomplete="new-password" enterkeyhint="go" onkeydown={(e) => { if (e.key === 'Enter') submitAuth(); }} />
+      {/if}
+      <button class="btn w-full" disabled={authBusy} onclick={submitAuth}>{authBusy ? 'Just a sec…' : (authTab === 'login' ? 'Log in & claim seat' : 'Create account & claim seat')}</button>
+      <button class="btn-small btn-ghost w-full mt-2" onclick={oauthClaim}>More sign-in options (Google, Apple) →</button>
+      <button class="btn-small btn-ghost w-full mt-1" onclick={() => authOpen = false}>Cancel</button>
     </div>
   </div>
 {/if}
