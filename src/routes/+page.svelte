@@ -38,6 +38,15 @@
   }
 
   let games = $state(listMyGames());
+  // Home "Your games" is a quick jump-back list, not full history: show active
+  // games (any age) plus anything touched in the last 24h. Older finished games
+  // still live on your profile — they're just kept out of the way here.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const recentGames = $derived(games.filter((g: any) => {
+    if (g.status === 'active') return true;
+    const t = new Date(g.at).getTime();
+    return !Number.isFinite(t) || Date.now() - t < DAY_MS; // keep if recent (or timestamp unknown)
+  }));
   let actor = $state(getActor());
   let nudgeDismissed = $state(false); // reactive mirror of the pc_host_nudge_dismissed flag
 
@@ -227,10 +236,10 @@
         Track every buy-in and top-up at your poker night. At the end it works out who pays who — and who had the best night.
       </p>
 
-      {#if games.length > 0}
+      {#if recentGames.length > 0}
         <div class="w-full mb-5">
           <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Your games</h3>
-          {#each games as g (g.id)}
+          {#each recentGames as g (g.id)}
             <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
               <div>
                 <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm" style="font-family: var(--font-display)">#{g.code ?? g.id}</span></div>
