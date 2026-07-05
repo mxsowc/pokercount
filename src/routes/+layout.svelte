@@ -13,6 +13,14 @@
   let user = $derived($page.data?.user ?? null);
   let initial = $derived(user ? (user.displayName || '?').charAt(0).toUpperCase() : '');
 
+  // Per-page social preview: a route's load() can return `meta: {title, description}`
+  // (e.g. the game page names the winners) and it flows into the og/twitter tags
+  // here — one source of truth, no double-emitted tags.
+  const DEF_DESC = 'Everyone at the table sees their own money — join with one code. potcount tracks every buy-in and works out who pays who. Free, nothing to install.';
+  let meta = $derived($page.data?.meta ?? null);
+  let ogTitle = $derived(meta?.title ?? 'potcount — poker home game tracker');
+  let ogDesc = $derived(meta?.description ?? DEF_DESC);
+
   // Active-tab highlighting for the bottom nav (phones).
   let path = $derived($page.url.pathname);
   const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
@@ -23,19 +31,19 @@
   <!-- Site-wide SEO + social defaults. Here (in <svelte:head>) rather than in the
        static app.html so a page that sets its own og/description OVERRIDES these
        instead of double-emitting them — SvelteKit dedupes <svelte:head> tags. -->
-  <meta name="description" content="Everyone at the table tracks their own buy-ins — no shared notebook. potcount works out who pays who at your poker night. Free, join with one code, nothing to install." />
+  <meta name="description" content={ogDesc} />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="potcount" />
-  <meta property="og:title" content="potcount — poker home game tracker" />
-  <meta property="og:description" content="Everyone at the table sees their own money — join with one code. potcount tracks every buy-in and works out who pays who. Free, nothing to install." />
-  <meta property="og:url" content="https://potcount.com" />
+  <meta property="og:title" content={ogTitle} />
+  <meta property="og:description" content={ogDesc} />
+  <meta property="og:url" content={$page.url.href} />
   <meta property="og:image" content="https://potcount.com/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="potcount — track buy-ins at your poker night" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="potcount — poker home game tracker" />
-  <meta name="twitter:description" content="Everyone at the table sees their own money — join with one code. potcount works out who pays who." />
+  <meta name="twitter:title" content={ogTitle} />
+  <meta name="twitter:description" content={ogDesc} />
   <meta name="twitter:image" content="https://potcount.com/og.png?v=3" />
 </svelte:head>
 

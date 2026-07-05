@@ -227,14 +227,23 @@ export function unlinkUser(userId) {
 }
 
 /** Look up by internal id (e.g. a shared link) OR by human code (e.g. typed to
- *  join) — the latter resolves to the game CURRENTLY holding that code.
+ *  join). A code resolves to the game CURRENTLY holding it; if none is active
+ *  (the game closed and released its code), it falls back to the most-recent
+ *  game that held that code — so a shared code link to a FINISHED game still
+ *  opens instead of 404ing. The active map always wins, so a recycled code can
+ *  never shadow the live game. The fallback scan runs only on that miss path.
  * @param {string} idOrCode @returns {Game | null} */
 export function getGame(idOrCode) {
   if (!idOrCode) return null;
   const direct = games.get(idOrCode);
   if (direct) return direct;
-  const id = codeToId.get(idOrCode);
-  return id ? games.get(id) || null : null;
+  const activeId = codeToId.get(idOrCode);
+  if (activeId) return games.get(activeId) || null;
+  let best = null;
+  for (const g of games.values()) {
+    if (g.code === idOrCode && (!best || String(g.updatedAt) > String(best.updatedAt))) best = g;
+  }
+  return best;
 }
 
 /** @returns {Game[]} */
