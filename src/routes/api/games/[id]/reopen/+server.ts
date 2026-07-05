@@ -12,6 +12,12 @@ export async function POST({ request, params }) {
   const game = mutate(id, (g: any) => {
     g.status = 'active';
     g.createdAt = new Date().toISOString();
+    // Archive the locked-in settlement instead of destroying it, so a result
+    // that was already shared/screenshotted can't be quietly rewritten.
+    if (g.settlement) {
+      (g.receipts ??= []).push({ ...g.settlement, archivedAt: new Date().toISOString() });
+      if (g.receipts.length > 20) g.receipts = g.receipts.slice(-20);
+    }
     delete g.settlement;
     g.log.push(logEntry(actor, 'reopen_game', {}));
   });

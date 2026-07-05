@@ -93,6 +93,9 @@ export interface Game {
   /** Host locked the table: nobody new can self-join by code; the host adds players. */
   locked?: boolean;
   settlement?: Settlement;
+  /** Prior settlements, archived (not destroyed) each time the game is reopened —
+   *  so a locked-in result can't be quietly rewritten after it's been shared. */
+  receipts?: Array<Settlement & { archivedAt: string }>;
   /** Optional series tag for recurring game groups. */
   series?: string | null;
   /** First-party, cookieless acquisition: where the creator first arrived from
