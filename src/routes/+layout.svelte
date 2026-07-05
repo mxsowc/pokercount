@@ -23,11 +23,11 @@
   <!-- Site-wide SEO + social defaults. Here (in <svelte:head>) rather than in the
        static app.html so a page that sets its own og/description OVERRIDES these
        instead of double-emitting them — SvelteKit dedupes <svelte:head> tags. -->
-  <meta name="description" content="Track buy-ins and top-ups at your poker night. potcount works out who pays who — and who had the best night. Free, nothing to install." />
+  <meta name="description" content="Everyone at the table tracks their own buy-ins — no shared notebook. potcount works out who pays who at your poker night. Free, join with one code, nothing to install." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="potcount" />
   <meta property="og:title" content="potcount — poker home game tracker" />
-  <meta property="og:description" content="Track buy-ins at your poker night — potcount works out who pays who, and who had the best night. Free, nothing to install." />
+  <meta property="og:description" content="Everyone at the table sees their own money — join with one code. potcount tracks every buy-in and works out who pays who. Free, nothing to install." />
   <meta property="og:url" content="https://potcount.com" />
   <meta property="og:image" content="https://potcount.com/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
@@ -35,7 +35,7 @@
   <meta property="og:image:alt" content="potcount — track buy-ins at your poker night" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="potcount — poker home game tracker" />
-  <meta name="twitter:description" content="Track buy-ins at your poker night — potcount works out who pays who." />
+  <meta name="twitter:description" content="Everyone at the table sees their own money — join with one code. potcount works out who pays who." />
   <meta name="twitter:image" content="https://potcount.com/og.png?v=3" />
 </svelte:head>
 

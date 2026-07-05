@@ -130,11 +130,12 @@
       {#if loading}
         <p class="text-muted">Loading...</p>
       {:else if items.length === 0}
-        <div class="banner banner-info">
-          <p class="font-semibold mb-1">Your feed is empty</p>
-          <p class="mb-2">Once you follow some players, this is where their poker nights show up — who won, who lost, and how much — plus 👏 / 🖕 reactions and comments you can leave on each result.</p>
-          <p class="mb-2">Use the <b>search box above</b> to find players by name and follow them. Their finished games then appear here automatically.</p>
-          <p class="text-sm opacity-80">Your own results work the same way, and you're in control: set your profile to <b>private</b> on your <a href="/account">account</a> page if you'd rather not share your games and stats.</p>
+        <div class="card text-center py-9">
+          <div class="text-3xl mb-2" aria-hidden="true">🃏</div>
+          <p class="font-semibold text-lg mb-1">Your feed is quiet</p>
+          <p class="text-muted text-sm mb-5 max-w-[40ch] mx-auto">Play a game and everyone's results land here — who won, who lost, plus reactions and comments. Following your tablemates fills it faster.</p>
+          <a href="/" class="btn inline-block no-underline">Open a game</a>
+          <p class="text-xs text-faint mt-4">Or use search above to follow players. Set your profile <a href="/account">private</a> any time.</p>
         </div>
       {:else}
         {#each items as item (item.game.id + item.user.id)}
@@ -202,17 +203,12 @@
       {#if boardLoading}
         <p class="text-muted">Loading...</p>
       {:else if board.length === 0}
-        <div class="banner banner-info">
-          {#if boardScope === 'global'}
-            <p class="font-semibold mb-1">Nothing to rank yet</p>
-            <p class="mb-2">This ranks <b>everyone on potcount with a public profile</b> by all-time profit. It fills in as players finish their games.</p>
-            <p class="text-sm opacity-80">You only appear here if your profile is <b>public</b> — change that any time on your <a href="/account">account</a> page.</p>
-          {:else}
-            <p class="font-semibold mb-1">Nothing to rank yet</p>
-            <p class="mb-2">The leaderboard ranks <b>you and the players you follow</b> by all-time profit, with profit-per-game alongside. It fills in once you've played some games and followed a few people.</p>
-            <p class="mb-2">Head to the <b>Feed</b> tab and use its search to find and follow players — they'll show up here as soon as they have finished games.</p>
-            <p class="text-sm opacity-80">Don't want to appear on others' leaderboards? Set your profile to <b>private</b> on your <a href="/account">account</a> page.</p>
-          {/if}
+        <div class="card text-center py-9">
+          <div class="text-3xl mb-2" aria-hidden="true">🏆</div>
+          <p class="font-semibold text-lg mb-1">Nothing to rank yet</p>
+          <p class="text-muted text-sm mb-5 max-w-[42ch] mx-auto">{boardScope === 'global' ? 'Ranks everyone with a public profile by all-time profit — it fills in as players finish games.' : 'Ranks you and the players you follow by all-time profit. Play a few games and follow your crew.'}</p>
+          <a href="/" class="btn inline-block no-underline">Open a game</a>
+          <p class="text-xs text-faint mt-4">{boardScope === 'global' ? 'You appear here only if your profile is public.' : 'Use the Feed search to follow players.'} Change visibility on your <a href="/account">account</a>.</p>
         </div>
       {:else}
         {#each board as row, i (row.user.id)}

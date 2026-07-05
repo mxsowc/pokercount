@@ -15,6 +15,8 @@
     { q: 'Can other players add their own buy-ins?', a: 'Yes. Share the 4-digit game code and anyone at the table can add their own buy-ins and top-ups on their phone — the host doesn\'t have to track everyone.' },
     { q: 'Does it work for cash games and any currency?', a: 'It works for any home cash game and any unit — euros, dollars, pounds, or even "chips" or "big blinds". You pick the unit when you open the game.' },
     { q: 'Do I need to create an account?', a: 'No. You can track and settle a whole game without an account. Signing in is optional — it just saves your results, stats and profit history over time.' },
+    { q: 'Does everyone at the table need to download an app?', a: 'No — there is nothing to download. potcount runs in the browser. The host opens a game and shares a short code, link or QR; everyone else just taps it to join and add their own buy-ins. No app, no signup required.' },
+    { q: 'How is it different from Splitwise?', a: 'Splitwise splits shared bills evenly between people. potcount is built for poker: it tracks live buy-ins and top-ups through the night, then nets each player\'s final chip count against what they put in and works out who pays who in the fewest payments — the exact settlement a bill-splitter can\'t do.' },
   ];
   const faqLd = `<script type="application/ld+json">${JSON.stringify({
     '@context': 'https://schema.org',

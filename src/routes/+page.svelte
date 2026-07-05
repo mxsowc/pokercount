@@ -246,7 +246,7 @@
         Poker home game tracker
       </p>
       <p class="text-muted text-[1.05rem] max-w-[48ch] text-center max-md:text-left mb-5 w-full">
-        Track every buy-in and top-up at your poker night. At the end it works out who pays who — and who had the best night.
+        Everyone at the table adds and sees their own buy-ins — no more trusting one person's notebook. Join with one code; at the end it works out who pays who.
       </p>
 
       {#if recentGames.length > 0}
