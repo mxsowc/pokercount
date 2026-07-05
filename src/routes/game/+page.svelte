@@ -1434,7 +1434,7 @@
         </div>
         {#if isExpanded}
           <div class="card !bg-surface-2 -mt-1 mb-2.5">
-            <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">{p.name}'s buy-ins</h3>
+            <h3 class="sub-label mb-2">{p.name}'s buy-ins</h3>
             {#each game.transactions.filter((t: any) => t.playerId === p.id) as t (t.id)}
               <div class="flex items-center justify-between gap-2 text-sm mb-2 py-1.5 px-2 -mx-2 rounded-lg hover:bg-surface-3">
                 <span class="text-muted">{t.type === 'topup' ? 'Top-up' : 'Buy-in'} · {shortDate(t.at)}{#if t.by} · <span class="text-faint">by {t.by}</span>{/if}</span>
@@ -1560,7 +1560,7 @@
       {#if !allEntered}
         <p class="text-muted text-sm">Enter every player's cash-out to see who pays who.</p>
       {:else if settlement && settlement.transfers.length > 0}
-        <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Who pays who</h3>
+        <h3 class="sub-label mt-4 mb-2">Who pays who</h3>
         {#each settlement.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t}
           <div class="transfer-row">
             <span class="font-semibold">{t.fromName}</span>
@@ -1758,21 +1758,25 @@
       {:else}
         <p class="text-muted text-xs mb-2">Tap an amount to copy it. <b>Mark paid</b> when you send it; the person who got it taps <b>Confirm</b>. Paid a different amount? Tap <b>≠</b> to recompute. Use <b>Adjust</b> to change who pays who.</p>
         {#each s.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t (t.id)}
-          <div class="transfer-row {t.confirmed ? 'opacity-60' : ''}">
-            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.from === mySeatId() ? 'text-accent-2' : ''}">{t.fromName}</span>
-            <span class="text-accent font-extrabold shrink-0">→</span>
-            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.to === mySeatId() ? 'text-accent-2' : ''}">{t.toName}</span>
-            <span class="ml-auto font-bold tabular-nums cursor-pointer shrink-0 {t.confirmed ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</span>
-            {#if !t.paid}
-              <button class="btn-small btn-secondary shrink-0 !px-2.5" title="Paid a different amount — recompute the rest" onclick={() => startPayDiff(t)}>≠</button>
-              <button class="btn-small btn shrink-0" onclick={() => markPaid(t.id, true)}>Mark paid</button>
-            {:else if !t.confirmed}
-              <span class="text-warn text-xs font-semibold shrink-0" title="Marked paid by {t.paidBy || 'someone'} — waiting for {t.toName} to confirm">claimed</span>
-              <button class="btn-small btn-ghost shrink-0 !px-2" title="Undo — mark unpaid" onclick={() => markPaid(t.id, false)}>↩</button>
-              <button class="btn-small btn shrink-0" title="{t.toName}: confirm you received it" onclick={() => confirmReceived(t.id, true)}>Confirm</button>
-            {:else}
-              <button class="btn-small btn-secondary shrink-0 !text-win" title="Confirmed received — tap to undo" onclick={() => confirmReceived(t.id, false)}>✓ received</button>
-            {/if}
+          <div class="rounded-[11px] mb-2 border border-border-soft border-l-[3px] bg-surface-2 p-3 transition-colors {t.confirmed ? 'opacity-70 border-l-win/50' : 'border-l-accent/60'}">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.from === mySeatId() ? 'text-accent-2' : ''}">{t.fromName}</span>
+              <span class="text-accent font-extrabold shrink-0">→</span>
+              <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.to === mySeatId() ? 'text-accent-2' : ''}">{t.toName}</span>
+              <button class="ml-auto font-display text-[1.05rem] font-bold tabular-nums shrink-0 rounded px-1 -mr-1 hover:bg-surface-3 active:scale-95 transition {t.confirmed ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</button>
+            </div>
+            <div class="flex items-center gap-2 mt-2.5">
+              {#if !t.paid}
+                <button class="btn-small btn flex-1" onclick={() => markPaid(t.id, true)}>Mark paid</button>
+                <button class="btn-small btn-secondary shrink-0 !px-3" title="Paid a different amount — recompute the rest" onclick={() => startPayDiff(t)}>≠</button>
+              {:else if !t.confirmed}
+                <button class="pill pill-warn" title="Marked paid by {t.paidBy || 'someone'} — {t.toName}, tap to confirm you got it" onclick={() => confirmReceived(t.id, true)}>Claimed · tap to confirm</button>
+                <button class="btn-small btn-ghost shrink-0 !px-2 ml-auto" title="Undo — mark unpaid" onclick={() => markPaid(t.id, false)}>↩</button>
+              {:else}
+                <span class="pill pill-win">✓ Settled</span>
+                <button class="btn-small btn-ghost shrink-0 !px-2 ml-auto" title="Undo confirmation" onclick={() => confirmReceived(t.id, false)}>↩</button>
+              {/if}
+            </div>
           </div>
           {#if payDiff?.id === t.id}
             <div class="bg-surface-2 rounded-[10px] p-3 mb-2 -mt-1 border-l-[3px] border-accent">
@@ -1813,7 +1817,7 @@
       {#if seriesData && seriesData.gameCount > 1}
         <div class="card mt-4">
           <div class="flex items-center justify-between gap-2 mb-2">
-            <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">{seriesData.series} — {seriesData.gameCount} games</h3>
+            <h3 class="sub-label m-0">{seriesData.series} — {seriesData.gameCount} games</h3>
             <button class="btn-small btn-ghost !px-2.5" onclick={shareSeries} title="Post the standings to your group chat">Post to group</button>
           </div>
           {#if seriesData.nextDate}
@@ -1836,7 +1840,7 @@
       <!-- Play with them again? — seed the follow graph from tonight's table -->
       {#if followableTablemates.length > 0}
         <div class="card mt-4">
-          <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2.5">Play with them again?</div>
+          <div class="sub-label mb-2.5">Play with them again?</div>
           <div class="flex flex-col gap-2">
             {#each followableTablemates as p (p.userId)}
               <div class="flex items-center justify-between gap-2">
@@ -1856,7 +1860,7 @@
         {@const eligiblePlayers = game.players.filter((p: any) => p.userId && p.userId !== myAccount.id)}
         {#if eligiblePlayers.length > 0}
           <div class="card mt-4 !p-3">
-            <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2.5">End-of-night awards</div>
+            <div class="sub-label mb-2.5">End-of-night awards</div>
             <div class="flex flex-col gap-3">
               {#each AWARDS as award (award.key)}
                 {@const myVote = game.votes?.[award.key]?.[myAccount.id]}

@@ -1,5 +1,24 @@
 @import 'tailwindcss';
 
+/* Self-hosted variable fonts (latin subset) — no render-blocking Google Fonts
+   request, works offline/as a PWA, and keeps the brand voice on cold loads. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+}
+@font-face {
+  /* Range widened past the 300–700 axis so weight-800 display numbers still
+     select this face (clamped/synth-bold) instead of falling back to Inter. */
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-latin.woff2') format('woff2');
+}
+
 /* ── potcount design tokens ─────────────────────────────────────────────── */
 @theme {
   --color-bg: #0a0b0d;

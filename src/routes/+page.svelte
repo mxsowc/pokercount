@@ -251,7 +251,7 @@
 
       {#if recentGames.length > 0}
         <div class="w-full mb-5">
-          <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Your games</h3>
+          <h3 class="sub-label mb-2">Your games</h3>
           {#each recentGames as g (g.id)}
             <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
               <div>
@@ -290,7 +290,7 @@
       {#if games.length === 0}
         <!-- How it works — new visitors only; supports the CTA, doesn't replace it -->
         <div class="w-full max-w-[620px] mx-auto mt-10">
-          <h3 class="text-xs font-semibold uppercase tracking-widest text-muted text-center mb-4">How it works</h3>
+          <h3 class="sub-label text-center mb-4">How it works</h3>
           <div class="grid grid-cols-3 gap-3 max-md:grid-cols-1 max-md:gap-2.5">
             <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:0ms">
               <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🎴</div>

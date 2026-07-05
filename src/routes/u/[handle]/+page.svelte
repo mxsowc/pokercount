@@ -236,7 +236,7 @@
 
       {#if selectedStats}
         <div class="card !border-accent/40 mb-3">
-          <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
+          <div class="sub-label mb-2">Selected {selectedStats.count} games</div>
           <div class="grid grid-cols-3 gap-2">
             <div class="text-center">
               <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(selectedStats.total, stats.unit)}</div>

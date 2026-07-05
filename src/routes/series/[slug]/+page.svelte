@@ -64,7 +64,7 @@
   {/if}
 
   <div class="card mb-4">
-    <h2 class="text-xs font-semibold uppercase tracking-widest text-muted m-0 mb-3">Leaderboard</h2>
+    <h2 class="sub-label m-0 mb-3">Leaderboard</h2>
     <div class="flex flex-col gap-2">
       {#each s.leaderboard as e, i (e.handle ?? e.name)}
         <div class="flex items-center justify-between gap-2">
@@ -80,7 +80,7 @@
   </div>
 
   <div class="card">
-    <h2 class="text-xs font-semibold uppercase tracking-widest text-muted m-0 mb-3">Every night</h2>
+    <h2 class="sub-label m-0 mb-3">Every night</h2>
     <div class="flex flex-col">
       {#each s.games as g (g.id)}
         <a href="/game?g={g.code}" class="flex items-center justify-between gap-2 py-2.5 px-2 -mx-2 rounded-lg no-underline text-text hover:bg-surface-2 border-b border-border-soft last:border-0">

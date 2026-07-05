@@ -394,7 +394,7 @@
       }
 
       // Showdown visualization
-      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Showdown</h3>';
+      html += '<h3 class="sub-label mt-4 mb-2">Showdown</h3>';
       const winners: Record<string, Set<string>> = {};
       for (const seg of r.breakdown as any[]) {
         const k = `${seg.board}-${seg.run}`;
@@ -432,7 +432,7 @@
       }
 
       // ---- Each pot: amount + who won it (per board) ----
-      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Each pot</h3>';
+      html += '<h3 class="sub-label mt-4 mb-2">Each pot</h3>';
       const byPot: Record<number, any[]> = {};
       r.breakdown.forEach((seg: any) => { if (seg.amount !== 0) (byPot[seg.pot] ||= []).push(seg); });
       r.pots.forEach((pot: any, i: number) => {
@@ -458,7 +458,7 @@
 
       // Each player collects — with a plain-English breakdown of where each chip
       // comes from, so you can physically push the pot one piece at a time.
-      html += '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Each player collects</h3>';
+      html += '<h3 class="sub-label mt-4 mb-2">Each player collects</h3>';
 
       // Source/fraction wording for one segment (one pot, on one board/run).
       const potName = (i: number) => (r.pots.length > 1 ? potLabel(i).toLowerCase() : 'the pot');
@@ -506,7 +506,7 @@
           const eqPlayers = contesting.map(p => ({ id: p.id, hole: p.hole }));
           const eqName = (pid: string) => contesting.find(p => p.id === pid)?.name || pid;
 
-          let eqHTML = '<h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-6 mb-2">Chances of winning</h3>';
+          let eqHTML = '<h3 class="sub-label mt-6 mb-2">Chances of winning</h3>';
           for (let b = 0; b < boards.length; b++) {
             const full = boards[b].runs[0];
             // Cards on the OTHER board(s) are out of the deck for this board's
@@ -713,7 +713,7 @@
 
   <!-- Community cards -->
   <div class="card">
-    <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">
+    <h3 class="sub-label mb-2">
       Community cards {boardCount * runCount > 1 ? `(${boardCount} board${boardCount > 1 ? 's' : ''} × ${runCount} run${runCount > 1 ? 's' : ''})` : ''}
     </h3>
     {#snippet cardSlots(ref: string)}
@@ -799,7 +799,7 @@
   <!-- Players -->
   <div class="card">
     <div class="flex items-center justify-between gap-2 mb-2">
-      <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">Players</h3>
+      <h3 class="sub-label m-0">Players</h3>
       {#if !showTotalPot}
         <button class="text-xs text-muted underline decoration-dotted" onclick={() => showTotalPot = true}>Enter total pot</button>
       {/if}

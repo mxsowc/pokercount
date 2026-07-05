@@ -57,7 +57,7 @@
 
   <!-- How it works -->
   <section class="max-w-[680px] mx-auto mt-12">
-    <h2 class="text-xs font-semibold uppercase tracking-widest text-muted text-center mb-4">How the chip tracker works</h2>
+    <h2 class="sub-label text-center mb-4">How the chip tracker works</h2>
     <div class="grid grid-cols-3 gap-3 max-md:grid-cols-1 max-md:gap-2.5">
       <div class="bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5">
         <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🎴</div>
