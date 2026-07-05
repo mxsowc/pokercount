@@ -17,6 +17,24 @@ export async function PUT({ request, params }) {
     return json({ error: 'no such payment' }, { status: 404 });
   }
 
+  // Two-sided confirmation: the receiver confirms they actually got the money.
+  // Visual only — it never gates the "settled" status (which still just needs
+  // every payment marked paid), so anonymous one-off tables can always close.
+  if (body.confirmed !== undefined) {
+    const confirmed = !!body.confirmed;
+    const game = mutate(id, (g: any) => {
+      const t = g.settlement.transfers.find((x: any) => x.id === params.tid);
+      t.confirmed = confirmed;
+      t.confirmedAt = confirmed ? new Date().toISOString() : null;
+      t.confirmedBy = confirmed ? actor.name : null;
+      if (confirmed && !t.paid) { t.paid = true; t.paidAt = new Date().toISOString(); t.paidBy = actor.name; }
+      g.log.push(logEntry(actor, confirmed ? 'confirm_received' : 'unconfirm_received', { detail: { from: t.fromName, to: t.toName, amount: t.amount } }));
+      const allPaid = g.settlement.transfers.every((x: any) => x.paid);
+      g.status = (g.settlement.balanced && allPaid) ? 'settled' : 'ended';
+    });
+    return json(game);
+  }
+
   // "Paid a different amount": an actual amount different from the suggested one.
   const hasAmount = paid && body.amount !== undefined && body.amount !== null && body.amount !== '';
   const customAmount = hasAmount ? Math.round(Number(body.amount) * 100) / 100 : null;
@@ -60,6 +78,7 @@ export async function PUT({ request, params }) {
       t.paid = paid;
       t.paidAt = paid ? new Date().toISOString() : null;
       t.paidBy = paid ? actor.name : null;
+      if (!paid) { t.confirmed = false; t.confirmedAt = null; t.confirmedBy = null; } // un-marking paid drops any confirmation
       g.log.push(logEntry(actor, paid ? 'mark_paid' : 'mark_unpaid', {
         detail: { from: t.fromName, to: t.toName, amount: t.amount },
       }));

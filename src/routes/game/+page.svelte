@@ -768,6 +768,13 @@
     try { game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { paid }); }
     catch (e: any) { toast(e.message); }
   }
+  // The receiver confirms they actually got the money (turns a "claimed" payment
+  // green). Purely a trust signal — it never blocks settling the game.
+  async function confirmReceived(tid: string, confirmed: boolean) {
+    if (confirmed) haptic(12);
+    try { game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { confirmed }); }
+    catch (e: any) { toast(e.message); }
+  }
 
   // "Paid a different amount" — record the actual amount on a payment, then the
   // server re-solves the remaining payments (so e.g. paying €50 on a €40 debt
@@ -1132,6 +1139,35 @@
           </div>
         {/each}
       </div>
+    {/snippet}
+
+    <!-- Previous settlements — archived (never destroyed) each time the game was
+         reopened, so a locked-in result can't be quietly rewritten. -->
+    {#snippet receiptsLog()}
+      {#if game.receipts?.length}
+        <div class="border-t border-border-soft mt-4 pt-4">
+          <details>
+            <summary class="text-sm text-muted cursor-pointer select-none">Previous settlements ({game.receipts.length})</summary>
+            <div class="mt-3 flex flex-col gap-3">
+              {#each game.receipts.slice().reverse() as r (r.archivedAt)}
+                <div class="card !bg-surface-2 !mb-0">
+                  <div class="text-xs text-faint mb-2">Archived {shortDate(r.archivedAt)} · when the game was reopened</div>
+                  {#if r.transfers?.length}
+                    {#each r.transfers as t}
+                      <div class="flex items-center justify-between text-sm py-0.5">
+                        <span class="truncate min-w-0">{t.fromName} <span class="text-accent">→</span> {t.toName}</span>
+                        <span class="font-semibold tabular-nums shrink-0">{money(t.amount, unit)}</span>
+                      </div>
+                    {/each}
+                  {:else}
+                    <p class="text-muted text-sm">No payments needed — everyone was even.</p>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </details>
+        </div>
+      {/if}
     {/snippet}
 
     {#if game.status === 'active'}
@@ -1556,6 +1592,8 @@
       {/if}
       <button class="btn btn-secondary w-full mt-2.5" onclick={() => { activeView = 'standings'; window.scrollTo({ top: 0 }); }}>🏆 See my summary</button>
 
+      {@render receiptsLog()}
+
       <!-- Activity log -->
       <div class="border-t border-border-soft mt-6 pt-4">
         <button class="btn-small btn-ghost" onclick={() => showActivity = !showActivity}>
@@ -1728,17 +1766,23 @@
       {:else if s.transfers.length === 0}
         <div class="banner banner-ok">Everyone broke even — nothing to settle.</div>
       {:else}
-        <p class="text-muted text-xs mb-2">Tap an amount to copy it. Paid a different amount? Tap <b>≠</b> and we'll recompute the rest. Use <b>Adjust</b> to change who pays who.</p>
+        <p class="text-muted text-xs mb-2">Tap an amount to copy it. <b>Mark paid</b> when you send it; the person who got it taps <b>Confirm</b>. Paid a different amount? Tap <b>≠</b> to recompute. Use <b>Adjust</b> to change who pays who.</p>
         {#each s.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t (t.id)}
-          <div class="transfer-row {t.paid ? 'opacity-50' : ''}">
-            <span class="font-semibold truncate min-w-0 {t.paid ? 'line-through' : ''}" style="color:{nameColor(t.fromName)}">{t.fromName}</span>
+          <div class="transfer-row {t.confirmed ? 'opacity-60' : ''}">
+            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''}" style="color:{nameColor(t.fromName)}">{t.fromName}</span>
             <span class="text-accent font-extrabold shrink-0">→</span>
-            <span class="font-semibold truncate min-w-0 {t.paid ? 'line-through' : ''}" style="color:{nameColor(t.toName)}">{t.toName}</span>
-            <span class="ml-auto font-bold tabular-nums cursor-pointer shrink-0 {t.paid ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</span>
+            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''}" style="color:{nameColor(t.toName)}">{t.toName}</span>
+            <span class="ml-auto font-bold tabular-nums cursor-pointer shrink-0 {t.confirmed ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</span>
             {#if !t.paid}
               <button class="btn-small btn-secondary shrink-0 !px-2.5" title="Paid a different amount — recompute the rest" onclick={() => startPayDiff(t)}>≠</button>
+              <button class="btn-small btn shrink-0" onclick={() => markPaid(t.id, true)}>Mark paid</button>
+            {:else if !t.confirmed}
+              <span class="text-warn text-xs font-semibold shrink-0" title="Marked paid by {t.paidBy || 'someone'} — waiting for {t.toName} to confirm">claimed</span>
+              <button class="btn-small btn-ghost shrink-0 !px-2" title="Undo — mark unpaid" onclick={() => markPaid(t.id, false)}>↩</button>
+              <button class="btn-small btn shrink-0" title="{t.toName}: confirm you received it" onclick={() => confirmReceived(t.id, true)}>Confirm</button>
+            {:else}
+              <button class="btn-small btn-secondary shrink-0 !text-win" title="Confirmed received — tap to undo" onclick={() => confirmReceived(t.id, false)}>✓ received</button>
             {/if}
-            <button class="btn-small shrink-0 {t.paid ? 'btn-secondary' : 'btn'}" onclick={() => markPaid(t.id, !t.paid)}>{t.paid ? '✓ paid' : 'Mark paid'}</button>
           </div>
           {#if payDiff?.id === t.id}
             <div class="bg-surface-2 rounded-[10px] p-3 mb-2 -mt-1 border-l-[3px] border-accent">
@@ -1879,6 +1923,8 @@
         </div>
       {/if}
 
+      {@render receiptsLog()}
+
       <!-- Reopen + activity — anyone in the game can reopen to keep editing. -->
       <div class="border-t border-border-soft mt-4 pt-4 flex items-center justify-between">
         <button class="btn-small btn-ghost" onclick={reopenGame}>↩ Reopen to edit</button>
@@ -1890,8 +1936,8 @@
         <div class="mt-3 flex flex-col gap-2">
           {#each (game.log || []).slice().reverse() as e (e.id)}
             <div class="text-sm border-l-2 border-border-soft pl-2.5">
-              {#if e.playerName}<b>{e.playerName}</b> {/if}{describe(e)}<br/>
-              <span class="text-muted text-xs">by {e.actorName} · {shortDate(e.at)}</span>
+              {#if e.playerName}<b>{e.playerName}</b>{' '}{/if}{describe(e)}<br/>
+              <span class="text-muted text-xs">by {e.actorName}{#if e.actorId?.startsWith('user:')} <span class="text-win" title="Signed-in account — verified">✓</span>{:else if e.actorId && e.actorId !== 'system'} <span class="text-faint" title="Anonymous device — not a verified account">· unverified</span>{/if} · {shortDate(e.at)}</span>
             </div>
           {/each}
         </div>

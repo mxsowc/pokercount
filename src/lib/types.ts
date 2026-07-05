@@ -32,6 +32,11 @@ export interface Transfer {
   paid: boolean;
   paidAt: string | null;
   paidBy: string | null;
+  /** Two-sided confirmation: `paid` is the payer's claim; `confirmed` is the
+   *  receiver confirming they actually got it. Visual only — never gates settling. */
+  confirmed?: boolean;
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
 }
 
 export interface SettlementLine {

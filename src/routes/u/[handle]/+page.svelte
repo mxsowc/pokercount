@@ -149,19 +149,25 @@
       {/if}
     </div>
 
-    <!-- Stats grid -->
-    <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">
-      Stats
-      {#if stats.gamesPlayed}<span class="normal-case tracking-normal text-faint font-normal">· in {stats.unit}</span>{/if}
-    </h2>
+    <!-- Hero: the emotional headline — am I up or down, all-time? -->
+    <div class="card mt-6 !p-5">
+      <div class="text-xs uppercase tracking-widest text-muted font-semibold mb-1.5">All-time{#if stats.gamesPlayed} · {stats.unit}{/if}</div>
+      {#if stats.gamesPlayed}
+        <div class="text-[2.7rem] leading-none font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit, stats.unit)}</div>
+        <div class="text-muted text-sm mt-2">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}{#if stats.streak && stats.streak.current > 0} · <span class="{stats.streak.kind === 'win' ? 'text-win' : 'text-danger'} font-semibold">{stats.streak.kind === 'win' ? '🔥' : '❄️'} {stats.streak.current}{stats.streak.kind === 'win' ? 'W' : 'L'}</span>{/if}</div>
+        {#if stats.curve && stats.curve.length >= 2}<div class="mt-4"><Sparkline points={stats.curve.map((p: any) => p.cum)} /></div>{/if}
+      {:else}
+        <div class="text-2xl font-extrabold text-muted" style="font-family:var(--font-display)">—</div>
+        <div class="text-muted text-sm mt-2">No finished games yet.</div>
+      {/if}
+    </div>
     {#if stats.otherGames > 0}
-      <p class="text-xs text-faint mb-3">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included in the totals.</p>
+      <p class="text-xs text-faint mt-2 mb-1">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included.</p>
     {/if}
+
+    {#if stats.gamesPlayed}
+    <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-5 mb-3">Breakdown</h2>
     <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
-      <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit, stats.unit)}</div>
-        <div class="text-muted text-xs mt-1">total profit</div>
-      </div>
       <div class="card text-center !mb-0">
         <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg / game</div>
@@ -186,12 +192,6 @@
         <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg buy-in</div>
       </div>
-      <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums {stats.streak?.kind === 'win' ? 'text-win' : stats.streak?.kind === 'loss' ? 'text-danger' : ''}" style="font-family:var(--font-display)">
-          {stats.streak && stats.streak.current > 0 ? `${stats.streak.kind === 'win' ? '🔥' : '❄️'} ${stats.streak.current}${stats.streak.kind === 'win' ? 'W' : 'L'}` : '—'}
-        </div>
-        <div class="text-muted text-xs mt-1">current streak</div>
-      </div>
       {#if stats.hourly}
         <div class="card text-center !mb-0">
           <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
@@ -199,16 +199,6 @@
         </div>
       {/if}
     </div>
-
-    <!-- Profit over time (bankroll curve) -->
-    {#if stats.curve && stats.curve.length >= 2}
-      <div class="card mt-3 text-win">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
-          <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
-        </div>
-        <Sparkline points={stats.curve.map((p: any) => p.cum)} />
-      </div>
     {/if}
 
     <!-- Award badges (peer-voted, across all games) -->
