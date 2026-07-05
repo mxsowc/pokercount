@@ -333,16 +333,6 @@
     }
   }
 
-  // A stable, *delicate* tint per name so the same person always reads as the
-  // same subtle shade — enough to pick your own name out of the who-pays-who list
-  // at a glance, without turning it into a rainbow. Low saturation, high lightness
-  // keeps every name legible on the dark rows.
-  function nameColor(name: string): string {
-    let h = 0;
-    for (let i = 0; i < (name || '').length; i++) h = (Math.imul(h, 31) + name.charCodeAt(i)) >>> 0;
-    return `hsl(${h % 360} 45% 82%)`;
-  }
-
   // ---- my balance callout ---------------------------------------------------
   function myBalance() {
     const pid = mySeatId();
@@ -1268,9 +1258,9 @@
         <div class="card">
           {#each settlement.transfers as t}
             <div class="transfer-row">
-              <span class="font-semibold truncate min-w-0" style="color:{nameColor(t.fromName)}">{t.fromName}</span>
+              <span class="font-semibold truncate min-w-0">{t.fromName}</span>
               <span class="text-accent font-extrabold shrink-0">→</span>
-              <span class="font-semibold truncate min-w-0" style="color:{nameColor(t.toName)}">{t.toName}</span>
+              <span class="font-semibold truncate min-w-0">{t.toName}</span>
               <span class="ml-auto font-bold tabular-nums">{money(t.amount, unit)}</span>
             </div>
           {/each}
@@ -1573,9 +1563,9 @@
         <h3 class="text-xs font-semibold uppercase tracking-widest text-muted mt-4 mb-2">Who pays who</h3>
         {#each settlement.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t}
           <div class="transfer-row">
-            <span class="font-semibold" style="color:{nameColor(t.fromName)}">{t.fromName}</span>
+            <span class="font-semibold">{t.fromName}</span>
             <span class="text-accent font-extrabold">→</span>
-            <span class="font-semibold" style="color:{nameColor(t.toName)}">{t.toName}</span>
+            <span class="font-semibold">{t.toName}</span>
             <span class="ml-auto font-bold tabular-nums">{money(t.amount, unit)}</span>
           </div>
         {/each}
@@ -1769,9 +1759,9 @@
         <p class="text-muted text-xs mb-2">Tap an amount to copy it. <b>Mark paid</b> when you send it; the person who got it taps <b>Confirm</b>. Paid a different amount? Tap <b>≠</b> to recompute. Use <b>Adjust</b> to change who pays who.</p>
         {#each s.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t (t.id)}
           <div class="transfer-row {t.confirmed ? 'opacity-60' : ''}">
-            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''}" style="color:{nameColor(t.fromName)}">{t.fromName}</span>
+            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.from === mySeatId() ? 'text-accent-2' : ''}">{t.fromName}</span>
             <span class="text-accent font-extrabold shrink-0">→</span>
-            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''}" style="color:{nameColor(t.toName)}">{t.toName}</span>
+            <span class="font-semibold truncate min-w-0 {t.confirmed ? 'line-through' : ''} {t.to === mySeatId() ? 'text-accent-2' : ''}">{t.toName}</span>
             <span class="ml-auto font-bold tabular-nums cursor-pointer shrink-0 {t.confirmed ? 'line-through' : ''}" onclick={() => copyAmount(t.amount)} title="Tap to copy">{money(t.amount, unit)}</span>
             {#if !t.paid}
               <button class="btn-small btn-secondary shrink-0 !px-2.5" title="Paid a different amount — recompute the rest" onclick={() => startPayDiff(t)}>≠</button>

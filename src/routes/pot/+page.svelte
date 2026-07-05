@@ -647,10 +647,10 @@
   <!-- Game options -->
   <div class="card">
     <!-- Variant: the only choice most hands need -->
-    <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
-      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'holdem' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+    <div class="seg grid-cols-2">
+      <button class="seg-item {game === 'holdem' ? 'is-active' : ''}"
         onclick={() => { game = 'holdem'; haptic(8); }}>Hold'em</button>
-      <button class="py-2.5 rounded-lg font-semibold text-sm transition-all {game === 'omaha' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="seg-item {game === 'omaha' ? 'is-active' : ''}"
         onclick={() => { game = 'omaha'; haptic(8); }}>Omaha / PLO</button>
     </div>
 
@@ -669,26 +669,26 @@
       <summary class="text-sm text-muted cursor-pointer">{game === 'omaha' ? 'Run it twice · more options' : 'Double board · run it twice · hi-lo'}</summary>
 
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Boards</label>
-      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 1 ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <div class="seg grid-cols-2 mb-3">
+        <button class="seg-item {boardCount === 1 ? 'is-active' : ''}"
           onclick={() => { boardCount = 1; haptic(8); }}>Single board</button>
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {boardCount === 2 ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="seg-item {boardCount === 2 ? 'is-active' : ''}"
           onclick={() => { boardCount = 2; haptic(8); }}>Double board</button>
       </div>
 
       <label class="block text-xs text-muted font-medium mb-1">Run it</label>
-      <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3">
+      <div class="seg grid-cols-3 mb-3">
         {#each [{ v: 1, l: 'Once' }, { v: 2, l: 'Twice' }, { v: 3, l: '3 times' }] as opt}
-          <button class="py-2 rounded-lg font-semibold text-sm transition-all {runCount === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+          <button class="seg-item {runCount === opt.v ? 'is-active' : ''}"
             onclick={() => { setRunStructure(opt.v, runShare); haptic(8); }}>{opt.l}</button>
         {/each}
       </div>
 
       {#if runCount > 1}
         <label class="block text-xs text-muted font-medium mb-1">Run which cards {runCount} times</label>
-        <div class="grid grid-cols-3 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-1">
+        <div class="seg grid-cols-3 mb-1">
           {#each [{ v: 'none', l: 'Whole board' }, { v: 'flop', l: 'Turn + river' }, { v: 'turn', l: 'River only' }] as opt}
-            <button class="py-2 rounded-lg font-semibold text-xs sm:text-sm transition-all {runShare === opt.v ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+            <button class="seg-item {runShare === opt.v ? 'is-active' : ''}"
               onclick={() => { setRunStructure(runCount, opt.v as any); haptic(8); }}>{opt.l}</button>
           {/each}
         </div>
@@ -702,10 +702,10 @@
       {/if}
 
       <label class="block text-xs text-muted font-medium mb-1">Hi-Lo split</label>
-      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1">
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {!hiLo ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <div class="seg grid-cols-2">
+        <button class="seg-item {!hiLo ? 'is-active' : ''}"
           onclick={() => { hiLo = false; haptic(8); }}>High only</button>
-        <button class="py-2 rounded-lg font-semibold text-sm transition-all {hiLo ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+        <button class="seg-item {hiLo ? 'is-active' : ''}"
           onclick={() => { hiLo = true; haptic(8); }}>8-or-better</button>
       </div>
     </details>
