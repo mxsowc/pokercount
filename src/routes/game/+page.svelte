@@ -922,7 +922,7 @@
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       text += `${medal} ${e.name}: ${e.totalNet >= 0 ? '+' : ''}${money(e.totalNet, unit)} (${e.games}g · ${e.wins}w)\n`;
     });
-    text += `\npotcount.com`;
+    text += `\n${location.origin}/series/${encodeURIComponent(seriesData.series)}`;
     if (navigator.share) navigator.share({ title: 'potcount', text }).catch(() => {});
     else navigator.clipboard.writeText(text.trim()).then(() => toast('Standings copied — paste in your group chat')).catch(() => toast('Could not copy'));
   }
@@ -1782,6 +1782,9 @@
             <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">{seriesData.series} — {seriesData.gameCount} games</h3>
             <button class="btn-small btn-ghost !px-2.5" onclick={shareSeries} title="Post the standings to your group chat">Post to group</button>
           </div>
+          {#if seriesData.nextDate}
+            <p class="text-xs text-accent-2 mb-2">Next session: {new Date(seriesData.nextDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+          {/if}
           {#each seriesData.leaderboard.slice(0, 5) as entry, idx}
             {@const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : ''}
             <div class="flex items-center justify-between text-sm mb-1">
@@ -1792,6 +1795,7 @@
           {#if seriesData.leaderboard.length > 5}
             <p class="text-xs text-muted mt-1">+{seriesData.leaderboard.length - 5} more</p>
           {/if}
+          <a href="/series/{encodeURIComponent(seriesData.series)}" class="inline-block text-accent text-sm mt-3 no-underline hover:underline">View full standings & history →</a>
         </div>
       {/if}
 
