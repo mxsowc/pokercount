@@ -115,6 +115,7 @@ export interface NewGameInput {
   players?: { name?: string }[];
   code?: string;
   defaultBuyIn?: number;
+  series?: string | null;
 }
 
 export interface User {

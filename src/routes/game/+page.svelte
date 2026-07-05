@@ -648,6 +648,33 @@
     } catch (e: any) { toast(e.message); }
   }
 
+  // "Same crew, next week" — clone this table with the same players as UNCLAIMED
+  // seats + a fresh code/link, so every player re-opens and claims their money.
+  // This re-arms the join-to-see-your-money loop on the crew's weekly cadence.
+  let rematchBusy = $state(false);
+  async function rematch() {
+    if (rematchBusy || !game) return;
+    rematchBusy = true;
+    const names = game.players.map((p: any) => ({ name: p.name }));
+    const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const name = game.series ? `${today} — ${game.series}` : today;
+    try {
+      const res = await fetch('/api/games', {
+        method: 'POST',
+        headers: { ...actorHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, unit: game.unit, players: names, defaultBuyIn: game.defaultBuyIn, series: game.series || undefined }),
+      });
+      const ng = await res.json();
+      if (!res.ok) { toast(ng.error || 'Could not start the next game'); rematchBusy = false; return; }
+      // This device keeps host powers on the new game; seats stay unclaimed on
+      // purpose (everyone rejoins via the fresh link — that's the whole point).
+      if (browser && ng.hostToken) localStorage.setItem('pc_host_' + ng.id, ng.hostToken);
+      toast('New game ready — share the code with your crew');
+      await goto(`/game?g=${ng.id}`);
+    } catch (e: any) { toast('Could not reach the server'); }
+    finally { rematchBusy = false; }
+  }
+
   async function reopenGame() {
     if (!(await askConfirm('Reopen the game for everyone? This clears paid marks.', 'Reopen'))) return;
     try {
@@ -854,6 +881,20 @@
     if (s.kind === 'win') return ` (🔥 ${s.current}W streak)`;
     if (s.kind === 'loss') return ` (❄️ ${s.current}L streak)`;
     return '';
+  }
+
+  // Post the running season standings to the group chat — a weekly, non-spammy
+  // reason to re-surface potcount. Host taps; we never auto-send.
+  function shareSeries() {
+    if (!seriesData?.leaderboard?.length) return;
+    let text = `${seriesData.series} — standings after ${seriesData.gameCount} games\n\n`;
+    seriesData.leaderboard.forEach((e: any, i: number) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      text += `${medal} ${e.name}: ${e.totalNet >= 0 ? '+' : ''}${money(e.totalNet, unit)} (${e.games}g · ${e.wins}w)\n`;
+    });
+    text += `\npotcount.com`;
+    if (navigator.share) navigator.share({ title: 'potcount', text }).catch(() => {});
+    else navigator.clipboard.writeText(text.trim()).then(() => toast('Standings copied — paste in your group chat')).catch(() => toast('Could not copy'));
   }
 
   function shareResult() {
@@ -1495,7 +1536,7 @@
             {#each (game.log || []).slice().reverse() as e (e.id)}
               <div class="text-sm border-l-2 border-border-soft pl-2.5">
                 {#if e.playerName}<b>{e.playerName}</b>{' '}{/if}{describe(e)}<br/>
-                <span class="text-muted text-xs">by {e.actorName} · {shortDate(e.at)}</span>
+                <span class="text-muted text-xs">by {e.actorName}{#if e.actorId?.startsWith('user:')} <span class="text-win" title="Signed-in account — verified">✓</span>{:else if e.actorId && e.actorId !== 'system'} <span class="text-faint" title="Anonymous device — not a verified account">· unverified</span>{/if} · {shortDate(e.at)}</span>
               </div>
             {:else}
               <p class="text-muted text-sm">No activity yet.</p>
@@ -1550,9 +1591,16 @@
         </div>
       {/if}
 
+      <!-- Same crew, next week — clone the table (unclaimed seats) so everyone
+           rejoins via a fresh link. The primary next action after a night ends. -->
+      {#if game.players.length >= 2}
+        <button class="btn w-full mt-4" disabled={rematchBusy} onclick={rematch}>{rematchBusy ? 'Setting up…' : '↻ Same crew, next week'}</button>
+        <p class="text-muted text-xs text-center mt-1.5">Starts a fresh game with the same players — share the new code so everyone rejoins.</p>
+      {/if}
+
       <!-- Share your night — the viral moment, kept up top so it isn't missed. -->
       {#if standings.length >= 2}
-        <button class="btn btn-secondary w-full mt-4" onclick={shareResult}>Share your night</button>
+        <button class="btn btn-secondary w-full mt-3" onclick={shareResult}>Share your night</button>
       {/if}
 
       {#if myAccount && mySeat}
@@ -1702,6 +1750,7 @@
         <div class="card mt-4">
           <div class="flex items-center justify-between gap-2 mb-2">
             <h3 class="text-xs font-semibold uppercase tracking-widest text-muted m-0">{seriesData.series} — {seriesData.gameCount} games</h3>
+            <button class="btn-small btn-ghost !px-2.5" onclick={shareSeries} title="Post the standings to your group chat">Post to group</button>
           </div>
           {#each seriesData.leaderboard.slice(0, 5) as entry, idx}
             {@const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : ''}
@@ -1824,7 +1873,7 @@
     <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px] text-center" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Invite players</h3>
       <div class="text-3xl font-extrabold tracking-widest text-accent mb-1" style="font-family:var(--font-display)">#{game?.code ?? gameId}</div>
-      <p class="text-muted text-xs mb-3">Scan to join, or share the link</p>
+      <p class="text-muted text-xs mb-3">Everyone joins to see their own money — scan, or share the link</p>
       <div class="flex justify-center mb-3"><QrCode data={shareUrl()} size={208} /></div>
       <div class="flex gap-2">
         <button class="btn-small btn-secondary flex-1" onclick={copyShareLink}>Copy link</button>

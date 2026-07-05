@@ -103,7 +103,7 @@ function persist(game) {
 // Sidecar JSON files that live alongside the per-game files in DATA_DIR but are
 // NOT games. They must never be parsed as games (doing so created a "ghost" game
 // with id=undefined that couldn't be opened or deleted, re-stamped every boot).
-const NON_GAME_FILES = new Set(['users.json', 'follows.json', 'reactions.json', 'comments.json', 'fx-rates.json']);
+const NON_GAME_FILES = new Set(['users.json', 'follows.json', 'reactions.json', 'comments.json', 'fx-rates.json', 'interest.json']);
 
 export function init() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
@@ -243,7 +243,7 @@ export function allGames() {
 }
 
 /** @param {NewGameInput} input @returns {Game} */
-export function createGame({ name, unit, players, code, defaultBuyIn }) {
+export function createGame({ name, unit, players, code, defaultBuyIn, series }) {
   const humanCode = code ? normalizeCustomCode(code) : gameCode();
   // Internal id: unguessable, immutable, never shown. Shared links use this, so
   // they keep pointing at THIS game even after `humanCode` is recycled later.
@@ -269,6 +269,7 @@ export function createGame({ name, unit, players, code, defaultBuyIn }) {
   };
   const db = Number(defaultBuyIn);
   if (Number.isFinite(db) && db > 0) game.defaultBuyIn = Math.round(db * 100) / 100;
+  if (series != null && String(series).trim()) game.series = String(series).trim().slice(0, 60);
   for (const p of players || []) {
     const nm = p && p.name != null ? String(p.name).trim() : '';
     if (nm) game.players.push({ id: uid(6), name: nm.slice(0, 40) });
