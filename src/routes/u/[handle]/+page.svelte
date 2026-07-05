@@ -113,7 +113,11 @@
 
 <div class="wrap">
   {#if loading}
-    <p class="text-muted">Loading...</p>
+    <div class="skeleton h-[92px] mb-3.5"></div>
+    <div class="skeleton h-[168px] mt-6 mb-3"></div>
+    <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2 mt-5">
+      {#each Array(6) as _, i (i)}<div class="skeleton h-[68px]"></div>{/each}
+    </div>
   {:else if error}
     <div class="banner banner-warn">{error}</div>
     <p><a href="/">← Home</a></p>

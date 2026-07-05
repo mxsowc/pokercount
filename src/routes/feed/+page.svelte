@@ -128,7 +128,9 @@
 
       <!-- Feed items -->
       {#if loading}
-        <p class="text-muted">Loading...</p>
+        <div class="flex flex-col gap-3">
+          {#each Array(3) as _, i (i)}<div class="skeleton h-[104px]"></div>{/each}
+        </div>
       {:else if items.length === 0}
         <div class="card text-center py-9">
           <div class="text-3xl mb-2" aria-hidden="true">🃏</div>
@@ -199,7 +201,9 @@
       </div>
       <p class="text-muted text-xs mb-3">{boardScope === 'global' ? 'Everyone on potcount with a public profile · all time' : 'You and the players you follow · all time'}</p>
       {#if boardLoading}
-        <p class="text-muted">Loading...</p>
+        <div class="flex flex-col gap-2">
+          {#each Array(6) as _, i (i)}<div class="skeleton h-[62px]"></div>{/each}
+        </div>
       {:else if board.length === 0}
         <div class="card text-center py-9">
           <div class="text-3xl mb-2" aria-hidden="true">🏆</div>

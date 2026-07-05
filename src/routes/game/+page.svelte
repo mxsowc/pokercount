@@ -1230,7 +1230,7 @@
       {/if}
 
       <!-- Live standings -->
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-4 mb-3">Standings</h2>
+      <h2 class="section-head mt-4">Standings</h2>
       <div class="card">
         {#each ls.ranked as l, idx}
           <div class="flex items-center justify-between mb-1.5 {l.playerId === mySeatId() ? 'font-bold' : ''}">
@@ -1251,7 +1251,7 @@
 
       <!-- Live who-pays-who — the full financial standings, visible to everyone
            without anyone needing to formally "end" the game. -->
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-4 mb-3">Who pays who</h2>
+      <h2 class="section-head mt-4">Who pays who</h2>
       {#if !allEntered}
         <p class="text-muted text-sm">Settles up once everyone's cashed out — {ls.pending.length} still in.</p>
       {:else if settlement && settlement.transfers.length > 0}
@@ -1378,7 +1378,7 @@
 
       <!-- Players heading + take-a-seat / cash-out jump -->
       <div class="flex items-center justify-between mt-6 mb-3 gap-2">
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Players</h2>
+        <h2 class="section-head m-0">Players</h2>
         <div class="flex gap-1.5">
           {#if !iAmSeated() && !mySeat}
             <button class="btn-small btn" onclick={() => { joinNameVal = getActor().name; joinOpen = true; }}>+ Take a seat</button>
@@ -1502,7 +1502,7 @@
 
       <!-- Cash-out section -->
       {@const entered = game.players.filter((p: any) => game.finalStacks[p.id] != null).length}
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3" id="cashout">Cash-out & settle</h2>
+      <h2 class="section-head mt-6" id="cashout">Cash-out &amp; settle</h2>
       <p class="text-muted text-xs mb-2">Enter how much each player has left at the end — or type their profit/loss and we'll work out the stack. Press <b>Enter</b> to jump to the next player.</p>
       <div class="card">
         <!-- live reconciliation, kept right by the inputs so it's visible while typing -->
@@ -1696,7 +1696,7 @@
       {/if}
 
       <!-- Final standings -->
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-4 mb-3">Final standings</h2>
+      <h2 class="section-head mt-4">Final standings</h2>
       <div class="card">
         {#each standings as l, idx}
           <div class="flex items-center justify-between mb-1.5">
@@ -1708,7 +1708,7 @@
 
       <!-- Who pays who -->
       <div class="flex items-center justify-between mt-4 mb-3 gap-2">
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Who pays who</h2>
+        <h2 class="section-head m-0">Who pays who</h2>
         {#if s.transfers.length > 0 && !editingSettlement && s.balanced !== false}
           <div class="flex gap-1.5 shrink-0">
             <button class="btn-small btn-ghost" onclick={copyWhoPaysWho}>Copy</button>
