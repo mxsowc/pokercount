@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
 import { sessionUser } from '$lib/server/helpers.js';
-import { AWARD_KEYS } from '$lib/awards';
+import { AWARD_KEYS, AWARDS } from '$lib/awards';
+import { notify } from '$lib/server/notifications.js';
 
 // Post-game peer awards (hardest to read, most tilted, …). Signed-in + seated
 // users only; one vote each per award per game. Stored on the game as
@@ -36,12 +37,17 @@ export async function POST({ request, params }) {
   if (target.id === voterSeat.id) return json({ error: "You can't vote for yourself" }, { status: 400 });
   if (!target.userId) return json({ error: 'That player doesn\'t have an account yet' }, { status: 400 });
 
+  const alreadyVotedThem = g0.votes?.[category]?.[su.id] === playerId;
   try {
     const game = mutate(id, (g: any) => {
       if (!g.votes) g.votes = {};
       if (!g.votes[category]) g.votes[category] = {};
       g.votes[category][su.id] = playerId;
     });
+    if (!alreadyVotedThem) {
+      const award = AWARDS.find((a) => a.key === category);
+      notify(target.userId, { type: 'award', actorId: 'user:' + su.id, actorName: su.displayName, actorHandle: su.handle, gameId: g0.id, gameCode: g0.code ?? g0.id, text: `voted you ${award ? `${award.emoji} ${award.label}` : 'an award'}` });
+    }
     return json({ ok: true, category, votes: game?.votes?.[category] || {} });
   } catch (e: any) {
     return json({ error: e.message || 'failed' }, { status: e.status || 400 });

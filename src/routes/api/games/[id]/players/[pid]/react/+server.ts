@@ -4,6 +4,7 @@ import { getGame } from '$lib/server/store.js';
 import { toggleReaction, reactionSummary } from '$lib/server/reactions.js';
 import { rateLimit } from '$lib/server/ratelimit.js';
 import { getFollowing } from '$lib/server/social.js';
+import { notify } from '$lib/server/notifications.js';
 
 const ALLOWED = new Set(['👏', '🖕']);
 
@@ -23,5 +24,10 @@ export async function POST({ request, params }) {
   try { body = await request.json(); } catch { return json({ error: 'bad request' }, { status: 400 }); }
   if (!ALLOWED.has(body?.emoji)) return json({ error: 'bad reaction' }, { status: 400 });
   toggleReaction(id, params.pid, su.id, body.emoji);
-  return json(reactionSummary(id, params.pid, su.id));
+  const summary = reactionSummary(id, params.pid, su.id);
+  // Notify the result's owner only when a reaction was added/switched (not removed).
+  if (summary.mine === body.emoji) {
+    notify(seat.userId, { type: 'reaction', actorId: 'user:' + su.id, actorName: su.displayName, actorHandle: su.handle, gameId: g.id, gameCode: g.code ?? g.id, text: `reacted ${body.emoji} to your result` });
+  }
+  return json(summary);
 }

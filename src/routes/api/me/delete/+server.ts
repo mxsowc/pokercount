@@ -5,6 +5,7 @@ import { unlinkUser } from '$lib/server/store.js';
 import { removeUser as socialRemoveUser } from '$lib/server/social.js';
 import { removeUser as commentsRemoveUser } from '$lib/server/comments.js';
 import { removeUser as reactionsRemoveUser } from '$lib/server/reactions.js';
+import { removeUser as notificationsRemoveUser } from '$lib/server/notifications.js';
 import { clearCookie } from '$lib/server/auth.js';
 
 // Permanently delete the signed-in account. Deliberate-action guard: the caller
@@ -31,6 +32,7 @@ export async function POST({ request }) {
   socialRemoveUser(su.id);
   commentsRemoveUser(su.id);
   reactionsRemoveUser(su.id);
+  notificationsRemoveUser(su.id);
   deleteUser(su.id);
 
   // End the session — the account no longer exists.

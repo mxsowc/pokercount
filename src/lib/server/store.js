@@ -103,7 +103,7 @@ function persist(game) {
 // Sidecar JSON files that live alongside the per-game files in DATA_DIR but are
 // NOT games. They must never be parsed as games (doing so created a "ghost" game
 // with id=undefined that couldn't be opened or deleted, re-stamped every boot).
-const NON_GAME_FILES = new Set(['users.json', 'follows.json', 'reactions.json', 'comments.json', 'fx-rates.json', 'interest.json', 'series-meta.json', 'last-backup.json']);
+const NON_GAME_FILES = new Set(['users.json', 'follows.json', 'reactions.json', 'comments.json', 'fx-rates.json', 'interest.json', 'series-meta.json', 'last-backup.json', 'notifications.json']);
 
 export function init() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });

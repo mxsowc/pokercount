@@ -3,7 +3,9 @@
   import { toastMessage } from '$lib/stores/toast';
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import { captureAcq } from '$lib/utils/acq';
+  import { unreadCount, refreshUnread } from '$lib/stores/notifications';
 
   let { children } = $props();
 
@@ -11,6 +13,33 @@
   // opened later can be attributed to its source. Runs once, on the entry page.
   onMount(() => captureAcq($page.url.pathname, $page.url.search));
   let user = $derived($page.data?.user ?? null);
+
+  // Keep the notification badge fresh: on load and after every navigation
+  // (visiting /notifications marks them read, so leaving it clears the badge).
+  onMount(() => refreshUnread(!!$page.data?.user));
+  afterNavigate(() => refreshUnread(!!$page.data?.user));
+
+  // Add-to-home-screen nudge (Android/Chrome fire beforeinstallprompt; iOS uses
+  // the native Share → Add to Home Screen, no prompt to catch). Only nudge people
+  // who've actually used it (≥1 game) and haven't dismissed it. No service worker.
+  let installEvent = $state<any>(null);
+  let showInstall = $state(false);
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('beforeinstallprompt', (e: any) => {
+      e.preventDefault();
+      let played = false;
+      try { played = (JSON.parse(localStorage.getItem('pc_games') || '[]') || []).length > 0; } catch { /* ignore */ }
+      if (!played || localStorage.getItem('pc_install_dismissed')) return;
+      installEvent = e;
+      showInstall = true;
+    });
+  });
+  async function doInstall() {
+    showInstall = false;
+    if (installEvent) { installEvent.prompt(); try { await installEvent.userChoice; } catch { /* dismissed */ } installEvent = null; }
+  }
+  function dismissInstall() { showInstall = false; try { localStorage.setItem('pc_install_dismissed', '1'); } catch { /* ignore */ } }
   let initial = $derived(user ? (user.displayName || '?').charAt(0).toUpperCase() : '');
 
   // Per-page social preview: a route's load() can return `meta: {title, description}`
@@ -52,6 +81,18 @@
   <a href="/" class="font-bold text-[1.15rem] tracking-tight no-underline text-text" style="font-family: var(--font-display)">
     pot<span class="text-accent">count</span>
   </a>
+  <div class="flex items-center gap-2">
+  {#if user}
+    <a href="/notifications" class="relative pill !px-2.5 no-underline hover:text-text hover:border-text/20 transition-colors" title="Notifications" aria-label="Notifications{$unreadCount > 0 ? ` (${$unreadCount} unread)` : ''}">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true" class="shrink-0">
+        <path d="M10 2.5a4.5 4.5 0 0 0-4.5 4.5c0 3.2-1 4.6-1.6 5.3-.3.3-.1.9.4.9h11.4c.5 0 .7-.6.4-.9-.6-.7-1.6-2.1-1.6-5.3A4.5 4.5 0 0 0 10 2.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M8.2 16a1.9 1.9 0 0 0 3.6 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      {#if $unreadCount > 0}
+        <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-ink text-[10px] font-bold grid place-items-center leading-none tabular-nums">{$unreadCount > 9 ? '9+' : $unreadCount}</span>
+      {/if}
+    </a>
+  {/if}
   <!-- On phones these move to the bottom nav; desktop keeps them up here. -->
   <div class="hidden sm:flex items-center gap-2">
     <a href="/pot" class="pill gap-[7px] pl-[9px] hover:text-accent hover:border-accent/45 no-underline transition-colors">
@@ -84,6 +125,7 @@
     {:else}
       <a href="/account" class="pill no-underline hover:text-text transition-colors">Sign in</a>
     {/if}
+  </div>
   </div>
 </nav>
 
@@ -128,6 +170,17 @@
     <span>{user ? 'You' : 'Sign in'}</span>
   </a>
 </nav>
+
+<!-- Add-to-home-screen nudge (Android/Chrome) -->
+{#if showInstall}
+  <div class="fixed left-3 right-3 z-[150] bottom-[calc(72px+env(safe-area-inset-bottom))] sm:bottom-[calc(20px+env(safe-area-inset-bottom))] sm:left-auto sm:right-4 sm:max-w-sm">
+    <div class="card !bg-surface-2 !border-accent/30 flex items-center gap-3 shadow-xl">
+      <span class="text-sm flex-1">Add <b>potcount</b> to your home screen for one-tap access.</span>
+      <button class="btn-small btn shrink-0" onclick={doInstall}>Install</button>
+      <button class="text-faint hover:text-text p-1 -m-1 shrink-0" aria-label="Dismiss" onclick={dismissInstall}>✕</button>
+    </div>
+  </div>
+{/if}
 
 <!-- Toast — sits above the bottom nav on phones -->
 {#if $toastMessage}

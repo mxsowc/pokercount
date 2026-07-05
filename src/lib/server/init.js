@@ -4,6 +4,7 @@ import { init as initUsers } from './users.js';
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
+import { init as initNotifications } from './notifications.js';
 import { initAuth } from './auth.js';
 import { emailConfigured } from './email.js';
 import { sendDueMonthlySummaries } from './summary.js';
@@ -17,6 +18,7 @@ export function ensureInit() {
   const socialLoaded = initSocial();
   const reactionsLoaded = initReactions();
   const commentsLoaded = initComments();
+  initNotifications();
   const gamesLoaded = initStore();
   console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
 

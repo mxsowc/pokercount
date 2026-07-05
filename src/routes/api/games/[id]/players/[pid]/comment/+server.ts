@@ -5,6 +5,7 @@ import { addComment } from '$lib/server/comments.js';
 import { publicUser } from '$lib/server/users.js';
 import { rateLimit } from '$lib/server/ratelimit.js';
 import { getFollowing } from '$lib/server/social.js';
+import { notify } from '$lib/server/notifications.js';
 
 export async function POST({ request, params }) {
   const su = sessionUser(request);
@@ -23,5 +24,7 @@ export async function POST({ request, params }) {
   if (typeof body?.text !== 'string') return json({ error: 'comment must be text' }, { status: 400 });
   const c = addComment(id, params.pid, su.id, body.text);
   if (!c) return json({ error: 'comment cannot be empty' }, { status: 400 });
+  const snippet = String(body.text).trim().slice(0, 60);
+  notify(seat.userId, { type: 'comment', actorId: 'user:' + su.id, actorName: su.displayName, actorHandle: su.handle, gameId: g.id, gameCode: g.code ?? g.id, text: `commented: “${snippet}”` });
   return json({ ...c, user: publicUser(su) });
 }
