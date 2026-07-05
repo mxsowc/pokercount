@@ -19,6 +19,9 @@
   let showActivity = $state(false);
   let seriesData = $state<any>(null);
   let showShareBanner = $state(false);
+  let followingSet = $state<Set<string>>(new Set()); // accounts I already follow
+  let followedNow = $state<Set<string>>(new Set());  // followed this session (optimistic)
+  let recapOpen = $state(false); // end-of-night recap, popped once when the game locks in
   let showTrackTip = $state(false); // host-only "how to keep score" recommendation
   let amHost = $state(false); // this device opened the game (holds the host token)
   let expanded = $state(new Set<string>());
@@ -163,6 +166,13 @@
     const dn = (myAccount.displayName || '').trim().toLowerCase();
     return unclaimedSeats.find((p: any) => p.name.trim().toLowerCase() === dn) ?? null;
   });
+  // Signed-in tablemates I don't follow yet — the co-play graph, seeded at zero
+  // recall friction (their names are already on screen). Powers "follow the table".
+  const followableTablemates = $derived(
+    myAccount && game
+      ? game.players.filter((p: any) => p.userId && p.userId !== myAccount.id && p.handle && !followingSet.has(p.userId) && !followedNow.has(p.userId))
+      : []
+  );
 
   // Once the game is done, pull the signed-in user's current win/loss streak (it
   // already includes this game) so the share message can flag a hot/cold run.
@@ -222,6 +232,12 @@
     if (lastStatus !== null && game.status !== lastStatus) {
       if (game.status === 'settled') { celebrate({ particles: 180 }); haptic([18, 40, 18]); }
       else if (game.status === 'ended') { celebrate({ particles: 100, power: 11 }); haptic(25); }
+      // The moment the game locks in (for everyone present via SSE): pop the recap
+      // once. Guard per game so a refresh of an already-closed game doesn't re-pop.
+      if (lastStatus === 'active' && game.status !== 'active' && !localStorage.getItem('pc_recap_' + gameId)) {
+        localStorage.setItem('pc_recap_' + gameId, '1');
+        recapOpen = true;
+      }
     }
     lastStatus = game.status;
   });
@@ -249,6 +265,7 @@
     // Prefer the table's standard buy-in set at creation (falls back to the device default).
     if (game?.defaultBuyIn > 0) bulkAmount = String(game.defaultBuyIn);
     try { myAccount = (await api('GET', '/api/me')).user; } catch {}
+    if (myAccount) { try { const f = await api('GET', '/api/me/following'); followingSet = new Set((f.following || []).map((u: any) => u.id)); } catch {} }
     // Load series data if this game belongs to one
     if (game.series) {
       try { seriesData = await api('GET', `/api/series?name=${encodeURIComponent(game.series)}`); } catch {}
@@ -393,6 +410,19 @@
       claimOpen = false;
       toast('Seat claimed — it’s linked to your account');
     } catch (e: any) { toast(e.message); }
+  }
+
+  async function followPlayer(p: any) {
+    if (!p?.handle || followedNow.has(p.userId)) return;
+    followedNow = new Set(followedNow).add(p.userId); // optimistic
+    try {
+      await fetch(`/api/users/${encodeURIComponent(p.handle)}/follow`, { method: 'POST' });
+      toast(`Following ${p.name}`);
+    } catch (e: any) { toast('Could not follow — try again'); }
+  }
+  async function followAllTable() {
+    for (const p of followableTablemates) await followPlayer(p);
+    toast('Following your table 🤝');
   }
 
   async function leaveSeat() {
@@ -1765,6 +1795,24 @@
         </div>
       {/if}
 
+      <!-- Play with them again? — seed the follow graph from tonight's table -->
+      {#if followableTablemates.length > 0}
+        <div class="card mt-4">
+          <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2.5">Play with them again?</div>
+          <div class="flex flex-col gap-2">
+            {#each followableTablemates as p (p.userId)}
+              <div class="flex items-center justify-between gap-2">
+                <a href="/u/{p.handle}" class="text-sm font-semibold no-underline text-text hover:underline min-w-0 truncate">{p.name} <span class="text-info text-xs">@{p.handle}</span></a>
+                <button class="btn-small btn-secondary shrink-0" onclick={() => followPlayer(p)}>Follow</button>
+              </div>
+            {/each}
+          </div>
+          {#if followableTablemates.length > 1}
+            <button class="btn-small btn w-full mt-3" onclick={followAllTable}>Follow everyone at the table</button>
+          {/if}
+        </div>
+      {/if}
+
       <!-- End-of-night awards — peer-voted, signed-in players with a seat only -->
       {#if myAccount && mySeat && standings.length >= 3}
         {@const eligiblePlayers = game.players.filter((p: any) => p.userId && p.userId !== myAccount.id)}
@@ -1928,6 +1976,38 @@
       <button class="btn w-full" disabled={authBusy} onclick={submitAuth}>{authBusy ? 'Just a sec…' : (authTab === 'login' ? 'Log in & claim seat' : 'Create account & claim seat')}</button>
       <button class="btn-small btn-ghost w-full mt-2" onclick={oauthClaim}>More sign-in options (Google, Apple) →</button>
       <button class="btn-small btn-ghost w-full mt-1" onclick={() => authOpen = false}>Cancel</button>
+    </div>
+  </div>
+{/if}
+
+<!-- End-of-night recap — pops once when the game locks in (all present devices) -->
+{#if recapOpen && game}
+  {@const s = settlement}
+  {@const mine = myLiveLine}
+  {@const ranked = (s?.lines ?? []).slice().sort((a: any, b: any) => (b.net ?? 0) - (a.net ?? 0))}
+  {@const myRank = mine ? ranked.findIndex((l: any) => l.playerId === mine.playerId) : -1}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) recapOpen = false }}>
+    <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px] text-center" onclick={(e) => e.stopPropagation()}>
+      <div class="text-3xl mb-1" aria-hidden="true">🃏</div>
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">That's a wrap</h3>
+      {#if mine}
+        <div class="text-[2.6rem] font-extrabold leading-none tabular-nums {mine.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{mine.net >= 0 ? '+' : '−'}{money(Math.abs(mine.net), unit)}</div>
+        <p class="text-muted text-sm mt-2">Your night{myRank >= 0 ? ` · finished ${ordinal(myRank + 1)} of ${ranked.length}` : ''}</p>
+      {:else}
+        <p class="text-muted text-sm">The game's locked in — here's how it shook out.</p>
+      {/if}
+      <div class="flex flex-col gap-2 mt-5">
+        <button class="btn w-full" onclick={() => { recapOpen = false; activeView = 'standings'; window.scrollTo({ top: 0 }); }}>See standings &amp; who pays who</button>
+        {#if game.players.length >= 2}
+          <button class="btn btn-secondary w-full" disabled={rematchBusy} onclick={rematch}>{rematchBusy ? 'Setting up…' : '↻ Same crew, next week'}</button>
+        {/if}
+        {#if !myAccount}
+          <button class="btn-small btn-ghost w-full" onclick={() => { recapOpen = false; signInToClaim(); }}>Save this to your profile</button>
+        {:else if mySeat}
+          <p class="text-xs text-win font-semibold mt-1">✓ Saved to your profile</p>
+        {/if}
+        <button class="btn-small btn-ghost w-full" onclick={() => recapOpen = false}>Close</button>
+      </div>
     </div>
   </div>
 {/if}
