@@ -107,7 +107,6 @@
   let pickerOpen = $state(false);
   let pickerRef = $state('');
   let pickerIdx = $state(0);
-  let pickRank = $state<string | null>(null);
 
   const holeCount = $derived(game === 'omaha' ? 4 : 2);
 
@@ -222,8 +221,6 @@
     try {
       pickerRef = ref;
       pickerIdx = idx;
-      const existing = parseTokens(fieldValue(ref))[idx];
-      pickRank = existing ? existing[0] : null;
       pickerOpen = true;
     } catch (e) {
       console.error('Open picker error:', e);
@@ -236,13 +233,8 @@
     return pickerOpen ? usedCards(pickerRef, pickerIdx) : new Set<string>();
   }
 
-  function selectRank(r: string) {
-    pickRank = r;
-  }
-  function selectSuit(s: string) {
+  function pickCard(card: string) {
     try {
-      if (!pickRank) return;
-      const card = pickRank + s;
       if (getPickerUsed().has(card)) return;
       haptic(9);
 
@@ -254,24 +246,19 @@
       const newToks = toks.slice(0, maxCount);
       const newVal = newToks.join(' ');
 
-      // Only update if the value actually changed
       if (newVal !== currentVal) {
         setFieldValue(pickerRef, newVal);
       }
 
-      // Auto-advance: next empty slot in this field, else flow into the next
-      // field (next player or the board), else close once the hand is complete.
       if (newToks.length < maxCount) {
         pickerIdx = newToks.length;
-        pickRank = null;
       } else {
         const nxt = nextEmptyAfter(pickerRef);
-        if (nxt) { pickerRef = nxt.ref; pickerIdx = nxt.idx; pickRank = null; }
+        if (nxt) { pickerRef = nxt.ref; pickerIdx = nxt.idx; }
         else pickerOpen = false;
       }
     } catch (e) {
       console.error('Card pick error:', e);
-      // Don't crash the page — just close the picker
       pickerOpen = false;
     }
   }
@@ -930,33 +917,31 @@
     role="dialog" aria-modal="true">
     <div class="w-full max-w-[640px] bg-surface border-t border-border-soft rounded-t-2xl p-4 pb-[calc(20px+env(safe-area-inset-bottom,0px))]"
       onclick={(e) => e.stopPropagation()}>
-      <div class="flex items-center justify-between mb-2">
-        <b class="font-display">Pick a {pickerRef.startsWith('hole') ? 'hole' : 'board'} card ({pickerIdx + 1})</b>
+      <div class="flex items-center justify-between mb-3">
+        <b class="font-display">{pickerRef.startsWith('hole') ? `Player ${+pickerRef.split(':')[1] + 1} hole` : 'Board'} card {pickerIdx + 1}</b>
         <button class="btn-small btn-ghost" onclick={closePicker}>Done</button>
       </div>
 
-      {#if !pickRank}
-        <div class="text-xs uppercase tracking-widest text-muted mb-2">1. Rank</div>
-        <div class="grid grid-cols-7 gap-[7px]">
-          {#each RANKS as r}
-            {@const allUsed = SUITS.every(s => getPickerUsed().has(r + s))}
-            <button class="py-3.5 rounded-xl font-extrabold text-lg bg-surface-2 border border-border text-text hover:bg-surface-3 active:scale-95 transition-all disabled:opacity-20 disabled:cursor-not-allowed font-display"
-              disabled={allUsed}
-              onclick={() => selectRank(r)}>{r === 'T' ? '10' : r}</button>
-          {/each}
-        </div>
-      {:else}
-        <div class="text-xs uppercase tracking-widest text-muted mb-2">2. Suit for {pickRank === 'T' ? '10' : pickRank}</div>
-        <div class="grid grid-cols-4 gap-2">
+      <!-- Suit column headers -->
+      <div class="grid gap-[5px]" style="grid-template-columns: 28px repeat(4, 1fr)">
+        <div></div>
+        {#each SUITS as s}
+          <div class="text-center text-lg pb-1 {s === 'h' || s === 'd' ? 'text-red-400' : 'text-text'}">{SUIT_SYM[s]}</div>
+        {/each}
+
+        {#each RANKS as r}
+          <div class="flex items-center justify-center text-xs font-bold text-muted font-display">{r === 'T' ? '10' : r}</div>
           {#each SUITS as s}
-            {@const used = getPickerUsed().has(pickRank + s)}
-            <button class="py-4 rounded-xl text-3xl leading-none bg-surface-2 border border-border hover:bg-surface-3 active:scale-95 transition-all disabled:opacity-20 disabled:cursor-not-allowed {s === 'h' || s === 'd' ? 'text-red-400' : 'text-text'}"
+            {@const card = r + s}
+            {@const used = getPickerUsed().has(card)}
+            <button class="py-2.5 rounded-lg text-sm font-bold leading-none border active:scale-95 transition-all
+              {used ? 'opacity-15 cursor-not-allowed bg-surface-2 border-transparent' : 'bg-surface-2 border-border hover:bg-surface-3'}
+              {s === 'h' || s === 'd' ? 'text-red-400' : 'text-text'}"
               disabled={used}
-              onclick={() => selectSuit(s)}>{SUIT_SYM[s]}</button>
+              onclick={() => pickCard(card)}>{r === 'T' ? '10' : r}{SUIT_SYM[s]}</button>
           {/each}
-        </div>
-        <button class="btn-small btn-ghost w-full mt-3" onclick={() => pickRank = null}>← Back to ranks</button>
-      {/if}
+        {/each}
+      </div>
       <button class="btn-small btn-ghost w-full mt-3" onclick={clearPickerCard}>Clear this card</button>
     </div>
   </div>

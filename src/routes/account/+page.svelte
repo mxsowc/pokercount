@@ -14,14 +14,6 @@
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
   let badges = $state<any>(null);
-  // "potcount Pro" demand probe — logs interest so we can gauge willingness-to-pay
-  // before building any billing. Nothing is charged; this is just a signal.
-  let proClicked = $state(false);
-  async function proInterest() {
-    proClicked = true;
-    try { await fetch('/api/interest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feature: 'pro' }) }); } catch { /* soft signal */ }
-    toast("Thanks — we'll let you know when it's ready");
-  }
   let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
 
   // Login form
@@ -774,17 +766,6 @@
           {/each}
         </div>
       {/if}
-
-      <!-- potcount Pro — demand probe (no billing; just gauging interest) -->
-      <div class="card !bg-surface-2 mt-6 !border-accent/25">
-        <div class="text-sm font-bold">potcount Pro <span class="pill pill-info ml-1">idea</span></div>
-        <p class="text-muted text-xs mt-1 max-w-[48ch]">A home for your recurring crew: a permanent series page with season standings, unlimited history, and a printable / CSV settlement export. Playing always stays free.</p>
-        {#if proClicked}
-          <p class="text-win text-sm font-semibold mt-3">Thanks — you're on the list 🙌</p>
-        {:else}
-          <button class="btn-small btn mt-3" onclick={proInterest}>I'd want this</button>
-        {/if}
-      </div>
 
       <!-- Recent games with multi-select -->
       {#if stats.recent?.length}

@@ -16,7 +16,9 @@
       "WebFetch(domain:webcache.googleusercontent.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:network.pokernow.com)",
-      "WebFetch(domain:www.pokernow1.online)"
+      "WebFetch(domain:www.pokernow1.online)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)"
     ]
   }
 }
