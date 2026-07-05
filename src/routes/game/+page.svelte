@@ -1131,7 +1131,7 @@
           {@const medal = rows.length >= 3 ? ['🥈', '🥇', '🥉'][i] : ['🥇', '🥈'][i]}
           {@const height = rows.length >= 3 ? [94, 124, 72][i] : [124, 94][i]}
           <div class="flex-1 max-w-[130px] flex flex-col items-center text-center">
-            <div class="font-extrabold tabular-nums mb-1.5 {l.net > 0 ? 'text-win' : l.net < 0 ? 'text-danger' : 'text-muted'}" style="font-family:var(--font-display)">{l.net === 0 ? 'Even' : (l.net < 0 ? '−' : '+') + money(Math.abs(l.net), unit)}</div>
+            <div class="font-extrabold tabular-nums mb-1.5 {l.net > 0 ? 'text-win' : l.net < 0 ? 'text-danger' : 'text-muted'} font-display">{l.net === 0 ? 'Even' : (l.net < 0 ? '−' : '+') + money(Math.abs(l.net), unit)}</div>
             <div class="w-full rounded-t-xl border border-border-soft border-b-0 flex flex-col items-center pt-3 gap-0.5 bg-surface-2" style="height:{height}px">
               <span class="text-[1.7rem]">{medal}</span>
             </div>
@@ -1183,7 +1183,7 @@
 
       <div class="mt-3">
         <h1 class="text-2xl font-bold">{game.name}</h1>
-        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(stillInPlay, unit)} in play</div>
+        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest font-display">#{game.code}</span> · {ls.ranked.length}/{game.players.length} cashed out · {money(stillInPlay, unit)} in play</div>
       </div>
 
       <!-- Provisional notice — the game's still live, so the result can still change -->
@@ -1199,7 +1199,7 @@
         {#if game.finalStacks[mine.playerId] != null}
           <div class="card mt-4 {mine.net > 0 ? '!border-win/50 !bg-win/[.08]' : mine.net < 0 ? '!border-danger/50 !bg-danger/[.08]' : ''}">
             <div class="text-xs uppercase tracking-widest font-bold text-muted">{allEntered ? 'Your result' : 'Your result so far'}</div>
-            <div class="text-3xl font-extrabold mt-1 {mine.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">
+            <div class="text-3xl font-extrabold mt-1 {mine.net >= 0 ? 'text-win' : 'text-danger'} font-display">
               {mine.net > 0 ? 'Up ' : mine.net < 0 ? 'Down ' : 'Even '}{money(Math.abs(mine.net), unit)}
             </div>
             <div class="text-muted text-sm mt-1">
@@ -1305,7 +1305,7 @@
       <div class="flex items-start justify-between gap-2.5">
         <div class="min-w-0">
           <h1 class="text-2xl font-bold cursor-text border-b border-dashed border-transparent hover:border-border focus:border-accent focus:outline-none" contenteditable="true" title="Tap to rename" onfocus={selectAllText} onblur={updateGameName}>{game.name}</h1>
-          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
+          <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest font-display">#{game.code}</span> · {game.players.length} players · {money(stillInPlay, unit)} in play</div>
         </div>
         <div class="flex flex-wrap justify-end gap-1.5 shrink-0">
           <button class="btn-small {nit?.on ? 'btn' : 'btn-ghost'}" onclick={toggleNitGame} title="Nit game — a fun side game: the last player still holding a button (who hasn't won a pot) loses">🎯 Nit game{nit?.on && nitHolders.length > 1 ? ' · ' + nitHolders.length : ''}</button>
@@ -1400,7 +1400,7 @@
         </div>
       </div>
       {#if game.status === 'active' && game.players.length > 0}
-        <p class="text-xs text-faint mb-3 -mt-1">Tap <b class="text-accent-2 font-semibold">+{money(quickAmt, unit)}</b> to add a buy-in, or <b class="text-accent-2 font-semibold">Other</b> for a different amount.</p>
+        <p class="text-xs text-faint mb-3 -mt-1">Tap <b class="text-accent-2 font-semibold">+{money(quickAmt, unit)}</b> to add a buy-in, or <b class="text-text font-semibold">Other</b> for a different amount.</p>
       {/if}
 
       <!-- Player rows -->
@@ -1435,7 +1435,7 @@
                       onclick={() => markNitWon(p.id)}>{cleared ? '✓' : '🎯'}</button>
             {/if}
             <button class="btn-small btn" onclick={() => quickBuyIn(p.id, p.name)} title="Quick {invested(p.id) > 0 ? 'top-up' : 'buy-in'} of {money(quickAmt, unit)}">+{money(quickAmt, unit)}</button>
-            <button class="btn-small !px-3 font-semibold text-accent border border-accent/45 bg-accent/10 hover:bg-accent/20" onclick={() => openMoneyModal(p.id, p.name)} title="Add a different amount">Other</button>
+            <button class="btn-small btn-secondary !px-3" onclick={() => openMoneyModal(p.id, p.name)} title="Add a different amount">Other</button>
             <button class="btn-small btn-ghost !px-2.5 min-w-[44px]" title={inv > 0 ? 'View & edit buy-ins' : 'No buy-ins yet'} onclick={() => { expanded.has(p.id) ? expanded.delete(p.id) : expanded.add(p.id); expanded = new Set(expanded); }}>
               {#if inv > 0}<span class="text-xs tabular-nums">{game.transactions.filter((t: any) => t.playerId === p.id).length}</span>{/if}
               {isExpanded ? '▴' : '▾'}
@@ -1629,7 +1629,7 @@
         <div>
           <h1 class="text-2xl font-bold">{game.name}</h1>
           <div class="text-muted text-sm">
-            Game <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{game.code}</span> ·
+            Game <span class="text-accent font-bold tracking-widest font-display">#{game.code}</span> ·
             <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold {allSettled ? 'bg-win/15 text-win border border-win' : 'bg-warn/15 text-[#f3cd6b] border border-warn'}">
               {allSettled ? 'All settled' : 'Game ended'}
             </span>
@@ -1643,7 +1643,7 @@
       {#if bal}
         <div class="card mt-4 {bal.net > 0 ? '!border-win/50 !bg-win/[.08]' : bal.net < 0 ? '!border-danger/50 !bg-danger/[.08]' : ''}">
           <div class="text-xs uppercase tracking-widest font-bold text-muted">Your result</div>
-          <div class="text-3xl font-extrabold mt-1 mb-2 {bal.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">
+          <div class="text-3xl font-extrabold mt-1 mb-2 {bal.net >= 0 ? 'text-win' : 'text-danger'} font-display">
             {bal.net < 0 ? '−' : '+'}{money(Math.abs(bal.net), unit)}
           </div>
           {#each bal.iOwe as t}
@@ -1833,7 +1833,7 @@
             {@const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : ''}
             <div class="flex items-center justify-between text-sm mb-1">
               <span>{medal} {entry.name} <span class="text-muted text-xs">{entry.games}g · {entry.wins}w</span></span>
-              <span class="font-bold tabular-nums {entry.totalNet >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{entry.totalNet >= 0 ? '+' : ''}{money(entry.totalNet, unit)}</span>
+              <span class="font-bold tabular-nums {entry.totalNet >= 0 ? 'text-win' : 'text-danger'} font-display">{entry.totalNet >= 0 ? '+' : ''}{money(entry.totalNet, unit)}</span>
             </div>
           {/each}
           {#if seriesData.leaderboard.length > 5}
@@ -1970,7 +1970,7 @@
   <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onclick={(e) => { if (e.target === e.currentTarget) shareOpen = false }}>
     <div class="card max-w-sm w-full rounded-t-2xl sm:rounded-[16px] text-center" onclick={(e) => e.stopPropagation()}>
       <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-1">Invite players</h3>
-      <div class="text-3xl font-extrabold tracking-widest text-accent mb-1" style="font-family:var(--font-display)">#{game?.code ?? gameId}</div>
+      <div class="text-3xl font-extrabold tracking-widest text-accent mb-1 font-display">#{game?.code ?? gameId}</div>
       <p class="text-muted text-xs mb-3">Everyone joins to see their own money — scan, or share the link</p>
       <div class="flex justify-center mb-3"><QrCode data={shareUrl()} size={208} /></div>
       <div class="flex gap-2">
@@ -2041,7 +2041,7 @@
       <div class="text-3xl mb-1" aria-hidden="true">🃏</div>
       <h3 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">That's a wrap</h3>
       {#if mine}
-        <div class="text-[2.6rem] font-extrabold leading-none tabular-nums {mine.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{mine.net >= 0 ? '+' : '−'}{money(Math.abs(mine.net), unit)}</div>
+        <div class="text-[2.6rem] font-extrabold leading-none tabular-nums {mine.net >= 0 ? 'text-win' : 'text-danger'} font-display">{mine.net >= 0 ? '+' : '−'}{money(Math.abs(mine.net), unit)}</div>
         <p class="text-muted text-sm mt-2">Your night{myRank >= 0 ? ` · finished ${ordinal(myRank + 1)} of ${ranked.length}` : ''}</p>
       {:else}
         <p class="text-muted text-sm">The game's locked in — here's how it shook out.</p>

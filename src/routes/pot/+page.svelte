@@ -360,7 +360,7 @@
       const r = resolve({ game, hiLo, players: builtPlayers.map(({ name, ...p }) => p), boards });
       const nameOf = Object.fromEntries(builtPlayers.map(p => [p.id, p.name]));
       const name = (id: string) => nameOf[id] || id;
-      const fmt = (cents: number) => '€' + (cents / SCALE).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      const fmt = (cents: number) => money(cents / SCALE, activeGameUnit);
       const esc = (s: string) => String(s).replace(/[&<>"]/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c));
 
       // Build result HTML (same format as original)
@@ -437,7 +437,7 @@
       r.breakdown.forEach((seg: any) => { if (seg.amount !== 0) (byPot[seg.pot] ||= []).push(seg); });
       r.pots.forEach((pot: any, i: number) => {
         html += `<div class="bg-surface-2 rounded-[10px] p-3 mb-2 border-l-[3px] border-border">`;
-        html += `<div class="flex items-baseline justify-between gap-2"><b>${potLabel(i)}</b><span class="font-bold tabular-nums" style="font-family:var(--font-display)">${fmt(pot.amount)}</span></div>`;
+        html += `<div class="flex items-baseline justify-between gap-2"><b>${potLabel(i)}</b><span class="font-bold tabular-nums font-display">${fmt(pot.amount)}</span></div>`;
         // Side pots: a plain, compact note of who's actually in it (no chip grid).
         if (i > 0) html += `<div class="text-muted text-xs mt-0.5">${pot.eligible.map((id: string) => esc(name(id))).join(', ')} only</div>`;
         (byPot[i] || []).forEach((seg: any) => {
@@ -493,7 +493,7 @@
         const breakdown = (showBreakdown && lines.length)
           ? `<div class="text-xs text-muted mt-1.5 pt-1.5 border-t border-border-soft flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">${lines.map(l => `<span>${l}</span>`).join('')}</div>`
           : '';
-        html += `<div class="player-row !flex-col !items-stretch gap-0"><div class="flex items-center justify-between gap-2"><div><span class="font-semibold">${esc(t.name)}</span> ${t.folded ? '<span class="pill">folded</span>' : ''}</div><div class="text-right"><div class="font-bold tabular-nums" style="font-family:var(--font-display)">${fmt(t.amt)}</div><div class="text-muted text-xs">${net >= 0 ? '+' : ''}${fmt(net)} vs put in ${fmt(t.contributed)}</div></div></div>${breakdown}</div>`;
+        html += `<div class="player-row !flex-col !items-stretch gap-0"><div class="flex items-center justify-between gap-2"><div><span class="font-semibold">${esc(t.name)}</span> ${t.folded ? '<span class="pill">folded</span>' : ''}</div><div class="text-right"><div class="font-bold tabular-nums font-display">${fmt(t.amt)}</div><div class="text-muted text-xs">${net >= 0 ? '+' : ''}${fmt(net)} vs put in ${fmt(t.contributed)}</div></div></div>${breakdown}</div>`;
       });
       html += `<p class="text-muted text-xs text-center mt-2">Total distributed ${fmt(r.total)} — matches every chip put in.</p>`;
 
@@ -870,7 +870,7 @@
           {@const maxAmt = Math.max(...amounts)}
           {#if myAmt < maxAmt}
             {@const maxWin = amounts.reduce((s: number, a: number) => s + Math.min(a, myAmt), 0)}
-            <div class="text-xs text-warn mt-1.5">All-in short — can only win up to {money(maxWin, '€')} (main pot)</div>
+            <div class="text-xs text-warn mt-1.5">All-in short — can only win up to {money(maxWin, activeGameUnit)} (main pot)</div>
           {:else if myAmt === maxAmt && amounts.filter(a => a > 0 && a < maxAmt).length > 0}
             <div class="text-xs text-accent mt-1.5">Covers all — eligible for every pot</div>
           {/if}
@@ -891,7 +891,7 @@
         Different amounts — we'll create side pots. The short stack can only win what they matched. Make sure each amount is what that player actually put in, not the total pot.
       </div>
     {:else if allSame && !hasFolded}
-      <p class="text-accent text-xs mt-2 font-medium">All matched at {money(amounts.find(a => a > 0) || 0, '€')} each — straight split, no side pots.</p>
+      <p class="text-accent text-xs mt-2 font-medium">All matched at {money(amounts.find(a => a > 0) || 0, activeGameUnit)} each — straight split, no side pots.</p>
     {:else if hasFolded && allSame}
       <p class="text-muted text-xs mt-2">Folded players' chips stay in the pot but they can't win. Everyone else matched evenly.</p>
     {:else}
@@ -931,7 +931,7 @@
     <div class="w-full max-w-[640px] bg-surface border-t border-border-soft rounded-t-2xl p-4 pb-[calc(20px+env(safe-area-inset-bottom,0px))]"
       onclick={(e) => e.stopPropagation()}>
       <div class="flex items-center justify-between mb-2">
-        <b style="font-family:var(--font-display)">Pick a {pickerRef.startsWith('hole') ? 'hole' : 'board'} card ({pickerIdx + 1})</b>
+        <b class="font-display">Pick a {pickerRef.startsWith('hole') ? 'hole' : 'board'} card ({pickerIdx + 1})</b>
         <button class="btn-small btn-ghost" onclick={closePicker}>Done</button>
       </div>
 
@@ -940,8 +940,7 @@
         <div class="grid grid-cols-7 gap-[7px]">
           {#each RANKS as r}
             {@const allUsed = SUITS.every(s => getPickerUsed().has(r + s))}
-            <button class="py-3.5 rounded-xl font-extrabold text-lg bg-surface-2 border border-border text-text hover:bg-surface-3 active:scale-95 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
-              style="font-family:var(--font-display)"
+            <button class="py-3.5 rounded-xl font-extrabold text-lg bg-surface-2 border border-border text-text hover:bg-surface-3 active:scale-95 transition-all disabled:opacity-20 disabled:cursor-not-allowed font-display"
               disabled={allUsed}
               onclick={() => selectRank(r)}>{r === 'T' ? '10' : r}</button>
           {/each}

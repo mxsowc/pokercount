@@ -80,19 +80,19 @@
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Users</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
       <div class="card text-center !mb-0">
-        <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.total}</div>
+        <div class="text-2xl font-extrabold font-display">{data.total}</div>
         <div class="text-muted text-xs mt-1">total users</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-2xl font-extrabold text-accent" style="font-family:var(--font-display)">{data.active30}</div>
+        <div class="text-2xl font-extrabold text-accent font-display">{data.active30}</div>
         <div class="text-muted text-xs mt-1">active (30 days)</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.withEmail}</div>
+        <div class="text-2xl font-extrabold font-display">{data.withEmail}</div>
         <div class="text-muted text-xs mt-1">with email</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.optedIn}</div>
+        <div class="text-2xl font-extrabold font-display">{data.optedIn}</div>
         <div class="text-muted text-xs mt-1">newsletter opt-in</div>
       </div>
     </div>
@@ -101,7 +101,7 @@
       <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Games &amp; engagement</h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-2">
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.total}</div>
+          <div class="text-2xl font-extrabold font-display">{data.games.total}</div>
           <div class="text-muted text-xs mt-1">games played</div>
         </div>
         <div class="card text-center !mb-0">
@@ -115,27 +115,27 @@
           <div class="text-muted text-xs mt-1">by status</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.avgPlayers}</div>
+          <div class="text-2xl font-extrabold font-display">{data.games.avgPlayers}</div>
           <div class="text-muted text-xs mt-1">avg players / game</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.totalDistinctPlayers || 0}</div>
+          <div class="text-2xl font-extrabold font-display">{data.games.totalDistinctPlayers || 0}</div>
           <div class="text-muted text-xs mt-1">distinct players (all)</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.engagement.playersWhoPlayed}</div>
+          <div class="text-2xl font-extrabold font-display">{data.engagement.playersWhoPlayed}</div>
           <div class="text-muted text-xs mt-1">linked accounts played</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.engagement.avgGamesPerPlayer}</div>
+          <div class="text-2xl font-extrabold font-display">{data.engagement.avgGamesPerPlayer}</div>
           <div class="text-muted text-xs mt-1">avg games / account</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">{data.games.buyIns}</div>
+          <div class="text-2xl font-extrabold font-display">{data.games.buyIns}</div>
           <div class="text-muted text-xs mt-1">buy-in events</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">€{data.games.avgBuyInPerPlayerEUR ?? 0}</div>
+          <div class="text-2xl font-extrabold font-display">€{data.games.avgBuyInPerPlayerEUR ?? 0}</div>
           {#if data.games.avgBuyInPerPlayerPts}<div class="text-sm font-bold text-muted tabular-nums">{data.games.avgBuyInPerPlayerPts} pts</div>{/if}
           {#each Object.entries(data.games.avgBuyInPerPlayerCrypto ?? {}) as [tk, v]}
             <div class="text-sm font-bold text-muted tabular-nums">{v} {tk}</div>
@@ -143,7 +143,7 @@
           <div class="text-muted text-xs mt-1">avg buy-in / person</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold" style="font-family:var(--font-display)">€{data.games.avgPotPerPlayerEUR ?? 0}</div>
+          <div class="text-2xl font-extrabold font-display">€{data.games.avgPotPerPlayerEUR ?? 0}</div>
           {#if data.games.avgPotPerPlayerPts}<div class="text-sm font-bold text-muted tabular-nums">{data.games.avgPotPerPlayerPts} pts</div>{/if}
           {#each Object.entries(data.games.avgPotPerPlayerCrypto ?? {}) as [tk, v]}
             <div class="text-sm font-bold text-muted tabular-nums">{v} {tk}</div>
@@ -151,7 +151,7 @@
           <div class="text-muted text-xs mt-1">pot per player</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayerEUR >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">€{data.engagement.avgNetPerPlayerEUR}</div>
+          <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayerEUR >= 0 ? 'text-win' : 'text-danger'} font-display">€{data.engagement.avgNetPerPlayerEUR}</div>
           {#if data.engagement.avgNetPerPlayerPts}<div class="text-sm font-bold tabular-nums {data.engagement.avgNetPerPlayerPts >= 0 ? 'text-win' : 'text-danger'}">{data.engagement.avgNetPerPlayerPts} pts</div>{/if}
           {#each Object.entries(data.engagement.avgNetPerPlayerCrypto ?? {}) as [tk, v]}
             <div class="text-sm font-bold tabular-nums {(v as number) >= 0 ? 'text-win' : 'text-danger'}">{v} {tk}</div>
@@ -164,7 +164,7 @@
         </div>
         {#if data.engagement.biggestNight}
           <div class="card text-center !mb-0">
-            <div class="text-2xl font-extrabold text-win" style="font-family:var(--font-display)">€{data.engagement.biggestNight.net}</div>
+            <div class="text-2xl font-extrabold text-win font-display">€{data.engagement.biggestNight.net}</div>
             <div class="text-muted text-xs mt-1 truncate">biggest night · @{data.engagement.biggestNight.handle}</div>
           </div>
         {/if}
@@ -200,7 +200,7 @@
               <!-- Tap the game to open its summary (works for ended/past games too) -->
               <a href="/game?g={g.id}" target="_blank" rel="noopener" class="min-w-0 no-underline text-text hover:opacity-80 transition-opacity" title="Open game #{g.code ?? g.id}">
                 <div class="font-semibold text-sm truncate">
-                  <span class="text-accent font-bold tracking-widest" style="font-family:var(--font-display)">#{g.code ?? g.id}</span>
+                  <span class="text-accent font-bold tracking-widest font-display">#{g.code ?? g.id}</span>
                   {g.name || 'Untitled'} <span class="text-faint">↗</span>
                 </div>
                 <div class="text-muted text-xs truncate">{g.players} players · {g.transactions} buy-ins · pot {g.unit}{g.pot}</div>

@@ -78,7 +78,7 @@
 
 <!-- Topbar -->
 <nav class="topbar">
-  <a href="/" class="font-bold text-[1.15rem] tracking-tight no-underline text-text" style="font-family: var(--font-display)">
+  <a href="/" class="font-bold text-[1.15rem] tracking-tight no-underline text-text font-display">
     pot<span class="text-accent">count</span>
   </a>
   <div class="flex items-center gap-2">

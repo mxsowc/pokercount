@@ -153,11 +153,11 @@
     <div class="card mt-6 !p-5">
       <div class="text-xs uppercase tracking-widest text-muted font-semibold mb-1.5">All-time{#if stats.gamesPlayed} · {stats.unit}{/if}</div>
       {#if stats.gamesPlayed}
-        <div class="text-[2.7rem] leading-none font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.totalProfit, stats.unit)}</div>
+        <div class="text-[2.7rem] leading-none font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.totalProfit, stats.unit)}</div>
         <div class="text-muted text-sm mt-2">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}{#if stats.streak && stats.streak.current > 0} · <span class="{stats.streak.kind === 'win' ? 'text-win' : 'text-danger'} font-semibold">{stats.streak.kind === 'win' ? '🔥' : '❄️'} {stats.streak.current}{stats.streak.kind === 'win' ? 'W' : 'L'}</span>{/if}</div>
         {#if stats.curve && stats.curve.length >= 2}<div class="mt-4"><Sparkline points={stats.curve.map((p: any) => p.cum)} /></div>{/if}
       {:else}
-        <div class="text-2xl font-extrabold text-muted" style="font-family:var(--font-display)">—</div>
+        <div class="text-2xl font-extrabold text-muted font-display">—</div>
         <div class="text-muted text-sm mt-2">No finished games yet.</div>
       {/if}
     </div>
@@ -169,32 +169,32 @@
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-5 mb-3">Breakdown</h2>
     <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg / game</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? stats.profitablePct + '%' : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? stats.profitablePct + '%' : '—'}</div>
         <div class="text-muted text-xs mt-1">% profitable</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.best ? fmtSigned(stats.best.net, stats.unit) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.best ? fmtSigned(stats.best.net, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">best night</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">worst night</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed}</div>
         <div class="text-muted text-xs mt-1">games played</div>
       </div>
       <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums" style="font-family:var(--font-display)">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
+        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg buy-in</div>
       </div>
       {#if stats.hourly}
         <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
+          <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
           <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
         </div>
       {/if}
@@ -235,15 +235,15 @@
           <div class="text-xs font-semibold uppercase tracking-widest text-muted mb-2">Selected {selectedStats.count} games</div>
           <div class="grid grid-cols-3 gap-2">
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.total, stats.unit)}</div>
+              <div class="text-lg font-extrabold tabular-nums {selectedStats.total >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(selectedStats.total, stats.unit)}</div>
               <div class="text-muted text-[.65rem]">total</div>
             </div>
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(selectedStats.avg, stats.unit)}</div>
+              <div class="text-lg font-extrabold tabular-nums {selectedStats.avg >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(selectedStats.avg, stats.unit)}</div>
               <div class="text-muted text-[.65rem]">avg / game</div>
             </div>
             <div class="text-center">
-              <div class="text-lg font-extrabold tabular-nums" style="font-family:var(--font-display)">{selectedStats.profitablePct}%</div>
+              <div class="text-lg font-extrabold tabular-nums font-display">{selectedStats.profitablePct}%</div>
               <div class="text-muted text-[.65rem]">profitable</div>
             </div>
           </div>

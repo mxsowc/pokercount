@@ -255,7 +255,7 @@
           {#each recentGames as g (g.id)}
             <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
               <div>
-                <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm" style="font-family: var(--font-display)">#{g.code ?? g.id}</span></div>
+                <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm font-display">#{g.code ?? g.id}</span></div>
                 <div class="text-muted text-xs mt-0.5">{g.you ? `you: ${g.you} · ` : ''}{g.players} players · {ago(new Date(g.at).toISOString())}{g.status === 'settled' ? ' · settled' : g.status === 'ended' ? ' · ended' : ''}</div>
               </div>
               <div class="flex items-center gap-2">

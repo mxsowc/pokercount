@@ -151,7 +151,7 @@
                     onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; }}
                     onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; } }}>{item.user.displayName}</span>
                   {even ? 'broke even in' : (won ? 'won' : 'lost')}
-                  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(item.net, item.unit)}</span> in{/if}
+                  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-win' : 'text-danger'} font-display">{fmtSigned(item.net, item.unit)}</span> in{/if}
                   <span class="text-muted">{item.game.name}</span>
                 </div>
                 <div class="text-muted text-xs mt-0.5">{ago(item.at)}</div>
@@ -164,7 +164,7 @@
                 {@const n = item.reactions?.counts?.[emoji] || 0}
                 {@const mine = item.reactions?.mine === emoji}
                 <button type="button" onclick={(e) => react(item, emoji, e)}
-                  class="text-sm leading-none px-2.5 py-1 rounded-full border transition-colors {mine ? 'bg-accent/20 border-accent' : 'bg-surface border-transparent hover:border-border'} {n === 0 ? 'opacity-60' : ''}">
+                  class="text-sm leading-none px-2.5 py-1 rounded-full border transition-colors {mine ? 'bg-accent/20 border-accent' : 'bg-surface border-transparent hover:border-border'}">
                   {emoji}{#if n}<span class="ml-1 text-xs tabular-nums {mine ? 'text-text' : 'text-muted'}">{n}</span>{/if}
                 </button>
               {/each}
@@ -193,11 +193,9 @@
 
     {:else}
       <!-- Leaderboard scope -->
-      <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-3 max-w-xs">
-        <button class="py-1.5 rounded-lg font-semibold text-xs transition-all {boardScope === 'following' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow' : 'text-muted hover:text-text'}"
-          onclick={() => setScope('following')}>Following</button>
-        <button class="py-1.5 rounded-lg font-semibold text-xs transition-all {boardScope === 'global' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow' : 'text-muted hover:text-text'}"
-          onclick={() => setScope('global')}>Everyone</button>
+      <div class="seg grid-cols-2 mb-3 max-w-xs">
+        <button class="seg-item {boardScope === 'following' ? 'is-active' : ''}" onclick={() => setScope('following')}>Following</button>
+        <button class="seg-item {boardScope === 'global' ? 'is-active' : ''}" onclick={() => setScope('global')}>Everyone</button>
       </div>
       <p class="text-muted text-xs mb-3">{boardScope === 'global' ? 'Everyone on potcount with a public profile · all time' : 'You and the players you follow · all time'}</p>
       {#if boardLoading}
@@ -214,14 +212,14 @@
         {#each board as row, i (row.user.id)}
           <a href="/u/{row.user.handle}" class="player-row no-underline text-text hover:border-border mb-2 {row.you ? '!border-accent' : ''}">
             <div class="flex items-center gap-3 min-w-0">
-              <span class="w-6 text-center font-bold tabular-nums text-muted shrink-0">{i + 1}</span>
+              <span class="w-6 text-center font-bold tabular-nums shrink-0 {i < 3 ? 'text-base' : 'text-muted'}">{i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
               {@render avatar(row.user.displayName, 'w-8 h-8 text-[.7rem]')}
               <div class="min-w-0">
                 <div class="font-semibold text-[.95rem] truncate">{row.user.displayName}{#if row.you}<span class="text-muted font-normal"> · you</span>{/if}</div>
                 <div class="text-muted text-xs">{row.games} game{row.games === 1 ? '' : 's'} · {fmtSigned(row.avg)}/game</div>
               </div>
             </div>
-            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(row.net)}</div>
+            <div class="font-extrabold tabular-nums shrink-0 {row.net >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(row.net)}</div>
           </a>
         {/each}
       {/if}

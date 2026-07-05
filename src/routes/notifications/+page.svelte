@@ -33,7 +33,7 @@
 <svelte:head><title>Notifications · potcount</title></svelte:head>
 
 <div class="wrap">
-  <h1 class="text-2xl font-bold tracking-tight mt-4 mb-4" style="font-family:var(--font-display)">Notifications</h1>
+  <h1 class="text-2xl font-bold tracking-tight mt-4 mb-4 font-display">Notifications</h1>
 
   {#if !user}
     <div class="banner banner-info">Sign in to see your notifications. <a href="/account">Sign in</a></div>

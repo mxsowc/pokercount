@@ -45,7 +45,7 @@
 <div class="wrap">
   <header class="mt-4 mb-5">
     <div class="text-accent uppercase tracking-[0.16em] text-xs font-bold mb-1">Season standings</div>
-    <h1 class="text-3xl font-bold tracking-tight" style="font-family:var(--font-display)">{s.series}</h1>
+    <h1 class="text-3xl font-bold tracking-tight font-display">{s.series}</h1>
     <div class="flex items-center justify-between gap-3 mt-1.5">
       <p class="text-muted text-sm m-0">{s.gameCount} game{s.gameCount === 1 ? '' : 's'}{#if s.nextDate} · next {fmtDate(s.nextDate)}{/if}</p>
       <button class="btn-small btn-ghost !px-2.5" onclick={shareStandings}>Post to group</button>
@@ -73,7 +73,7 @@
             {#if e.handle}<a href="/u/{e.handle}" class="font-semibold no-underline text-text hover:underline">{e.name}</a>{:else}<span class="font-semibold">{e.name}</span>{/if}
             <span class="text-muted text-xs ml-1">{e.games}g · {e.wins}w</span>
           </span>
-          <span class="font-bold tabular-nums shrink-0 {e.totalNet >= 0 ? 'text-win' : 'text-danger'}" style="font-family:var(--font-display)">{fmtSigned(e.totalNet, s.unit)}</span>
+          <span class="font-bold tabular-nums shrink-0 {e.totalNet >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(e.totalNet, s.unit)}</span>
         </div>
       {/each}
     </div>
