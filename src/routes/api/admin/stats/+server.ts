@@ -172,6 +172,28 @@ export async function POST(event) {
     .sort((a, b) => b[1] - a[1])
     .map(([source, count]) => ({ source, count }));
 
+  // Open (public) games — the city-directory feature. These are always played in
+  // BLINDS (social play, no real-money stakes), so their pot is a pure blind count.
+  // Tracked separately from the money buckets above so open-game engagement is
+  // visible without polluting the currency stats.
+  let openLive = 0, openEver = 0, openSeats = 0, openBlinds = 0, openReq = 0, openApproved = 0;
+  const openByCity: Record<string, number> = {};
+  for (const g of games) {
+    if (g.visibility === 'public') {
+      openEver++;
+      if (g.status === 'active' || g.status === 'scheduled') openLive++;
+      openSeats += g.players?.length || 0;
+      openBlinds += (g.transactions || []).reduce((s: number, t: any) => s + (t.amount || 0), 0);
+      const city = (g.city || '').trim();
+      if (city) openByCity[city] = (openByCity[city] || 0) + 1;
+    }
+    for (const r of (g.joinRequests || [])) {
+      openReq++;
+      if (r.status === 'approved') openApproved++;
+    }
+  }
+  const openTopCities = Object.entries(openByCity).sort((a, b) => b[1] - a[1]).map(([city, count]) => ({ city, count }));
+
   // Recent games (newest first) for the games table. ISO timestamps compare
   // chronologically as strings; a game missing both dates coerces to '' → sorts
   // oldest (so it can't float to the top).
@@ -238,6 +260,16 @@ export async function POST(event) {
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
       acquisition: { tracked: trackedGames, sources },
+    },
+    // Open home games (public city directory) — measured in blinds, not money.
+    openGames: {
+      listedNow: openLive,
+      listedEver: openEver,
+      seats: openSeats,
+      blindsBoughtIn: Math.round(openBlinds),
+      requests: openReq,
+      approved: openApproved,
+      topCities: openTopCities,
     },
     engagement: {
       playersWhoPlayed,

@@ -107,9 +107,11 @@
         <div class="card text-center !mb-0">
           <div class="text-xs font-semibold mt-2 leading-relaxed">
             {#if data.games.byStatus}
-              {#each Object.entries(data.games.byStatus) as [status, count]}
-                <span class="inline-block mr-1.5 {status === 'active' ? 'text-accent' : status === 'settled' ? 'text-gold' : 'text-muted'}">{count} {status}</span>
-              {/each}
+              {@const bs = data.games.byStatus}
+              {@const finished = (bs.ended || 0) + (bs.settled || 0)}
+              {#if bs.active}<span class="inline-block mr-1.5 text-accent">{bs.active} active</span>{/if}
+              {#if bs.scheduled}<span class="inline-block mr-1.5 text-muted">{bs.scheduled} scheduled</span>{/if}
+              {#if finished}<span class="inline-block mr-1.5 text-muted">{finished} finished</span>{/if}
             {/if}
           </div>
           <div class="text-muted text-xs mt-1">by status</div>
@@ -171,6 +173,28 @@
       </div>
       <p class="text-muted text-xs mb-5">Stats count only actually-played games (2+ players with 2+ buy-ins); empty/test/one-buy-in games are excluded. Money figures: real currencies are converted to EUR (monthly FX rates); big blinds, chips and custom units are play money, counted 1:1 together as "pts"; crypto (BTC etc.) is shown per coin.</p>
 
+      {#if data.openGames}
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Open home games (blinds)</h2>
+        <div class="card mb-5">
+          <div class="grid grid-cols-3 gap-3 max-[420px]:grid-cols-2">
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.listedNow}</div><div class="text-muted text-xs mt-0.5">listed now</div></div>
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.listedEver}</div><div class="text-muted text-xs mt-0.5">listed ever</div></div>
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.seats}</div><div class="text-muted text-xs mt-0.5">seats</div></div>
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.blindsBoughtIn.toLocaleString()}</div><div class="text-muted text-xs mt-0.5">blinds bought in</div></div>
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.requests}</div><div class="text-muted text-xs mt-0.5">join requests</div></div>
+            <div><div class="text-xl font-extrabold tabular-nums font-display">{data.openGames.approved}</div><div class="text-muted text-xs mt-0.5">approved</div></div>
+          </div>
+          {#if data.openGames.topCities?.length}
+            <div class="mt-3 pt-3 border-t border-border-soft flex flex-wrap gap-1.5">
+              {#each data.openGames.topCities as c (c.city)}
+                <span class="pill">{c.city} · {c.count}</span>
+              {/each}
+            </div>
+          {/if}
+          <p class="text-faint text-xs mt-2">Public games listed on the /homegames city directory. Always played in blinds — this is social play, tracked separately from the money stats above.</p>
+        </div>
+      {/if}
+
       {#if data.games.acquisition}
         <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Where games come from</h2>
         <div class="card mb-5">
@@ -206,7 +230,7 @@
                 <div class="text-muted text-xs truncate">{g.players} players · {g.transactions} buy-ins · pot {g.unit}{g.pot}</div>
               </a>
               <div class="flex items-center gap-2 shrink-0">
-                <span class="pill {g.status === 'active' ? 'pill-win' : g.status === 'settled' ? 'pill-info' : ''}">{g.status}</span>
+                <span class="pill {g.status === 'active' ? 'pill-win' : ''}">{g.status === 'active' ? 'active' : g.status === 'scheduled' ? 'scheduled' : 'finished'}</span>
                 <span class="text-muted text-xs hidden sm:inline">{fmtDate(g.updatedAt)}</span>
                 <button class="btn-small btn-danger !px-2.5" title="Delete this game permanently" disabled={deletingId === g.id} onclick={() => deleteGameAdmin(g)}>{deletingId === g.id ? '…' : '✕'}</button>
               </div>

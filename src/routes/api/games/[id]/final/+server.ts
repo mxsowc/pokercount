@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, logEntry, isSafeId, isMoney, num, httpError } from '$lib/server/helpers.js';
+import { getActor, logEntry, isSafeId, isMoney, num, httpError, withProfiles } from '$lib/server/helpers.js';
 
 export async function PUT({ request, params }) {
   const id = params.id.toUpperCase();
@@ -45,7 +45,7 @@ export async function PUT({ request, params }) {
       // taps "Lock in & track who's paid" (the explicit /close). A forgotten
       // active game is still swept by the 12h inactivity reaper.
     });
-    return json(game);
+    return json(withProfiles(game));
   } catch (e: any) {
     return json({ error: e.message || 'failed' }, { status: e.status || 400 });
   }

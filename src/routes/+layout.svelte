@@ -56,7 +56,10 @@
 </script>
 
 <svelte:head>
-  <title>potcount</title>
+  <!-- Falls back to the brand, but a route's load() meta.title (e.g. a city page's
+       "Home poker games in Amsterdam") becomes the real <title>. Pages that set
+       their own <title> still override this via SvelteKit head dedupe. -->
+  <title>{ogTitle}</title>
   <!-- Site-wide SEO + social defaults. Here (in <svelte:head>) rather than in the
        static app.html so a page that sets its own og/description OVERRIDES these
        instead of double-emitting them — SvelteKit dedupes <svelte:head> tags. -->

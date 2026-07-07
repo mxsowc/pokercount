@@ -23,8 +23,8 @@ export async function POST({ request, params }) {
   let body: any;
   try { body = await request.json(); } catch { return json({ error: 'bad request' }, { status: 400 }); }
   if (!ALLOWED.has(body?.emoji)) return json({ error: 'bad reaction' }, { status: 400 });
-  toggleReaction(id, params.pid, su.id, body.emoji);
-  const summary = reactionSummary(id, params.pid, su.id);
+  toggleReaction(g.id, params.pid, su.id, body.emoji);
+  const summary = reactionSummary(g.id, params.pid, su.id);
   // Notify the result's owner only when a reaction was added/switched (not removed).
   if (summary.mine === body.emoji) {
     notify(seat.userId, { type: 'reaction', actorId: 'user:' + su.id, actorName: su.displayName, actorHandle: su.handle, gameId: g.id, gameCode: g.code ?? g.id, text: `reacted ${body.emoji} to your result` });

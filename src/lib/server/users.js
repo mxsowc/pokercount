@@ -7,6 +7,7 @@ import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { DATA_DIR } from "./paths.js";
 import { writeFileDurable } from "./fsutil.js";
+import { citySlug, cityLabel } from "../cities.js";
 import { join } from "node:path";
 const FILE = join(DATA_DIR, 'users.json');
 
@@ -114,6 +115,61 @@ export function searchUsers(query, excludeId, limit = 20) {
     }
   }
   return results;
+}
+
+// ---- public city directory (SEO) --------------------------------------------
+
+/** Self-declared minor (onboarding "Under 18"). Excluded from every public,
+ *  search-indexed surface: publishing a minor's name/photo/city in a
+ *  gambling-adjacent context is a hard no (GDPR/AVG + gambling age rules).
+ *  @param {User} u @returns {boolean} */
+function isMinor(u) {
+  return (u.ageRange || '').trim().toLowerCase() === 'under 18';
+}
+
+/** Public players in a city, addressed by canonical slug (see $lib/cities). Only
+ *  privacy:'public' profiles (minors excluded). DATA-MINIMISED on purpose: this
+ *  feeds the unauthenticated, search-indexed directory, so it returns ONLY each
+ *  player's self-chosen handle — never the real display name or avatar. That
+ *  low-impact, pseudonymous surface is what keeps the opt-out directory defensible
+ *  under GDPR legitimate interest. The richer profile (name/photo/stats) lives one
+ *  click deeper at /u/[handle], gated by the same privacy setting.
+ *  `label` is the nicest free-text casing we saw for that city, for the title.
+ *  @param {string} slug @returns {{ users: { handle: string }[], label: string }} */
+export function publicUsersByCity(slug) {
+  const key = String(slug || '');
+  if (!key) return { users: [], label: '' };
+  /** @type {{ handle: string }[]} */
+  const users = [];
+  let label = '';
+  for (const u of byId.values()) {
+    if (!u.city || citySlug(u.city) !== key) continue;
+    if (!label) label = String(u.city).trim(); // remember a real-world casing
+    if ((u.privacy || 'public') !== 'public' || isMinor(u)) continue;
+    users.push({ handle: u.handle });
+  }
+  users.sort((a, b) => a.handle.localeCompare(b.handle));
+  return { users, label };
+}
+
+/** The city directory: every city with ≥1 PUBLIC player, with counts. Curated
+ *  cities keep their nice labels; others use the nicest free-text casing seen.
+ *  Sorted busiest-first. @returns {{ slug: string, label: string, count: number }[]} */
+export function cityDirectory() {
+  /** @type {Map<string,{label:string,count:number}>} */
+  const map = new Map();
+  for (const u of byId.values()) {
+    if (!u.city || (u.privacy || 'public') !== 'public' || isMinor(u)) continue;
+    const slug = citySlug(u.city);
+    if (!slug) continue;
+    const cur = map.get(slug) || { label: String(u.city).trim(), count: 0 };
+    cur.count++;
+    map.set(slug, cur);
+  }
+  const out = [];
+  for (const [slug, v] of map) out.push({ slug, label: cityLabel(slug, v.label), count: v.count });
+  out.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return out;
 }
 
 /** Normalize/validate an email; returns a clean lowercase address or null.
@@ -264,7 +320,7 @@ const MAX_AVATAR_BYTES = 200 * 1024; // cap inline data-URL avatars to keep user
 // (normalized, unique) handle. `avatar` is a data:image/* URL (custom upload) or
 // null/'' to reset to their OAuth photo. `privacy` is one of PRIVACY_LEVELS.
 // Each field is optional — only provided ones change. Editable any time.
-/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean, email?: string|null }} input @returns {User} */
+/** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean, email?: string|null, city?: string|null }} input @returns {User} */
 export function updateProfile(userId, { name, avatar, privacy, newsletter, email, city } = {}) {
   const u = byId.get(userId);
   if (!u) fail('not signed in', 401);

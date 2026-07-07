@@ -16,11 +16,11 @@ export interface Award {
 }
 
 export const AWARDS: Award[] = [
-  { key: 'hardestToRead',  emoji: '🎭', label: 'Hardest to read', q: 'Who was hardest to read?' },
-  { key: 'mostTilted',     emoji: '🌋', label: 'Most tilted',     q: 'Who tilted the hardest?' },
-  { key: 'biggestBluff',   emoji: '🃏', label: 'Biggest bluff',   q: 'Who pulled the biggest bluff?' },
-  { key: 'biggestSuckout', emoji: '🍀', label: 'Biggest suckout', q: 'Who hit the biggest suckout?' },
-  { key: 'callingStation', emoji: '📞', label: 'Calling station',  q: 'Who was the calling station?' },
+  { key: 'hardestToRead',  emoji: '🎭', label: 'Best poker face',   q: 'Who was impossible to read?' },
+  { key: 'mostTilted',     emoji: '🌋', label: 'Most frustrated',   q: 'Who was playing most on tilt?' },
+  { key: 'biggestBluff',   emoji: '🃏', label: 'Biggest bluff',     q: 'Who faked the best hand?' },
+  { key: 'biggestSuckout', emoji: '🍀', label: 'Luckiest winner',   q: 'Who got the luckiest win?' },
+  { key: 'callingStation', emoji: '📞', label: 'Called everything',  q: 'Who never folded?' },
 ];
 
 /** Valid award keys — for validating the vote endpoint's `category`. */

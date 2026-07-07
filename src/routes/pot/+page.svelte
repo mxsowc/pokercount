@@ -934,7 +934,7 @@
           {#each SUITS as s}
             {@const card = r + s}
             {@const used = getPickerUsed().has(card)}
-            <button class="py-2.5 rounded-lg text-sm font-bold leading-none border active:scale-95 transition-all
+            <button class="py-3 rounded-lg text-sm font-bold leading-none border active:scale-95 transition-all
               {used ? 'opacity-15 cursor-not-allowed bg-surface-2 border-transparent' : 'bg-surface-2 border-border hover:bg-surface-3'}
               {s === 'h' || s === 'd' ? 'text-red-400' : 'text-text'}"
               disabled={used}

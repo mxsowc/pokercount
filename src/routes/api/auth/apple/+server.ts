@@ -1,12 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { upsertOAuth, publicUser } from '$lib/server/users.js';
 import { sessionCookie, verifyAppleIdToken } from '$lib/server/auth.js';
+import { rateLimit, clientIp } from '$lib/server/ratelimit.js';
 
-// The Services ID configured for Sign in with Apple (e.g. com.you.potcount.web).
 const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || null;
 
-export async function POST({ request }) {
+export async function POST(event) {
+  const { request } = event;
   if (!APPLE_CLIENT_ID) return json({ error: 'Apple sign-in is not configured' }, { status: 501 });
+  if (!rateLimit('oauth:' + clientIp(event), 10, 300_000)) return json({ error: 'Too many sign-in attempts — try again in a few minutes.' }, { status: 429 });
   const { idToken, name, newsletter } = await request.json();
   let payload;
   try { payload = await verifyAppleIdToken(idToken, APPLE_CLIENT_ID); }

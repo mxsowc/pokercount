@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, logEntry, isMoney, num } from '$lib/server/helpers.js';
+import { getActor, logEntry, isMoney, num, withProfiles } from '$lib/server/helpers.js';
 
 export async function PATCH({ request, params }) {
   const id = params.id.toUpperCase();
@@ -21,7 +21,7 @@ export async function PATCH({ request, params }) {
       g.log.push(logEntry(actor, 'edit_tx', { playerId: t.playerId, playerName: pname, detail: { from, to: num(amount), type: t.type } }));
     }
   });
-  return json(game);
+  return json(withProfiles(game));
 }
 
 export async function DELETE({ request, params }) {
@@ -39,5 +39,5 @@ export async function DELETE({ request, params }) {
       g.log.push(logEntry(actor, 'remove_tx', { playerId: t.playerId, playerName: pname, detail: { amount: t.amount, type: t.type } }));
     }
   });
-  return json(game);
+  return json(withProfiles(game));
 }

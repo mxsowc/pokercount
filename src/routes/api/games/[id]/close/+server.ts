@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
-import { sessionUser, getActor, logEntry } from '$lib/server/helpers.js';
+import { sessionUser, getActor, logEntry, withProfiles } from '$lib/server/helpers.js';
 import { computeSettlement } from '$lib/engine/settle.js';
 
 export async function POST({ request, params }) {
@@ -27,5 +27,5 @@ export async function POST({ request, params }) {
     g.status = (s.balanced && s.transfers.length === 0) ? 'settled' : 'ended';
     g.log.push(logEntry(actor, 'close_game', {}));
   });
-  return json(game);
+  return json(withProfiles(game));
 }

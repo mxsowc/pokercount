@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, logEntry, isGameHost } from '$lib/server/helpers.js';
+import { getActor, logEntry, isGameHost, withProfiles } from '$lib/server/helpers.js';
 
 // Host-only: lock the table (no new self-joins by code — the host adds players)
 // or leave it open (anyone with the link/code can join). Like the kick action,
@@ -16,5 +16,5 @@ export async function PUT({ request, params }) {
     g.locked = !!locked;
     g.log.push(logEntry(actor, locked ? 'lock_game' : 'unlock_game', {}));
   });
-  return json(game);
+  return json(withProfiles(game));
 }

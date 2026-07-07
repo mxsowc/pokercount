@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { sessionUser, getActor, logEntry } from '$lib/server/helpers.js';
+import { sessionUser, getActor, logEntry, withProfiles } from '$lib/server/helpers.js';
 
 export async function POST({ request, params }) {
   const id = params.id.toUpperCase();
@@ -21,5 +21,5 @@ export async function POST({ request, params }) {
     delete g.settlement;
     g.log.push(logEntry(actor, 'reopen_game', {}));
   });
-  return json(game);
+  return json(withProfiles(game));
 }

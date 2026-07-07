@@ -2,7 +2,7 @@
 // JSDoc (`@typedef {import('../types').Game} Game`) so the untyped data/auth/money
 // layer is type-checked without converting every file to TypeScript.
 
-export type GameStatus = 'active' | 'ended' | 'settled';
+export type GameStatus = 'active' | 'ended' | 'settled' | 'scheduled';
 export type TxType = 'buyin' | 'topup';
 
 export interface Player {
@@ -10,6 +10,22 @@ export interface Player {
   name: string;
   /** Account id, if this seat is linked to a signed-in user. */
   userId?: string;
+}
+
+/** A stranger's request to join a PUBLIC game (see Game.visibility). Requesting
+ *  requires a signed-in account; the host approves (→ seats them) or rejects. */
+export interface JoinRequest {
+  id: string;
+  /** Requester's account id (requests always come from a signed-in user). */
+  userId: string;
+  /** Snapshot of the requester's name + handle at request time (for the host's queue). */
+  name: string;
+  handle?: string | null;
+  /** Optional note to the host ("I play Tue nights", etc.). */
+  message?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  at: string;
+  decidedAt?: string | null;
 }
 
 export interface Transaction {
@@ -68,6 +84,19 @@ export interface LogEntry {
   detail?: Record<string, unknown>;
 }
 
+/** One message in a game's coordination thread (lobby / table chat). Lives on the
+ *  game so it rides the existing SSE broadcast — everyone viewing sees it live. */
+export interface GameMessage {
+  id: string;
+  /** Author account id (posting requires a signed-in, seated player). */
+  userId: string;
+  /** Author display name + handle, snapshotted so the thread renders standalone. */
+  name: string;
+  handle?: string | null;
+  text: string;
+  at: string;
+}
+
 export interface Game {
   /** Immutable internal id (the map key + filename + what shared links use). Never shown. */
   id: string;
@@ -78,6 +107,10 @@ export interface Game {
   /** The table's standard buy-in, captured at creation; seeds the quick-buy / bulk amount. */
   defaultBuyIn?: number;
   status: GameStatus;
+  /** For a `scheduled` game: the planned start (ISO). The game sits in a pre-game
+   *  lobby collecting RSVPs until the host starts it (→ `active`) or its date
+   *  passes. Absent on games that were opened to play straight away. */
+  scheduledFor?: string | null;
   createdAt: string;
   updatedAt: string;
   version: number;
@@ -97,6 +130,31 @@ export interface Game {
   tokenedHost?: boolean;
   /** Host locked the table: nobody new can self-join by code; the host adds players. */
   locked?: boolean;
+  /** Public listing (see the /homegames city directory). 'public' surfaces this
+   *  game to strangers searching their city; they can't self-join — they send a
+   *  JoinRequest the host approves. Absent/'private' = the classic code-only game. */
+  visibility?: 'private' | 'public';
+  /** City this public game is in — free text, canonicalized to a slug ($lib/cities)
+   *  for the directory. Required to list publicly. */
+  city?: string | null;
+  /** Cap on seated players for a public game (0/absent = no cap). Enforced when the
+   *  host approves a join request. */
+  maxPlayers?: number;
+  /** Minimum buy-in for a public game, in BLINDS (public/open games are always
+   *  played in blinds — never a real-money currency — so the directory is social
+   *  play, not stakes facilitation). 0/absent = no minimum. */
+  minBuyIn?: number;
+  /** Maximum buy-in for a public game, in BLINDS. Optional even when minBuyIn is
+   *  set: absent/0 means a FIXED buy-in (everyone buys in for the min amount) with
+   *  top-ups allowed and the ceiling agreed in-game by the host. When set, buy-ins
+   *  range from minBuyIn to maxBuyIn. */
+  maxBuyIn?: number;
+  /** The blind level for a public/open game — small blind / big blind (e.g. 1/2),
+   *  set by the host when listing. Amounts are tracked in blinds; this is the
+   *  stakes context locals see before requesting a seat. */
+  blinds?: { small: number; big: number };
+  /** The host's queue of requests to join this public game. */
+  joinRequests?: JoinRequest[];
   settlement?: Settlement;
   /** Prior settlements, archived (not destroyed) each time the game is reopened —
    *  so a locked-in result can't be quietly rewritten after it's been shared. */
@@ -114,6 +172,9 @@ export interface Game {
    *  button until they win a pot (their id goes in `cleared`). When exactly one
    *  holder remains, that player has lost the nit game. No money attached. */
   nitGame?: { on: boolean; cleared: string[] };
+  /** Coordination thread for the table — seated players sort out address, timing,
+   *  "who's bringing chips". Capped to the most recent messages. */
+  messages?: GameMessage[];
 }
 
 /** Payload accepted by createGame. */
@@ -124,6 +185,9 @@ export interface NewGameInput {
   code?: string;
   defaultBuyIn?: number;
   series?: string | null;
+  /** Planned start (ISO). When set, the game is created as `scheduled` — an
+   *  invite-link lobby people RSVP to — instead of opening live. */
+  scheduledFor?: string | null;
 }
 
 export interface User {

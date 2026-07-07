@@ -243,3 +243,48 @@ test('userResults: finished + cashed-out count, still-in excluded; oldest→newe
   assert.equal(r.length, 2, 'finished + cashed-out-live, not the still-in one');
   assert.deepEqual(r.map((x) => x.net), [5, -2], 'oldest → newest');
 });
+
+// --- settlement speed (payment-timeliness stat) ------------------------------
+// A settled leg with a `from`-seat matching the user and a `confirmedAt` counts
+// toward their avg-time-paid. Confirmation is the trust anchor — it counts
+// whether the payee has an account (two-sided) or not (one-sided auto-confirm),
+// but never an unpaid/unconfirmed debt.
+function settledLeg({ payeeUserId = undefined, confirmedAt = '2024-02-02T00:00:00.000Z' } = {}) {
+  return {
+    id: 'GS' + (++seq), name: 'GS', status: 'settled', updatedAt: '2024-02-02',
+    players: [
+      { id: 'p0', name: 'Me', userId: 'u' },
+      { id: 'p1', name: 'Payee', ...(payeeUserId ? { userId: payeeUserId } : {}) },
+    ],
+    transactions: [
+      { id: 'x0', playerId: 'p0', amount: 20, type: 'buyin' },
+      { id: 'x1', playerId: 'p1', amount: 20, type: 'buyin' },
+    ],
+    finalStacks: { p0: 0, p1: 40 },
+    settlement: {
+      computedAt: '2024-02-01T00:00:00.000Z',
+      lines: [{ playerId: 'p0', net: -20 }, { playerId: 'p1', net: 20 }],
+      transfers: [{
+        id: 'tr0', from: 'p0', to: 'p1', fromName: 'Me', toName: 'Payee', amount: 20,
+        paid: true, paidAt: confirmedAt, confirmed: confirmedAt != null, confirmedAt,
+      }],
+    },
+  };
+}
+
+test('settlement speed counts a one-sided confirmed payment (payee has no account)', () => {
+  const s = computeUserStats([settledLeg({ payeeUserId: undefined })], 'u');
+  assert.ok(s.settlementSpeed, 'one-sided confirmed payment is counted');
+  assert.equal(s.settlementSpeed.count, 1);
+  assert.equal(s.settlementSpeed.avgDays, 1, 'settled Feb 1 → confirmed Feb 2 = 1 day');
+});
+
+test('settlement speed counts a two-sided confirmed payment (payee has an account)', () => {
+  const s = computeUserStats([settledLeg({ payeeUserId: 'bob' })], 'u');
+  assert.equal(s.settlementSpeed?.count, 1);
+});
+
+test('settlement speed ignores a paid-but-unconfirmed debt', () => {
+  const s = computeUserStats([settledLeg({ payeeUserId: 'bob', confirmedAt: null })], 'u');
+  assert.equal(s.settlementSpeed, null, 'no confirmedAt → not counted');
+});

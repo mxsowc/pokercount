@@ -1,15 +1,43 @@
 import { getGame, onChange } from '$lib/server/store.js';
 import { withProfiles } from '$lib/server/helpers.js';
+import { clientIp } from '$lib/server/ratelimit.js';
 
-export function GET({ params }) {
-  const g0 = getGame(params.id.toUpperCase());
+const MAX_PER_GAME = 100;
+const MAX_PER_IP_PER_GAME = 5;
+
+const gameConns = new Map<string, number>();
+const ipGameConns = new Map<string, number>();
+
+function inc(map: Map<string, number>, key: string) { map.set(key, (map.get(key) || 0) + 1); }
+function dec(map: Map<string, number>, key: string) {
+  const n = (map.get(key) || 1) - 1;
+  if (n <= 0) map.delete(key); else map.set(key, n);
+}
+
+export function GET(event) {
+  const g0 = getGame(event.params.id.toUpperCase());
   if (!g0) {
     return new Response(JSON.stringify({ error: 'game not found' }), {
       status: 404, headers: { 'Content-Type': 'application/json' }
     });
   }
-  // Always filter/snapshot by the canonical internal id (the URL may be a code).
   const id = g0.id;
+  const ip = clientIp(event);
+  const ipKey = `${ip}:${id}`;
+
+  if ((gameConns.get(id) || 0) >= MAX_PER_GAME) {
+    return new Response(JSON.stringify({ error: 'Too many listeners on this game.' }), {
+      status: 429, headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  if ((ipGameConns.get(ipKey) || 0) >= MAX_PER_IP_PER_GAME) {
+    return new Response(JSON.stringify({ error: 'Too many connections from this device.' }), {
+      status: 429, headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  inc(gameConns, id);
+  inc(ipGameConns, ipKey);
 
   const encoder = new TextEncoder();
   let unsub: (() => void) | null = null;
@@ -47,6 +75,8 @@ export function GET({ params }) {
   function cleanup() {
     if (hb) { clearInterval(hb); hb = null; }
     if (unsub) { unsub(); unsub = null; }
+    dec(gameConns, id);
+    dec(ipGameConns, ipKey);
   }
 
   return new Response(stream, {

@@ -16,14 +16,15 @@ export async function POST({ request, params }) {
   if (!target) return json({ error: 'player not found' }, { status: 404 });
   if (target.userId === su.id) return json(withProfiles(g0)); // already mine — no-op
   if (target.userId) return json({ error: 'That seat is already linked to someone else.' }, { status: 409 });
-  // One seat per account per game.
   if (g0.players.some((p: any) => p.userId === su.id)) {
     return json({ error: "You're already seated in this game." }, { status: 409 });
   }
 
   const game = mutate(id, (g: any) => {
     const p = g.players.find((x: any) => x.id === playerId);
-    if (p && !p.userId) p.userId = su.id;
+    if (!p || p.userId) return;
+    if (g.players.some((x: any) => x.userId === su.id)) return;
+    p.userId = su.id;
   });
   return json(withProfiles(game));
 }

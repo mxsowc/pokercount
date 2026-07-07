@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
   import { ago } from '$lib/utils/time';
+  import { money } from '$lib/utils/money';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
@@ -39,7 +40,7 @@
     if (!browser || !game?.id) return;
     const list = listMyGames().filter((g: any) => g.id !== game.id);
     // Store the internal id (for the link) AND the human code (for display).
-    list.unshift({ id: game.id, code: game.code ?? game.id, name: game.name, unit: game.unit, you: getActor().name, players: game.players.length, status: game.status, at: Date.now() });
+    list.unshift({ id: game.id, code: game.code ?? game.id, name: game.name, unit: game.unit, you: getActor().name, players: game.players.length, status: game.status, at: Date.now(), scheduledFor: game.scheduledFor ?? null });
     if (list.length > 20) list.length = 20;
     localStorage.setItem('pc_games', JSON.stringify(list));
   }
@@ -49,11 +50,29 @@
   // games (any age) plus anything touched in the last 24h. Older finished games
   // still live on your profile — they're just kept out of the way here.
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const recentGames = $derived(games.filter((g: any) => {
-    if (g.status === 'active') return true;
-    const t = new Date(g.at).getTime();
-    return !Number.isFinite(t) || Date.now() - t < DAY_MS; // keep if recent (or timestamp unknown)
-  }));
+  // A finished game where YOU still owe money or still have to confirm a payment
+  // isn't really "done" for you — it stays open business.
+  const needsAction = (g: any) => (g.youOwe || 0) > 0 || (g.youConfirm || 0) > 0;
+  const recentGames = $derived(
+    games
+      .filter((g: any) => {
+        if (g.status === 'scheduled') return false; // upcoming plans live in "Planned games"
+        if (g.status === 'active') return true;
+        if (needsAction(g)) return true; // unresolved money keeps a finished game visible, even past 24h
+        const t = new Date(g.at).getTime();
+        return !Number.isFinite(t) || Date.now() - t < DAY_MS; // keep if recent (or timestamp unknown)
+      })
+      // Active first, then finished-games-you-owe-on, then the rest (stable — keeps recency order within each).
+      .sort((a: any, b: any) => {
+        const rank = (g: any) => (g.status === 'active' ? 0 : needsAction(g) ? 1 : 2);
+        return rank(a) - rank(b);
+      })
+  );
+  // Scheduled games you host or RSVP'd to — your upcoming schedule, soonest first.
+  const plannedGames = $derived(
+    [...games.filter((g: any) => g.status === 'scheduled')]
+      .sort((a: any, b: any) => new Date(a.scheduledFor || a.at).getTime() - new Date(b.scheduledFor || b.at).getTime())
+  );
   let actor = $state(getActor());
   let nudgeDismissed = $state(false); // reactive mirror of the pc_host_nudge_dismissed flag
 
@@ -73,8 +92,11 @@
           id: sg.id, code: sg.code ?? prev.code ?? sg.id, name: sg.name, unit: sg.unit,
           you: sg.seatName || prev.you,
           players: sg.players, status: sg.status,
+          scheduledFor: sg.scheduledFor ?? prev.scheduledFor ?? null,
           at: prev.at ?? sg.at,   // keep local recency if we have it
           linked: true,           // account-linked: removed by "leaving" the game, not a local ✕
+          youOwe: sg.youOwe ?? 0,        // still-open money actions for this seat (finished games)
+          youConfirm: sg.youConfirm ?? 0,
         });
       }
       const rank = (s: string) => (s === 'active' ? 0 : s === 'ended' ? 1 : 2);
@@ -84,8 +106,22 @@
     } catch {}
   }
 
+  // Format an instant as a datetime-local input value (local YYYY-MM-DDTHH:mm).
+  function localInputValue(d = new Date()): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  // Compact planned-time label for the schedule, e.g. "Sat 12 Jul, 20:00".
+  function whenShort(iso: string | null | undefined): string {
+    if (!iso) return 'Planned';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'Planned';
+    return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
   onMount(() => {
     unitInput = defaultUnit();
+    minSchedule = localInputValue();
     nudgeDismissed = !!localStorage.getItem('pc_host_nudge_dismissed');
     loadAccountGames();
     // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
@@ -98,6 +134,12 @@
   let openSeats = $state(0);
   let openSeries = $state('');
   let openBuyIn = $state(''); // table's standard buy-in → seeds the quick-buy on the game page
+  // Schedule-for-later: when on, the game is created as a `scheduled` invite lobby
+  // (people RSVP) instead of opening live. `openSchedule` is a datetime-local
+  // value; `minSchedule` stops the picker choosing a time already past.
+  let scheduling = $state(false);
+  let openSchedule = $state('');
+  let minSchedule = $state('');
 
   const TAGLINES = [
     'Who has the boat?',
@@ -147,18 +189,27 @@
   async function openGame() {
     const you = openName.trim();
     if (!you) { toast('Enter your name'); return; }
+    // Scheduling? Require a future date. A scheduled game opens as an empty RSVP
+    // lobby, so we seat only the host (no filler "Player 2" seats).
+    let scheduledFor: string | undefined;
+    if (scheduling) {
+      const when = new Date(openSchedule).getTime();
+      if (!openSchedule || !Number.isFinite(when)) { toast('Pick a date and time'); return; }
+      if (when < Date.now() - 60_000) { toast('Pick a time in the future'); return; }
+      scheduledFor = new Date(when).toISOString();
+    }
     if (busy) return;
     busy = true;
     setActorName(you);
     const players = [{ name: you }];
-    for (let i = 0; i < openSeats; i++) players.push({ name: `Player ${i + 2}` });
+    if (!scheduling) for (let i = 0; i < openSeats; i++) players.push({ name: `Player ${i + 2}` });
     const code = openCode.replace(/[^0-9]/g, '');
     const buyIn = Number(String(openBuyIn).replace(',', '.').trim());
     try {
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined, source: getAcq() || undefined })
+        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined, scheduledFor, source: getAcq() || undefined })
       });
       const game = await res.json();
       if (!res.ok) {
@@ -181,6 +232,7 @@
         }).catch(() => {});
       }
       rememberGame(game);
+      if (scheduling) toast('Game scheduled — share the invite link');
       goto(`/game?g=${game.id}&new=1`);
     } catch (e: any) { toast('Could not reach the server — check your connection'); }
     finally { busy = false; }
@@ -232,6 +284,7 @@
 
 <svelte:head>
   <title>potcount — poker home game tracker & who-pays-who settlement</title>
+  <meta name="description" content="potcount keeps score at your home poker nights — track every player's record over time and open your games so friends can join. Free, social, just for fun. 18+." />
   <link rel="canonical" href="https://potcount.com/" />
 </svelte:head>
 
@@ -243,27 +296,52 @@
         pot<span class="text-accent font-bold">count</span>
       </h1>
       <p class="text-accent uppercase tracking-[0.18em] text-xs font-bold mb-3 text-center max-md:text-left w-full">
-        Poker home game tracker
+        Home poker scorekeeper &amp; stats
       </p>
-      <p class="text-muted text-[1.05rem] max-w-[48ch] text-center max-md:text-left mb-5 w-full">
-        Everyone at the table adds and sees their own buy-ins — no more trusting one person's notebook. Join with one code; at the end it works out who pays who.
+      <p class="text-muted text-[1.05rem] max-w-[50ch] text-center max-md:text-left mb-5 w-full">
+        Keep score at your poker night, track everyone's record over time, and open your games so friends can join. Free, social, and just for fun.
       </p>
 
       {#if recentGames.length > 0}
         <div class="w-full mb-5">
           <h3 class="sub-label mb-2">Your games</h3>
           {#each recentGames as g (g.id)}
-            <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
+            {@const finished = g.status === 'ended' || g.status === 'settled'}
+            <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform {needsAction(g) ? '!border-warn/50' : ''}">
               <div>
                 <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm font-display">#{g.code ?? g.id}</span></div>
-                <div class="text-muted text-xs mt-0.5">{g.you ? `you: ${g.you} · ` : ''}{g.players} players · {ago(new Date(g.at).toISOString())}{g.status === 'settled' ? ' · settled' : g.status === 'ended' ? ' · ended' : ''}</div>
+                <div class="text-muted text-xs mt-0.5">{g.you ? `you: ${g.you} · ` : ''}{g.players} players · {ago(new Date(g.at).toISOString())}{finished ? ' · finished' : ''}</div>
               </div>
               <div class="flex items-center gap-2">
-                <span class="pill {g.status === 'ended' || g.status === 'settled' ? '' : 'pill-win'}">{g.status === 'ended' || g.status === 'settled' ? 'View →' : 'Continue →'}</span>
+                {#if g.youOwe > 0}
+                  <span class="pill pill-warn">You owe {money(g.youOwe, g.unit)}</span>
+                {:else if g.youConfirm > 0}
+                  <span class="pill pill-warn">Confirm received</span>
+                {/if}
+                <span class="pill {finished ? '' : 'pill-win'}">{finished ? 'View →' : 'Continue →'}</span>
                 {#if !g.linked}
                   <button class="btn-small btn-danger" onclick={(e) => { e.preventDefault(); if (confirm(`Remove "${g.name || 'Home Game'}" from your list?`)) forgetGame(g.id); }}>✕</button>
                 {/if}
               </div>
+            </a>
+          {/each}
+          {#if games.length > recentGames.length + plannedGames.length}
+            {@const hidden = games.length - recentGames.length - plannedGames.length}
+            <a href={user ? `/u/${user.handle}` : '/account'} class="text-muted text-xs mt-1 block hover:text-text">{hidden} older game{hidden !== 1 ? 's' : ''} on your profile →</a>
+          {/if}
+        </div>
+      {/if}
+
+      {#if plannedGames.length > 0}
+        <div class="w-full mb-5">
+          <h3 class="sub-label mb-2">📅 Planned games</h3>
+          {#each plannedGames as g (g.id)}
+            <a href="/game?g={g.id}" class="player-row no-underline text-text hover:border-border active:scale-[.99] transition-transform">
+              <div>
+                <div class="font-semibold">{g.name || 'Home Game'} <span class="text-accent font-bold tracking-widest text-sm font-display">#{g.code ?? g.id}</span></div>
+                <div class="text-muted text-xs mt-0.5">{whenShort(g.scheduledFor)} · {g.players} going</div>
+              </div>
+              <span class="pill pill-warn">RSVP →</span>
             </a>
           {/each}
         </div>
@@ -285,12 +363,29 @@
       <div class="flex flex-col gap-2.5 w-full max-w-[400px] mx-auto mt-5">
         <button class="btn w-full py-[18px] text-[1.1rem]" onclick={showOpen}>Open a game</button>
         <button class="btn btn-secondary w-full py-[18px] text-[1.1rem]" onclick={showJoin}>Join a game</button>
+        <a href="/homegames" class="text-center text-sm text-muted hover:text-text mt-0.5 no-underline">Browse home games near you →</a>
       </div>
+
+      <!-- Community layer, framed as social play among friends (stat-keeping, not
+           money/stakes): a host opens a game, friends request to join, 18+. -->
+      {#if !user}
+        <div class="w-full max-w-[560px] mx-auto mt-8 card !bg-surface-2 text-center">
+          <h2 class="text-lg font-bold">Open your games to friends</h2>
+          <p class="text-muted text-sm mt-1.5 max-w-[48ch] mx-auto">
+            Start a game and share it — friends (and friends of friends) can request a seat. Make a free account to keep your stats and track your record across every night.
+          </p>
+          <p class="text-xs text-faint mt-2">Social play · just for fun · hosts approve every player · 18+</p>
+          <div class="flex flex-col sm:flex-row gap-2.5 justify-center mt-4">
+            <a href="/account" class="btn no-underline">Create your free account</a>
+            <a href="/homegames" class="btn btn-secondary no-underline">Browse home games →</a>
+          </div>
+        </div>
+      {/if}
 
       {#if games.length === 0}
         <!-- How it works — new visitors only; supports the CTA, doesn't replace it -->
         <div class="w-full max-w-[620px] mx-auto mt-10">
-          <h3 class="sub-label text-center mb-4">How it works</h3>
+          <h2 class="sub-label text-center mb-4">How it works</h2>
           <div class="grid grid-cols-3 gap-3 max-md:grid-cols-1 max-md:gap-2.5">
             <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:0ms">
               <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🎴</div>
@@ -300,17 +395,17 @@
               </div>
             </div>
             <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:90ms">
-              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">💰</div>
+              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">📊</div>
               <div>
-                <div class="font-semibold text-sm">Track the money</div>
-                <div class="text-muted text-xs mt-1 leading-snug">Add buy-ins &amp; top-ups as you play — or share the code so players add their own.</div>
+                <div class="font-semibold text-sm">Keep score</div>
+                <div class="text-muted text-xs mt-1 leading-snug">Everyone logs their own chips as you play — one shared scoreboard, no arguments.</div>
               </div>
             </div>
             <div class="pc-step bg-surface-2 border border-border rounded-2xl p-4 text-center max-md:flex max-md:items-center max-md:text-left max-md:gap-3.5 max-md:p-3.5" style="--d:180ms">
-              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🧮</div>
+              <div class="w-11 h-11 rounded-full grid place-items-center text-xl bg-accent/15 mx-auto mb-2.5 max-md:m-0 max-md:shrink-0">🏆</div>
               <div>
-                <div class="font-semibold text-sm">Settle up</div>
-                <div class="text-muted text-xs mt-1 leading-snug">It works out who pays who in the fewest payments — and who had the best night.</div>
+                <div class="font-semibold text-sm">See the results</div>
+                <div class="text-muted text-xs mt-1 leading-snug">At the end you get each player's result and who had the best night.</div>
               </div>
             </div>
           </div>
@@ -320,12 +415,25 @@
           <p class="text-muted text-xs text-center mt-1.5 max-w-[48ch] mx-auto">
             New to this? See how the <a href="/poker-chip-tracker">poker chip tracker</a> works.
           </p>
+          <p class="text-muted text-xs text-center mt-1.5 max-w-[48ch] mx-auto">
+            Looking for a game near you? <a href="/homegames">Find a home poker game by city</a>.
+          </p>
         </div>
       {/if}
 
       <p class="text-muted text-xs text-center mt-5 max-w-[48ch] mx-auto">
-        Games live on the server — anyone with the code can keep adding and settle later, even after the host closes the app.
+        Games live on the server — anyone with the code can keep score and check the results later, even after the host closes the app.
       </p>
+
+      <!-- Legal footer: potcount is a social scorekeeper + community, not a gambling
+           operator. Required framing per NL (Wet op de kansspelen) + a link to the
+           full Terms/Privacy where the operator imprint lives. -->
+      <footer class="w-full max-w-[56ch] mx-auto mt-10 pt-5 border-t border-border-soft text-center">
+        <p class="text-xs text-faint leading-relaxed">
+          potcount is a free social scorekeeping tool and community for home poker — not a gambling operator. We don't organise or run games, and never hold or handle money or stakes. Public home games are social play in blinds only, with no real-money stakes set, shown, or handled by potcount; hosts run their own tables and approve who joins. 18+ only — you're responsible for the lawfulness of any game you host, list, or join. See our <a href="/terms">Terms</a> and <a href="/privacy">Privacy</a>.
+        </p>
+        <p class="text-xs text-faint mt-2">Operated by FatCloud</p>
+      </footer>
     </section>
 
   {:else if view === 'open'}
@@ -339,6 +447,17 @@
       </div>
       <label class="block text-xs text-muted font-medium mb-1">Your name</label>
       <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" autocapitalize="words" autocomplete="name" enterkeyhint="done" />
+
+      <div class="seg grid-cols-2 mt-3">
+        <button type="button" class="seg-item {!scheduling ? 'is-active' : ''}" onclick={() => scheduling = false}>Start now</button>
+        <button type="button" class="seg-item {scheduling ? 'is-active' : ''}" onclick={() => scheduling = true}>Schedule</button>
+      </div>
+      {#if scheduling}
+        <label class="block text-xs text-muted font-medium mb-1 mt-3">When</label>
+        <input class="input" type="datetime-local" bind:value={openSchedule} min={minSchedule} />
+        <p class="text-xs text-faint mt-1">Creates an invite lobby people can RSVP to. You start the table on the night — buy-ins begin then.</p>
+      {/if}
+
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
 
@@ -366,7 +485,7 @@
           </div>
         </div>
       </details>
-      <button class="btn w-full mt-4" disabled={busy} onclick={openGame}>{busy ? 'Opening...' : 'Open game'}</button>
+      <button class="btn w-full mt-4" disabled={busy} onclick={openGame}>{busy ? (scheduling ? 'Scheduling...' : 'Opening...') : (scheduling ? 'Schedule game' : 'Open game')}</button>
     </div>
 
   {:else if view === 'join'}

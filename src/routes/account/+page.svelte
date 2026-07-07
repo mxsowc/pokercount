@@ -5,8 +5,10 @@
   import { money, fmtSigned } from '$lib/utils/money';
   import { AWARDS } from '$lib/awards';
   import Sparkline from '$lib/components/Sparkline.svelte';
+  import ShareCard from '$lib/components/ShareCard.svelte';
   import CountryPicker from '$lib/components/CountryPicker.svelte';
   import { countryName } from '$lib/utils/currencies.js';
+  import { buildStatementCSV, downloadText, statementFilename } from '$lib/utils/statement';
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
 
@@ -14,8 +16,8 @@
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
   let badges = $state<any>(null);
-  let hasSettlementSpeed = $state(false);
   let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
+  let chartTab = $state<'profit' | 'level'>('profit');
 
   // Login form
   let loginHandle = $state('');
@@ -37,7 +39,7 @@
     await invalidateAll();
     toast(msg);
     const next = $page.url.searchParams.get('next');
-    if (next && next.startsWith('/')) await goto(next);
+    if (next && next.startsWith('/') && !next.startsWith('//')) await goto(next);
   }
 
   async function doLogin() {
@@ -233,8 +235,14 @@
       const data = await res.json();
       stats = data.stats;
       badges = data.badges || null;
-      hasSettlementSpeed = !!data.hasSettlementSpeed;
     } catch {}
+  }
+
+  // ---- export / share -------------------------------------------------------
+  let showShare = $state(false);
+  const hasResults = $derived(!!stats && (stats.gamesPlayed > 0 || stats.otherGames > 0));
+  function exportCsv() {
+    if (stats) downloadText(statementFilename(user.handle, 'csv'), buildStatementCSV(user, stats));
   }
 
   $effect(() => { if (user) loadStats(); });
@@ -562,6 +570,15 @@
           <div class="min-w-0">
             <h2 class="text-xl font-bold m-0 truncate">{user.displayName}</h2>
             <div class="text-muted text-sm truncate">@{user.handle} · {user.provider}</div>
+            {#if stats?.level}
+              {#if stats.level.reliability >= 40}
+                <div class="text-sm font-semibold mt-0.5 {stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted'}">
+                  Lv. {stats.level.level.toFixed(2)} · {stats.level.label} · {stats.level.reliability}%
+                </div>
+              {:else}
+                <div class="text-sm text-faint mt-0.5">Not yet rated · play more games</div>
+              {/if}
+            {/if}
           </div>
         </div>
         <button class="btn-small btn-danger shrink-0" onclick={doLogout}>Log out</button>
@@ -626,16 +643,16 @@
                  onkeydown={(e) => { if (e.key === 'Enter') saveCity(); }} />
           <button class="btn-small btn" disabled={savingCity || cityInput.trim() === (user.city || '')} onclick={saveCity}>Save</button>
         </div>
-        <p class="text-faint text-xs mt-1">Appear on your city's leaderboard and let local players find your games.</p>
+        <p class="text-faint text-xs mt-1">Appear on your city's leaderboard and let local players find your games. If your profile is public, your <b>username and city</b> show on your city's public <a href="/homegames">home-games page</a> (no name or photo). Set your profile to private or clear your city to opt out.</p>
       </div>
 
       {#if account}
         <!-- Email + sign-in methods: tucked behind a disclosure to keep the
              account page calm — most people set these once and never touch them. -->
         <details class="mt-4 pt-4 border-t border-border-soft group">
-          <summary class="flex items-center justify-between cursor-pointer select-none text-xs text-muted font-medium list-none [&::-webkit-details-marker]:hidden">
+          <summary class="flex items-center justify-between cursor-pointer select-none text-sm text-muted font-medium list-none [&::-webkit-details-marker]:hidden">
             <span>Email &amp; sign-in options</span>
-            <span class="text-faint text-base leading-none transition-transform group-open:rotate-90">›</span>
+            <span class="text-muted text-base leading-none transition-transform group-open:rotate-90">›</span>
           </summary>
         <!-- Email: optional, unverified contact + newsletter enablement -->
         <div class="mt-4">
@@ -696,7 +713,6 @@
         <label class="block text-xs text-muted font-medium mb-1">Age range</label>
         <select class="input" bind:value={obAge}>
           <option value="">Prefer not to say</option>
-          <option value="under 18">Under 18</option>
           <option value="18-24">18–24</option>
           <option value="25-34">25–34</option>
           <option value="35-44">35–44</option>
@@ -725,6 +741,30 @@
       </h2>
       {#if stats.otherGames > 0}
         <p class="text-xs text-faint mb-3">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included in the totals.</p>
+      {/if}
+      {#if stats.level}
+        <details class="card !mb-3 group">
+          <summary class="flex items-center justify-between cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+            <div>
+              <div class="text-lg font-extrabold font-display {stats.level.reliability >= 40 ? (stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted') : 'text-faint'}">
+                {stats.level.reliability >= 40 ? `Lv. ${stats.level.level.toFixed(2)} · ${stats.level.label}` : 'Not yet rated'}
+              </div>
+              {#if stats.level.reliability >= 40}
+                <div class="text-muted text-xs mt-0.5">{stats.level.reliability}% reliable</div>
+              {:else}
+                <div class="text-faint text-xs mt-0.5">Play more games to get your level ({stats.level.reliability}% → 40%)</div>
+              {/if}
+            </div>
+            <span class="text-muted text-xs leading-none transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <div class="text-xs text-muted mt-3 pt-3 border-t border-border-soft space-y-1.5">
+            <p><b class="text-text">Win rate</b> — how often you leave the table up.</p>
+            <p><b class="text-text">ROI</b> — average profit relative to your buy-in.</p>
+            <p><b class="text-text">Consistency</b> — steadier results score higher.</p>
+            <p><b class="text-text">Opponents</b> — beating strong players boosts you more; farming weak ones doesn't.</p>
+            <p class="text-faint">Reliability rises with more games and more tracked opponents. Your score adjusts after every finished game.</p>
+          </div>
+        </details>
       {/if}
       <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
         <div class="card text-center !mb-0">
@@ -767,24 +807,36 @@
             <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
           </div>
         {/if}
-        {#if hasSettlementSpeed}
-          <button class="card text-center !mb-0 relative overflow-hidden cursor-pointer" onclick={() => toast('Settlement speed is a Pro feature — coming soon')}>
-            <div class="text-xl font-extrabold tabular-nums font-display blur-md select-none" aria-hidden="true">1.2d</div>
-            <div class="text-muted text-xs mt-1 blur-md select-none" aria-hidden="true">avg settle time</div>
-            <div class="absolute inset-0 flex items-center justify-center bg-surface/60">
-              <span class="text-xs font-bold text-accent uppercase tracking-widest">Pro</span>
-            </div>
-          </button>
+        {#if stats.settlementSpeed}
+          <div class="card text-center !mb-0">
+            <div class="text-xl font-extrabold tabular-nums font-display">{stats.settlementSpeed.avgDays}d</div>
+            <div class="text-muted text-xs mt-1">avg settle time · {stats.settlementSpeed.count} transfers</div>
+          </div>
         {/if}
       </div>
 
       {#if stats.curve && stats.curve.length >= 2}
-        <div class="card mt-3 text-win">
+        <div class="card mt-3">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
-            <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
+            {#if stats.levelCurve?.length >= 2}
+              <div class="flex gap-1 text-xs font-semibold">
+                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'profit' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'profit'}>Profit</button>
+                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'level' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'level'}>Level</button>
+              </div>
+            {:else}
+              <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
+            {/if}
+            {#if chartTab === 'profit'}
+              <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
+            {:else}
+              <span class="text-sm font-bold tabular-nums text-accent">Lv. {stats.level.level.toFixed(2)}</span>
+            {/if}
           </div>
-          <Sparkline points={stats.curve.map((p: any) => p.cum)} />
+          {#if chartTab === 'profit'}
+            <Sparkline points={stats.curve.map((p: any) => p.cum)} />
+          {:else}
+            <Sparkline points={stats.levelCurve} baseline={false} color="var(--color-accent)" />
+          {/if}
         </div>
       {/if}
 
@@ -800,6 +852,22 @@
               </div>
             {/if}
           {/each}
+        </div>
+      {/if}
+
+      <!-- Export & share: turn your record into a shareable story card or a
+           downloadable statement (CSV now, printable PDF via the statement page). -->
+      {#if hasResults}
+        <div class="card mt-4 flex items-center justify-between gap-3 flex-wrap">
+          <div class="min-w-0">
+            <div class="font-semibold">Export &amp; share</div>
+            <div class="text-muted text-xs">A story card for the group chat, or your full session statement.</div>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button class="btn-small btn" onclick={() => showShare = true}>Share stats</button>
+            <button class="btn-small btn-secondary" onclick={exportCsv}>Export CSV</button>
+            <a class="btn-small btn-secondary no-underline" href="/account/statement">Statement / PDF</a>
+          </div>
         </div>
       {/if}
 
@@ -979,6 +1047,11 @@
     <a href="mailto:info@fatcloud.nl?subject=potcount%20%E2%80%94%20bug%20%2F%20question">info@fatcloud.nl</a>
   </p>
 </div>
+
+<!-- Shareable story-card modal -->
+{#if user && stats}
+  <ShareCard bind:open={showShare} {stats} {user} />
+{/if}
 
 <!-- Avatar crop / position modal -->
 {#if cropOpen}

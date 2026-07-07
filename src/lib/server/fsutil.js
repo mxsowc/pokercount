@@ -11,7 +11,7 @@ import { dirname } from 'node:path';
 /** @param {string} path @param {string} data */
 export function writeFileDurable(path, data) {
   const tmp = path + '.tmp';
-  const fd = openSync(tmp, 'w');
+  const fd = openSync(tmp, 'w', 0o600);
   try {
     writeSync(fd, data);
     fsyncSync(fd); // flush file contents before we publish the rename

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, logEntry } from '$lib/server/helpers.js';
+import { getActor, logEntry, withProfiles } from '$lib/server/helpers.js';
 
 // The "nit game" side game. POST with either:
 //   { on: boolean }        → turn the side game on/off (starts a fresh round)
@@ -39,5 +39,5 @@ export async function POST({ request, params }) {
     }
   });
 
-  return json(game);
+  return json(withProfiles(game));
 }

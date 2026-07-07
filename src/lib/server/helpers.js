@@ -84,10 +84,31 @@ export function withProfiles(game) {
   if (!game || !Array.isArray(game.players)) return game;
   // `acquisition` is the creator's private first-touch source (campaign tag /
   // referrer host / landing path) — for the admin dashboard only, never the
-  // player-facing body. Strip it from everything served to joiners/SSE.
-  const { acquisition, ...safe } = game;
+  // player-facing body. `joinRequests` is the host's private queue (it carries
+  // other people's account ids + notes) — only the host sees it, via the
+  // dedicated host-only endpoint. Strip both from everything served to
+  // joiners/SSE. `visibility`/`city`/`maxPlayers` stay (they're not sensitive).
+  const { acquisition, joinRequests, votes, ...safe } = game;
+  // A public directory game's payload is served unauthenticated (its id is
+  // published on /homegames), so never expose the coordination thread on one —
+  // it's only written on private games, but strip defensively here too.
+  if (safe.visibility === 'public') delete safe.messages;
+  // Collapse votes from { category: { voterId: playerId } } to anonymous tallies
+  // { category: { playerId: count } } so voter identities never leave the server.
+  let voteTallies = undefined;
+  if (votes && typeof votes === 'object') {
+    voteTallies = {};
+    for (const [cat, map] of Object.entries(votes)) {
+      const tally = {};
+      for (const pid of Object.values(/** @type {Record<string,string>} */ (map))) {
+        tally[pid] = (tally[pid] || 0) + 1;
+      }
+      voteTallies[cat] = tally;
+    }
+  }
   return {
     ...safe,
+    ...(voteTallies ? { voteTallies } : {}),
     players: safe.players.map((p) => {
       if (!p.userId) return p;
       const u = getUser(p.userId);

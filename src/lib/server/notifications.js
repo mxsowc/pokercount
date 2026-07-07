@@ -36,9 +36,11 @@ export function init() {
 }
 
 /** Add a notification for a recipient account. No-op if there's no recipient or
- *  the actor IS the recipient (don't notify yourself).
+ *  the actor IS the recipient (don't notify yourself). The optional transferId/
+ *  amount/unit fields carry the payload for actionable debt notifications (the
+ *  "you're owed / you owe" reminders act directly on that settlement transfer).
  * @param {string} userId recipient account id (unprefixed)
- * @param {{ type: string, actorId?: string, actorName?: string, actorHandle?: string|null, gameId?: string|null, gameCode?: string|null, text?: string }} n */
+ * @param {{ type: string, actorId?: string, actorName?: string, actorHandle?: string|null, gameId?: string|null, gameCode?: string|null, text?: string, transferId?: string, amount?: number, unit?: string }} n */
 export function notify(userId, n) {
   if (!userId) return;
   const actorUserId = n.actorId?.startsWith('user:') ? n.actorId.slice(5) : null;
@@ -49,10 +51,40 @@ export function notify(userId, n) {
     actorName: n.actorName || 'Someone', actorHandle: n.actorHandle || null,
     gameId: n.gameId || null, gameCode: n.gameCode || null,
     text: n.text || '', at: new Date().toISOString(), read: false,
+    // Debt-action payload (present only on debt_* notifications).
+    ...(n.transferId ? { transferId: n.transferId } : {}),
+    ...(n.amount != null ? { amount: n.amount } : {}),
+    ...(n.unit ? { unit: n.unit } : {}),
   });
   if (list.length > CAP) list.length = CAP;
   byUser.set(userId, list);
   persist();
+}
+
+/** Whether a recipient already has a recent notification of one of `types` for a
+ *  given settlement transfer — used to avoid re-nagging about the same debt every
+ *  hourly tick (and to not double-ask a payee who was already reminded).
+ * @param {string} userId @param {string} transferId @param {string|string[]} types
+ * @param {number} [withinMs] @returns {boolean} */
+export function hasRecentDebtNotif(userId, transferId, types, withinMs = 7 * 24 * 60 * 60 * 1000) {
+  if (!userId || !transferId) return false;
+  const set = new Set(Array.isArray(types) ? types : [types]);
+  const cutoff = Date.now() - withinMs;
+  return (byUser.get(userId) || []).some(
+    (n) => n.transferId === transferId && set.has(n.type) && new Date(n.at).getTime() > cutoff
+  );
+}
+
+/** Whether a recipient already has a recent notification of `type` for a given
+ *  game — throttles chatty per-game pings (e.g. table-chat messages) so an active
+ *  back-and-forth doesn't flood the list. @param {string} userId
+ *  @param {string} gameId @param {string} type @param {number} [withinMs] */
+export function hasRecentGameNotif(userId, gameId, type, withinMs = 60 * 60 * 1000) {
+  if (!userId || !gameId) return false;
+  const cutoff = Date.now() - withinMs;
+  return (byUser.get(userId) || []).some(
+    (n) => n.gameId === gameId && n.type === type && new Date(n.at).getTime() > cutoff
+  );
 }
 
 /** @param {string} userId */

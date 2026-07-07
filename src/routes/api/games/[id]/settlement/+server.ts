@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
-import { getActor, logEntry } from '$lib/server/helpers.js';
+import { getActor, logEntry, withProfiles } from '$lib/server/helpers.js';
 
 export async function GET({ params }) {
   const id = params.id.toUpperCase();
@@ -61,8 +61,8 @@ export async function PUT({ request, params }) {
       };
     });
     const allPaid = g.settlement.transfers.every((t: any) => t.paid);
-    g.status = (g.settlement.balanced && allPaid) ? 'settled' : 'ended';
+    g.status = allPaid ? 'settled' : 'ended';
     g.log.push(logEntry(actor, 'edit_settlement', { detail: { count: g.settlement.transfers.length } }));
   });
-  return json(game);
+  return json(withProfiles(game));
 }

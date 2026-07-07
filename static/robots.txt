@@ -1,5 +1,10 @@
-# allow crawling everything by default
+# Public marketing + directory pages are crawlable; private/app/API routes are not.
 User-agent: *
-Disallow:
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account
+Disallow: /notifications
+Disallow: /game
+Disallow: /unsubscribe
 
 Sitemap: https://potcount.com/sitemap.xml

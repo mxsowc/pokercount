@@ -10,11 +10,14 @@
   import { computeSettlement } from '$lib/engine/settle.js';
   import QrCode from '$lib/components/QrCode.svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
+  import HostListing from '$lib/components/HostListing.svelte';
+  import GameThread from '$lib/components/GameThread.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
 
   // ---- state ----------------------------------------------------------------
   let game = $state<any>(null);
   let myAccount = $state<any>(null);
+  let myVotes = $state<Record<string, string>>({});
   let myStreak = $state<{ current: number; kind: 'win' | 'loss' | 'none' } | null>(null); // signed-in user's run, for the share message
   let showActivity = $state(false);
   let seriesData = $state<any>(null);
@@ -154,6 +157,8 @@
 
   // Account ↔ seat linkage (for claim / leave)
   const mySeat = $derived(myAccount && game ? game.players.find((p: any) => p.userId === myAccount.id) ?? null : null);
+  // Post to the table chat if you're signed in AND in the game (a seat) or its owner.
+  const canPostChat = $derived(!!myAccount && (!!mySeat || game?.ownerId === myAccount?.id));
   // Which seat is "me": prefer the seat linked to my account, fall back to this
   // device's seat token. (Account-linked players don't always have pc_me set on
   // every device, and pc_me can point at a different seat than the linked one.)
@@ -265,7 +270,10 @@
     // Prefer the table's standard buy-in set at creation (falls back to the device default).
     if (game?.defaultBuyIn > 0) bulkAmount = String(game.defaultBuyIn);
     try { myAccount = (await api('GET', '/api/me')).user; } catch {}
-    if (myAccount) { try { const f = await api('GET', '/api/me/following'); followingSet = new Set((f.following || []).map((u: any) => u.id)); } catch {} }
+    if (myAccount) {
+      try { const f = await api('GET', '/api/me/following'); followingSet = new Set((f.following || []).map((u: any) => u.id)); } catch {}
+      try { const v = await api('GET', `/api/games/${gameId}/vote`); myVotes = v.myVotes || {}; } catch {}
+    }
     // Load series data if this game belongs to one
     if (game.series) {
       try { seriesData = await api('GET', `/api/series?name=${encodeURIComponent(game.series)}`); } catch {}
@@ -421,6 +429,90 @@
       game = await api('DELETE', `/api/games/${gameId}/claim`);
       toast('Left the seat');
     } catch (e: any) { toast(e.message); }
+  }
+
+  // ---- Scheduled game (pre-game lobby) --------------------------------------
+  // A `scheduled` game is an invite lobby: a seat is an RSVP, and buy-ins don't
+  // start until someone flips it live. RSVP reuses the join/leave seat model;
+  // starting reuses the collaborative-edit model (anyone here can start it).
+  let rsvpBusy = $state(false);
+  let startBusy = $state(false);
+  // A once-a-minute clock so the "in 3 days" countdown stays fresh. Scoped to the
+  // lobby — the effect only subscribes while the game is scheduled.
+  let nowMs = $state(0);
+  $effect(() => {
+    if (!browser || game?.status !== 'scheduled') return;
+    nowMs = Date.now();
+    const t = setInterval(() => { nowMs = Date.now(); }, 60_000);
+    return () => clearInterval(t);
+  });
+
+  async function rsvpGoing() {
+    if (!myAccount) { signInToClaim(); return; } // RSVPs are accounts, so hosts can vet stats
+    if (mySeat || rsvpBusy) return;
+    rsvpBusy = true;
+    try {
+      const data = await api('POST', `/api/games/${gameId}/join`, { name: myAccount.displayName });
+      game = data.game ?? game;
+      if (data.playerId && browser) localStorage.setItem('pc_me_' + gameId, data.playerId);
+      haptic(12);
+      toast("You're in 🎉");
+    } catch (e: any) { toast(e.message); }
+    finally { rsvpBusy = false; }
+  }
+
+  async function rsvpOut() {
+    if (!mySeat || rsvpBusy) return;
+    if (!(await askConfirm('Cancel your RSVP for this game?', "Can't make it", true))) return;
+    rsvpBusy = true;
+    try {
+      game = await api('DELETE', `/api/games/${gameId}/players/${mySeat.id}`);
+      toast('RSVP cancelled');
+    } catch (e: any) { toast(e.message); }
+    finally { rsvpBusy = false; }
+  }
+
+  async function startScheduledGame() {
+    if (startBusy) return;
+    if (!(await askConfirm('Start the table now? Buy-ins open and the game goes live for everyone.', 'Start the game'))) return;
+    startBusy = true;
+    try {
+      game = await api('POST', `/api/games/${gameId}/start`);
+      haptic([18, 40, 18]);
+      toast('Game started — deal them in');
+    } catch (e: any) { toast(e.message); }
+    finally { startBusy = false; }
+  }
+
+  // Table chat — post a message; the returned game (with the new message) replaces
+  // ours, and SSE pushes it to everyone else viewing. Re-throw so the composer
+  // keeps the draft on failure (rate-limit, network, 403…).
+  async function sendMessage(text: string) {
+    try {
+      game = await api('POST', `/api/games/${gameId}/messages`, { text });
+    } catch (e: any) { toast(e.message); throw e; }
+  }
+
+  // Absolute planned time, e.g. "Sat 12 Jul, 20:00".
+  function whenLabel(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  // Friendly countdown ("in 20 min" / "in 3 hours" / "in 5 days"). `tick` is only
+  // there to make this re-run as the minute clock advances.
+  function untilLabel(iso: string | null | undefined, tick = 0): string {
+    if (!iso) return '';
+    const ms = new Date(iso).getTime() - (tick || Date.now());
+    if (!Number.isFinite(ms)) return '';
+    if (ms < 0) return 'starting soon';
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `in ${Math.max(1, mins)} min`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `in ${hrs} hour${hrs === 1 ? '' : 's'}`;
+    const days = Math.round(hrs / 24);
+    return `in ${days} day${days === 1 ? '' : 's'}`;
   }
 
   // Sign in / sign up WITHOUT leaving the game — a full-page hop to /account tore
@@ -681,10 +773,10 @@
   let editingHours = $state(false);
   async function saveHours() {
     const h = decAmt(hoursInput);
-    if (!(h > 0)) { toast('Enter the hours played'); return; }
+    if (!(h > 0)) { toast('Enter the hours played'); return false; }
     savingHours = true;
-    try { game = await api('PUT', `/api/games/${gameId}/hours`, { hours: h }); hoursInput = ''; toast('Hours saved'); }
-    catch (e: any) { toast(e.message); }
+    try { game = await api('PUT', `/api/games/${gameId}/hours`, { hours: h }); hoursInput = ''; toast('Hours saved'); return true; }
+    catch (e: any) { toast(e.message); return false; }
     finally { savingHours = false; }
   }
   async function clearHours() {
@@ -733,6 +825,15 @@
   }
   // The receiver confirms they actually got the money (turns a "claimed" payment
   // green). Purely a trust signal — it never blocks settling the game.
+  async function markAllSettled() {
+    const transfers = game?.settlement?.transfers || [];
+    const unpaid = transfers.filter((t: any) => !t.paid);
+    if (!unpaid.length) return;
+    for (const t of unpaid) {
+      try { game = await api('PUT', `/api/games/${gameId}/settlement/${t.id}`, { paid: true }); }
+      catch (e: any) { toast(e.message); return; }
+    }
+  }
   async function confirmReceived(tid: string, confirmed: boolean) {
     if (confirmed) haptic(12);
     try { game = await api('PUT', `/api/games/${gameId}/settlement/${tid}`, { confirmed }); }
@@ -921,11 +1022,8 @@
         text += `${t.fromName} → ${t.toName}: ${money(t.amount, unit)}\n`;
       }
     }
-    // Growth nudge for the group chat — read mostly by people without an account.
-    // "Lock in your results" (ownership + loss-aversion) with a concrete, in-voice
-    // benefit rather than salesy "free account" ad-speak.
-    text += `\n🔒 Lock in your results — keep track of your sessions:`;
-    text += `\npotcount.com/game?g=${gameId}`;
+    text += `\n📊 Track your own poker nights — free:`;
+    text += `\n${shareUrl()}`;
     // Pass only `text`: the game name + code is already its first line, and the
     // link is inlined at the bottom — passing `title`/`url` makes the share sheet
     // repeat them (the doubled header / second link).
@@ -936,11 +1034,11 @@
     }
   }
 
-  // Cast an end-of-night award vote (one per award per game).
   async function castVote(award: { key: string; emoji: string; label: string }, p: any) {
     try {
       const res = await api('POST', `/api/games/${gameId}/vote`, { category: award.key, playerId: p.id });
-      game = { ...game, votes: { ...game.votes, [award.key]: res.votes } };
+      game = { ...game, voteTallies: { ...game.voteTallies, [award.key]: res.tally } };
+      myVotes = { ...myVotes, [award.key]: res.myVote };
       haptic(14);
       toast(`${award.emoji} ${award.label}: ${p.name}`);
     } catch (e: any) { toast(e.message); }
@@ -1026,6 +1124,9 @@
 
 <svelte:head>
   <title>{game ? `potcount — ${game.name} #${game.code}` : 'potcount — game'}</title>
+  <!-- Private, per-game, client-rendered (and reachable via shared links) — keep it
+       out of the index; the code in the URL is effectively a shared secret. -->
+  <meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="wrap" style={stickyLockin ? 'padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px))' : undefined}>
@@ -1133,7 +1234,87 @@
       {/if}
     {/snippet}
 
-    {#if game.status === 'active'}
+    <!-- Pre-game lobby for a scheduled game: the invite link opens here — the
+         plan, who's coming, RSVP, and the button that flips it live. -->
+    <!-- Table chat — the same coordination thread across the lobby, the live table
+         and the settle-up screen (messages live on the game and persist). -->
+    {#snippet chatSection(cls = 'mt-6')}
+      <h2 class="section-head {cls}">Chat</h2>
+      <div class="card">
+        <GameThread messages={game.messages ?? []} meId={myAccount?.id ?? null} canPost={canPostChat} signedIn={!!myAccount} send={sendMessage} />
+      </div>
+    {/snippet}
+
+    {#snippet scheduledLobby()}
+      <div class="flex items-center justify-between gap-2.5">
+        <a href="/" class="btn-small btn-ghost no-underline">← Home</a>
+        <span class="inline-flex items-center gap-1.5 text-xs font-bold text-gold uppercase tracking-widest">📅 Planned game</span>
+      </div>
+
+      <div class="mt-3">
+        <h1 class="text-2xl font-bold">{game.name}</h1>
+        <div class="text-muted text-sm">Game <span class="text-accent font-bold tracking-widest font-display">#{game.code}</span></div>
+      </div>
+
+      <!-- When -->
+      <div class="card mt-4 !bg-surface-2">
+        <div class="text-xs uppercase tracking-widest font-bold text-muted">When</div>
+        <div class="text-xl font-extrabold mt-1 font-display">{whenLabel(game.scheduledFor) || 'To be decided'}</div>
+        {#if game.scheduledFor}<div class="text-accent text-sm font-semibold mt-0.5">{untilLabel(game.scheduledFor, nowMs)}</div>{/if}
+      </div>
+
+      <!-- Your RSVP -->
+      <div class="card mt-4">
+        {#if mySeat}
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span class="font-semibold text-win">✓ You're in for this game.</span>
+            <button class="btn-small btn-ghost" disabled={rsvpBusy} onclick={rsvpOut}>Can't make it</button>
+          </div>
+        {:else if myAccount}
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span class="text-muted text-sm">Coming to this game?</span>
+            <button class="btn" disabled={rsvpBusy} onclick={rsvpGoing}>{rsvpBusy ? '…' : "I'm in"}</button>
+          </div>
+        {:else}
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span class="text-muted text-sm">Sign in to RSVP — the host can see your stats.</span>
+            <button class="btn" onclick={signInToClaim}>Sign in to RSVP</button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Guest list — each RSVP links to their profile so players can vet each other -->
+      <h2 class="section-head mt-5">Going <span class="text-muted font-normal">· {game.players.length}</span></h2>
+      <div class="card">
+        {#if game.players.length === 0}
+          <p class="text-muted text-sm">No RSVPs yet — share the invite link to fill the table.</p>
+        {:else}
+          {#each game.players as p (p.id)}
+            {@const handle = playerHandle(p.id)}
+            <div class="flex items-center justify-between py-1.5">
+              {#if handle}
+                <a href="/u/{handle}" class="text-info font-semibold no-underline hover:underline">{p.name}<span class="text-info/60 text-[0.7em] align-super ml-px">↗</span></a>
+              {:else}
+                <span class="font-medium">{p.name}</span>
+              {/if}
+              {#if game.ownerId && p.userId === game.ownerId}<span class="pill">host</span>{/if}
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      <!-- Coordination thread — address, timing, who's bringing chips -->
+      {@render chatSection('mt-5')}
+
+      <!-- Share the invite, then start the table on the night -->
+      <button class="btn btn-secondary w-full mt-4" onclick={shareLink}>Share invite link</button>
+      <button class="btn w-full mt-2" disabled={startBusy} onclick={startScheduledGame}>{startBusy ? 'Starting…' : 'Start the game now'}</button>
+      <p class="text-xs text-faint text-center mt-2 max-w-[46ch] mx-auto">Start it once everyone's arrived — buy-ins begin then. Anyone here can start it.</p>
+    {/snippet}
+
+    {#if game.status === 'scheduled'}
+      {@render scheduledLobby()}
+    {:else if game.status === 'active'}
       <!-- ═══════════════════ ACTIVE GAME ═══════════════════ -->
      {#if activeView === 'standings'}
       <!-- ═══════════════════ LIVE STANDINGS / PER-PLAYER SUMMARY ═══════════════════ -->
@@ -1309,6 +1490,14 @@
             <button class="btn-small btn-ghost" onclick={shareLink}>Copy link</button>
             <button class="btn-small btn-ghost" onclick={() => showShareBanner = false}>✕</button>
           </div>
+        </div>
+      {/if}
+
+      <!-- Host-only: publish this game to the public /homegames city directory and
+           work the request queue. Only the host holds the token these calls need. -->
+      {#if amHost && game.status === 'active'}
+        <div class="mt-2.5">
+          <HostListing {game} {api} defaultCity={myAccount?.city || ''} onUpdate={(g) => (game = g)} />
         </div>
       {/if}
 
@@ -1555,6 +1744,8 @@
       {/if}
       <button class="btn btn-secondary w-full mt-2.5" onclick={() => { activeView = 'standings'; window.scrollTo({ top: 0 }); }}>🏆 See my summary</button>
 
+      {@render chatSection()}
+
       {@render receiptsLog()}
 
       <!-- Activity log -->
@@ -1631,15 +1822,15 @@
         {@const myHours = game.hours?.[mySeat.id] ?? null}
         {#if myHours != null && !editingHours}
           <div class="flex items-center gap-3 mt-4 px-1 text-sm text-muted">
-            <span>{myHours}h logged</span>
-            <button class="btn-small btn-ghost !py-1 !px-2 text-xs" onclick={() => { hoursInput = String(myHours); editingHours = true; }}>Edit</button>
-            <button class="btn-small btn-ghost !py-1 !px-2 text-xs" disabled={savingHours} onclick={clearHours}>Clear</button>
+            <span class="tabular-nums">{myHours}h logged</span>
+            <button class="btn-small btn-ghost !py-1.5 !px-2.5 text-xs" onclick={() => { hoursInput = String(myHours); editingHours = true; }}>Edit</button>
+            <button class="btn-small btn-ghost !py-1.5 !px-2.5 text-xs text-danger" disabled={savingHours} onclick={async () => { if (await askConfirm('Clear your hours for this game?', 'Clear', true)) clearHours(); }}>Clear</button>
           </div>
         {:else if myHours != null && editingHours}
           <div class="flex gap-2 mt-4 px-1">
             <input class="input flex-1 !py-2" type="text" inputmode="decimal" placeholder="e.g. 4 or 3.5"
-              bind:value={hoursInput} onkeydown={(e) => { if (e.key === 'Enter') { saveHours(); editingHours = false; } }} />
-            <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={() => { saveHours(); editingHours = false; }}>Update</button>
+              bind:value={hoursInput} onkeydown={async (e) => { if (e.key === 'Enter') { if (await saveHours()) editingHours = false; } }} />
+            <button class="btn-small btn" disabled={savingHours || !hoursInput.trim()} onclick={async () => { if (await saveHours()) editingHours = false; }}>Update</button>
             <button class="btn-small btn-ghost" onclick={() => { editingHours = false; }}>Cancel</button>
           </div>
         {:else}
@@ -1723,6 +1914,9 @@
         <div class="banner banner-ok">Everyone broke even — nothing to settle.</div>
       {:else}
         <p class="text-muted text-xs mb-2">Tap an amount to copy it. <b>Mark paid</b> when you send it; the person who got it taps <b>Confirm</b>. Paid a different amount? Tap <b>≠</b> to recompute. Use <b>Adjust</b> to change who pays who.</p>
+        {#if s.transfers.some((t: any) => !t.paid)}
+          <button class="btn btn-secondary w-full mb-3" onclick={markAllSettled}>Mark all as paid</button>
+        {/if}
         {#each s.transfers.slice().sort((a: any, b: any) => b.amount - a.amount) as t (t.id)}
           <div class="rounded-[11px] mb-2 border border-border-soft border-l-[3px] bg-surface-2 p-3 transition-colors {t.confirmed ? 'opacity-70 border-l-win/50' : 'border-l-accent/60'}">
             <div class="flex items-baseline gap-2">
@@ -1829,12 +2023,18 @@
             <div class="sub-label mb-2.5">End-of-night awards</div>
             <div class="flex flex-col gap-3">
               {#each AWARDS as award (award.key)}
-                {@const myVote = game.votes?.[award.key]?.[myAccount.id]}
+                {@const myPick = myVotes[award.key]}
+                {@const tally = game.voteTallies?.[award.key] || {}}
+                {@const topPid = Object.entries(tally).sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0]}
+                {@const topPlayer = topPid ? game.players.find((p: any) => p.id === topPid) : null}
                 <div>
-                  <div class="text-sm font-semibold mb-1.5">{award.emoji} {award.q}</div>
-                  {#if myVote}
-                    {@const votedPlayer = game.players.find((p: any) => p.id === myVote)}
-                    <p class="text-sm text-muted">You voted for <b class="text-text">{votedPlayer?.name || '?'}</b></p>
+                  <div class="text-sm font-semibold mb-1">{award.emoji} {award.q}</div>
+                  {#if myPick}
+                    {@const votedPlayer = game.players.find((p: any) => p.id === myPick)}
+                    <p class="text-sm text-muted">Your pick: <b class="text-text">{votedPlayer?.name || '?'}</b></p>
+                    {#if topPlayer && Object.values(tally).some((v) => (v as number) > 1)}
+                      <p class="text-xs text-faint mt-0.5">{topPlayer.name} leads with {tally[topPid]} votes</p>
+                    {/if}
                   {:else}
                     <div class="flex flex-wrap gap-1.5">
                       {#each eligiblePlayers as p (p.id)}
@@ -1845,7 +2045,7 @@
                 </div>
               {/each}
             </div>
-            <p class="text-xs text-faint mt-2.5">Only you and other signed-in players can vote. One vote each per award.</p>
+            <p class="text-xs text-faint mt-2.5">Votes are anonymous. One pick each per award.</p>
           </div>
         {/if}
       {/if}
@@ -1882,6 +2082,8 @@
           <button class="btn w-full" onclick={signInToClaim}>{won ? 'Save this win' : 'Claim your seat & sign up'}</button>
         </div>
       {/if}
+
+      {@render chatSection()}
 
       {@render receiptsLog()}
 

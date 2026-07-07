@@ -14,6 +14,7 @@ import { join } from "node:path";
 // engine modules use relative imports for the same reason. Vite resolves both.
 import { computeSettlement } from '../engine/settle.js';
 import { isRealGame } from '../engine/stats.js';
+import { citySlug } from '../cities.js';
 
 /** @typedef {import('../types').Game} Game */
 /** @typedef {import('../types').NewGameInput} NewGameInput */
@@ -115,7 +116,7 @@ export function init() {
       // or a half-written/corrupt file must never surface as a blank ghost game —
       // a real game always has a string id, a players array, and a known status.
       if (!game || typeof game.id !== 'string' || !Array.isArray(game.players) ||
-          !['active', 'ended', 'settled'].includes(game.status)) {
+          !['active', 'ended', 'settled', 'scheduled'].includes(game.status)) {
         console.error(`[store] skipping non-game/malformed file ${f}`);
         continue;
       }
@@ -130,8 +131,9 @@ export function init() {
       // (e.g. profile "your games"). Fall back to createdAt.
       if (!game.updatedAt) game.updatedAt = game.createdAt;
       games.set(game.id, game);
-      // Only an active game owns its code (for join-by-code + uniqueness).
-      if (game.status === 'active' && !codeToId.has(game.code)) codeToId.set(game.code, game.id);
+      // A live game AND a scheduled one own their code (both are join-by-code:
+      // live to play, scheduled to RSVP). Closed games release it for reuse.
+      if (ownsCode(game.status) && !codeToId.has(game.code)) codeToId.set(game.code, game.id);
     } catch (err) {
       // Skip a corrupt file rather than crash — but log it so an operator can
       // find and recover the game instead of it just vanishing silently.
@@ -147,14 +149,21 @@ export function onChange(fn) {
   return () => { listeners.delete(fn); };
 }
 
-/** Keep the code index in sync with the game's status: an active game owns its
+/** A live game and a scheduled one "own" their human code (both are reachable by
+ *  code — one to play, one to RSVP to). Every closed status releases it for reuse.
+ *  @param {string} status */
+function ownsCode(status) {
+  return status === 'active' || status === 'scheduled';
+}
+
+/** Keep the code index in sync with the game's status: an owning game holds its
  *  code; a closed one releases it (so it can be reused). On reopen, if the code
  *  is still free it's reclaimed; if a newer game grabbed it meanwhile, a fresh
  *  unique code is minted so the reopened game stays reachable by code. */
 /** @param {Game} game */
 function syncCodeIndex(game) {
   if (!game.code) return;
-  if (game.status === 'active') {
+  if (ownsCode(game.status)) {
     const owner = codeToId.get(game.code);
     if (owner === game.id) return;                  // already owns its code
     if (owner === undefined) { codeToId.set(game.code, game.id); return; } // free → claim
@@ -251,8 +260,27 @@ export function allGames() {
   return [...games.values()];
 }
 
+/** Every OPEN public game (visibility:'public' and still joinable — active or a
+ *  scheduled lobby). Small at home-game scale; callers group by city.
+ *  @returns {Game[]} */
+export function allPublicGames() {
+  const out = [];
+  for (const g of games.values()) {
+    if (g.visibility === 'public' && (g.status === 'active' || g.status === 'scheduled')) out.push(g);
+  }
+  return out;
+}
+
+/** Open public games in a city, addressed by canonical slug ($lib/cities).
+ *  @param {string} slug @returns {Game[]} */
+export function publicGamesByCity(slug) {
+  const key = String(slug || '');
+  if (!key) return [];
+  return allPublicGames().filter((g) => g.city && citySlug(g.city) === key);
+}
+
 /** @param {NewGameInput} input @returns {Game} */
-export function createGame({ name, unit, players, code, defaultBuyIn, series }) {
+export function createGame({ name, unit, players, code, defaultBuyIn, series, scheduledFor }) {
   const humanCode = code ? normalizeCustomCode(code) : gameCode();
   // Internal id: unguessable, immutable, never shown. Shared links use this, so
   // they keep pointing at THIS game even after `humanCode` is recycled later.
@@ -279,6 +307,17 @@ export function createGame({ name, unit, players, code, defaultBuyIn, series }) 
   const db = Number(defaultBuyIn);
   if (Number.isFinite(db) && db > 0) game.defaultBuyIn = Math.round(db * 100) / 100;
   if (series != null && String(series).trim()) game.series = String(series).trim().slice(0, 60);
+  // A planned game opens as a `scheduled` lobby (invite link + RSVPs) instead of
+  // a live table; the host flips it to `active` on game night. Only a FUTURE
+  // instant makes it scheduled — a past/garbage value is ignored (opens live),
+  // so we never create a plan the abandoned-game reaper would delete on sight.
+  if (scheduledFor != null && String(scheduledFor).trim()) {
+    const t = new Date(scheduledFor).getTime();
+    if (Number.isFinite(t) && t > Date.now()) {
+      game.status = 'scheduled';
+      game.scheduledFor = new Date(t).toISOString();
+    }
+  }
   for (const p of players || []) {
     const nm = p && p.name != null ? String(p.name).trim() : '';
     if (nm) game.players.push({ id: uid(6), name: nm.slice(0, 40) });
@@ -301,6 +340,7 @@ export function mutate(idOrCode, fn) {
 
 const STALE_MS = 24 * 60 * 60 * 1000;     // 24h — abandoned-game DELETION window (by createdAt)
 const INACTIVE_MS = 12 * 60 * 60 * 1000;  // 12h — auto-CLOSE an active game after this much silence
+const SCHEDULED_GRACE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days past its date before a never-started plan is reaped
 
 /** Compute and freeze a game's settlement, flip it to ended/settled, and append a
  *  log line. Mutates `g` in place; the CALLER persists (via mutate()/touched()).
@@ -357,6 +397,17 @@ export function reapAbandonedGames() {
   let deleted = 0;
   // Snapshot first: deleteGame() mutates the games map as we go.
   for (const g of [...games.values()]) {
+    if (g.status === 'scheduled') {
+      // A planned game is DELIBERATELY empty until game night, so the normal
+      // "abandoned empty game" rule would wrongly delete a future plan. Only reap
+      // it once its date is well past and nobody ever started it — a no-show plan
+      // with no history worth keeping. (Started plans are `active` by then.)
+      const when = new Date(g.scheduledFor || g.createdAt).getTime();
+      if (Number.isFinite(when) && Date.now() - when > SCHEDULED_GRACE_MS) {
+        if (deleteGame(g.id)) deleted++;
+      }
+      continue;
+    }
     if (new Date(g.createdAt).getTime() > cutoff) continue; // not old enough yet
     if (isRealGame(g)) continue; // a real table has history — never auto-delete it
     if (deleteGame(g.id)) deleted++;

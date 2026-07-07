@@ -12,8 +12,10 @@
   let stats = $state<any>(null);
   let badges = $state<any>(null);
   let social = $state<{ followers: number; following: number; youFollow: boolean } | null>(null);
+  let hasSettlementSpeed = $state(false);
   let loading = $state(true);
   let error = $state('');
+  let chartTab = $state<'profit' | 'level'>('profit');
 
   // Social list overlay
   let socialList = $state<{ title: string; users: any[] } | null>(null);
@@ -54,7 +56,7 @@
     if (!h) return;
     loading = true; error = '';
     profileUser = null; stats = null; badges = null; social = null; socialList = null;
-    selectedGames = new Set(); selectMode = false;
+    selectedGames = new Set(); selectMode = false; chartTab = 'profit';
     let cancelled = false;
     const fresh = () => !cancelled && h === handle; // bail if we've navigated on
     (async () => {
@@ -66,6 +68,7 @@
         profileUser = data.user;
         stats = data.stats;
         badges = data.badges || null;
+        hasSettlementSpeed = !!data.hasSettlementSpeed;
       } catch (e: any) {
         if (!fresh()) return;
         error = e.message?.includes('no such') ? `No player @${h}` : e.message;
@@ -128,6 +131,15 @@
         <div>
           <h2 class="text-xl font-bold m-0">{profileUser.displayName}</h2>
           <div class="text-muted text-sm">@{profileUser.handle}</div>
+          {#if stats?.level}
+            {#if stats.level.reliability >= 40}
+              <div class="text-sm font-semibold mt-1 {stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted'}">
+                Lv. {stats.level.level.toFixed(2)} · {stats.level.label} · {stats.level.reliability}%
+              </div>
+            {:else}
+              <div class="text-sm text-faint mt-1">Not yet rated</div>
+            {/if}
+          {/if}
         </div>
         {#if profileUser.avatar}
           <img src={profileUser.avatar} alt="" class="w-12 h-12 rounded-full" referrerpolicy="no-referrer" />
@@ -159,7 +171,21 @@
       {#if stats.gamesPlayed}
         <div class="text-[2.7rem] leading-none font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.totalProfit, stats.unit)}</div>
         <div class="text-muted text-sm mt-2">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}{#if stats.streak && stats.streak.current > 0} · <span class="{stats.streak.kind === 'win' ? 'text-win' : 'text-danger'} font-semibold">{stats.streak.kind === 'win' ? '🔥' : '❄️'} {stats.streak.current}{stats.streak.kind === 'win' ? 'W' : 'L'}</span>{/if}</div>
-        {#if stats.curve && stats.curve.length >= 2}<div class="mt-4"><Sparkline points={stats.curve.map((p: any) => p.cum)} /></div>{/if}
+        {#if stats.curve && stats.curve.length >= 2}
+          <div class="mt-4">
+            {#if stats.levelCurve?.length >= 2}
+              <div class="flex gap-1 text-xs font-semibold mb-2">
+                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'profit' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'profit'}>Profit</button>
+                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'level' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'level'}>Level</button>
+              </div>
+            {/if}
+            {#if chartTab === 'profit'}
+              <Sparkline points={stats.curve.map((p: any) => p.cum)} />
+            {:else}
+              <Sparkline points={stats.levelCurve} baseline={false} color="var(--color-accent)" />
+            {/if}
+          </div>
+        {/if}
       {:else}
         <div class="text-2xl font-extrabold text-muted font-display">—</div>
         <div class="text-muted text-sm mt-2">No finished games yet.</div>
@@ -201,6 +227,20 @@
           <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
           <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
         </div>
+      {/if}
+      {#if stats.settlementSpeed}
+        <div class="card text-center !mb-0">
+          <div class="text-xl font-extrabold tabular-nums font-display">{stats.settlementSpeed.avgDays}d</div>
+          <div class="text-muted text-xs mt-1">avg settle time · {stats.settlementSpeed.count} transfers</div>
+        </div>
+      {:else if hasSettlementSpeed}
+        <button class="card text-center !mb-0 relative overflow-hidden cursor-pointer" onclick={() => toast('Settlement speed is a Pro feature — coming soon')}>
+          <div class="text-xl font-extrabold tabular-nums font-display blur-md select-none" aria-hidden="true">1.2d</div>
+          <div class="text-muted text-xs mt-1 blur-md select-none" aria-hidden="true">avg settle time</div>
+          <div class="absolute inset-0 flex items-center justify-center bg-surface/60">
+            <span class="text-xs font-bold text-accent uppercase tracking-widest">Pro</span>
+          </div>
+        </button>
       {/if}
     </div>
     {/if}

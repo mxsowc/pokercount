@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { getActor, isGameHost, logEntry } from '$lib/server/helpers.js';
+import { getActor, isGameHost, logEntry, withProfiles } from '$lib/server/helpers.js';
 
 export async function PUT({ request, params }) {
   const id = params.id.toUpperCase();
@@ -20,5 +20,5 @@ export async function PUT({ request, params }) {
     if (series !== undefined) { g.series = series ? String(series).trim().slice(0, 60) : null; detail.series = g.series; }
     if (Object.keys(detail).length) g.log.push(logEntry(actor, 'edit_meta', { detail }));
   });
-  return json(game);
+  return json(withProfiles(game));
 }

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
-import { getActor, logEntry, isMoney, num, isSafeId, httpError } from '$lib/server/helpers.js';
+import { getActor, logEntry, isMoney, num, isSafeId, httpError, withProfiles } from '$lib/server/helpers.js';
 
 export async function POST({ request, params }) {
   const id = params.id.toUpperCase();
@@ -36,7 +36,7 @@ export async function POST({ request, params }) {
         g.log.push(logEntry(actor, txType, { playerId: e.playerId, playerName: pname, detail: { amount: amt, type: txType } }));
       }
     });
-    return json(game);
+    return json(withProfiles(game));
   } catch (e: any) {
     return json({ error: e.message || 'failed' }, { status: e.status || 400 });
   }

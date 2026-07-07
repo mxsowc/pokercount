@@ -14,6 +14,15 @@ export function GET({ request }) {
     const players = g.players || [];
     const seat = players.find((p: any) => p.userId === su.id);
     if (!seat) continue;
+    // This seat's still-open money actions in a finished game. Only 'ended' games
+    // carry transfers ('settled' = balanced, nothing owed). `youOwe` = unpaid
+    // transfers where you're the payer; `youConfirm` = transfers you received that
+    // the payer marked paid but you haven't confirmed yet. Home surfaces these.
+    let oweC = 0, confirmC = 0;
+    for (const t of g.settlement?.transfers || []) {
+      if (t.from === seat.id && !t.paid) oweC += Math.round((t.amount || 0) * 100);
+      else if (t.to === seat.id && t.paid && !t.confirmed) confirmC += Math.round((t.amount || 0) * 100);
+    }
     mine.push({
       id: g.id,
       code: g.code ?? g.id,
@@ -23,6 +32,9 @@ export function GET({ request }) {
       players: players.length,
       seatName: seat.name,
       at: g.updatedAt,
+      scheduledFor: g.scheduledFor || null, // set only for scheduled games → home "Planned"
+      youOwe: oweC / 100,
+      youConfirm: confirmC / 100,
     });
   }
   // active first, then most-recently-updated (updatedAt is an ISO string, which

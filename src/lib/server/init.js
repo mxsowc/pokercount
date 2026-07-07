@@ -5,6 +5,7 @@ import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
 import { init as initNotifications } from './notifications.js';
+import { remindUnsettledDebts } from './debt-reminders.js';
 import { initAuth } from './auth.js';
 import { emailConfigured } from './email.js';
 import { sendDueMonthlySummaries } from './summary.js';
@@ -23,11 +24,12 @@ export function ensureInit() {
   console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
 
   // Housekeeping, hourly: first delete abandoned tables (not real, 24h+ old),
-  // then auto-close any game left active with no activity for 12h+. Order matters
-  // — reap junk before bothering to settle/close it.
-  const reap = () => { reapAbandonedGames(); reapStaleGames(); };
-  reap();
-  setInterval(reap, 3_600_000); // every hour
+  // then auto-close any game left active with no activity for 12h+ (order matters
+  // — reap junk before bothering to settle/close it), then remind both sides of
+  // any debt still unpaid 24h after a game ended.
+  const housekeep = () => { reapAbandonedGames(); reapStaleGames(); remindUnsettledDebts(); };
+  housekeep();
+  setInterval(housekeep, 3_600_000); // every hour
 
   // Monthly summary emails — only if email is configured. Each subscribed user is
   // sent at most once per 30 days (stamped on the account), so a frequent tick is

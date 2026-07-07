@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
-import { sessionUser, num } from '$lib/server/helpers.js';
+import { sessionUser, num, withProfiles } from '$lib/server/helpers.js';
 
 // Log how long THIS signed-in user played this game — powers their personal
 // €/hr stat. Deliberately allowed on finished/old games (it's a post-game
@@ -29,5 +29,5 @@ export async function PUT({ request, params }) {
     if (clearing) delete g.hours[seat.id];
     else g.hours[seat.id] = val;
   });
-  return json(game);
+  return json(withProfiles(game));
 }
