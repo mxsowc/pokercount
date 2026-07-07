@@ -26,9 +26,9 @@ export function GET({ request }) {
 export async function PUT({ request }) {
   const su = sessionUser(request);
   if (!su) return json({ error: 'not signed in' }, { status: 401 });
-  const { name, avatar, privacy, newsletter, email } = await request.json();
+  const { name, avatar, privacy, newsletter, email, city } = await request.json();
   try {
-    const u = updateProfile(su.id, { name, avatar, privacy, newsletter, email });
+    const u = updateProfile(su.id, { name, avatar, privacy, newsletter, email, city });
     return json(meView(u));
   } catch (e: any) {
     return json({ error: e.message }, { status: e.status || 400 });

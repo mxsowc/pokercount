@@ -137,6 +137,8 @@ export interface User {
   oauthAvatar?: string | null;
   /** Who can see this profile/stats: 'public' | 'members' | 'private'. Defaults 'public'. */
   privacy?: string;
+  /** Home city (free text) — powers the by-city leaderboard and finding local players. */
+  city?: string | null;
   /** How the account was originally created: 'local' (handle + PIN) | 'google' | 'apple'. */
   provider: string;
   providerSub: string | null;
@@ -173,6 +175,8 @@ export interface PublicUser {
   provider: string;
   /** Who can see this profile/stats: 'public' | 'members' | 'private'. */
   privacy?: string;
+  /** Home city (free text), if set — shown on the profile + drives city leaderboards. */
+  city?: string | null;
   needsHandle: boolean;
   /** Whether onboarding has been completed/skipped (so the client can prompt once). */
   onboarded?: boolean;

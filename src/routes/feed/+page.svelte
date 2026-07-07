@@ -9,9 +9,10 @@
   let loading = $state(true);
 
   let tab = $state<'feed' | 'leaderboard'>('feed');
-  let boardScope = $state<'following' | 'global'>('following');
+  let boardScope = $state<'following' | 'global' | 'city'>('following');
   let boards = $state<Record<string, any[]>>({}); // scope -> rows (cached per scope)
   let boardLoadingScope = $state<string | null>(null);
+  let boardCity = $state<string | null>(null); // resolved city label for the city board
   const board = $derived(boards[boardScope] ?? []);
   const boardLoading = $derived(boardLoadingScope === boardScope && !boards[boardScope]);
 
@@ -33,17 +34,18 @@
     loading = false;
   });
 
-  async function loadBoard(scope: 'following' | 'global') {
+  async function loadBoard(scope: 'following' | 'global' | 'city') {
     if (boards[scope] || boardLoadingScope === scope) return; // cached or in flight
     boardLoadingScope = scope;
     try {
       const data = await (await fetch(`/api/leaderboard?scope=${scope}`)).json();
       boards = { ...boards, [scope]: data.rows || [] }; // only cache on success → a failed fetch retries
+      if (scope === 'city') boardCity = data.city || null;
     } catch {}
     if (boardLoadingScope === scope) boardLoadingScope = null;
   }
   function showLeaderboard() { tab = 'leaderboard'; loadBoard(boardScope); }
-  function setScope(s: 'following' | 'global') { boardScope = s; loadBoard(s); }
+  function setScope(s: 'following' | 'global' | 'city') { boardScope = s; loadBoard(s); }
 
   let commentDraft = $state<Record<string, string>>({});
 
@@ -195,22 +197,30 @@
 
     {:else}
       <!-- Leaderboard scope -->
-      <div class="seg grid-cols-2 mb-3 max-w-xs">
+      <div class="seg grid-cols-3 mb-3 max-w-sm">
         <button class="seg-item {boardScope === 'following' ? 'is-active' : ''}" onclick={() => setScope('following')}>Following</button>
+        <button class="seg-item {boardScope === 'city' ? 'is-active' : ''}" onclick={() => setScope('city')}>My city</button>
         <button class="seg-item {boardScope === 'global' ? 'is-active' : ''}" onclick={() => setScope('global')}>Everyone</button>
       </div>
-      <p class="text-muted text-xs mb-3">{boardScope === 'global' ? 'Everyone on potcount with a public profile · all time' : 'You and the players you follow · all time'}</p>
+      <p class="text-muted text-xs mb-3">{boardScope === 'global' ? 'Everyone on potcount with a public profile · all time' : boardScope === 'city' ? `Players in ${boardCity || user?.city || 'your city'} · all time` : 'You and the players you follow · all time'}</p>
       {#if boardLoading}
         <div class="flex flex-col gap-2">
           {#each Array(6) as _, i (i)}<div class="skeleton h-[62px]"></div>{/each}
         </div>
       {:else if board.length === 0}
         <div class="card text-center py-9">
-          <div class="text-3xl mb-2" aria-hidden="true">🏆</div>
-          <p class="font-semibold text-lg mb-1">Nothing to rank yet</p>
-          <p class="text-muted text-sm mb-5 max-w-[42ch] mx-auto">{boardScope === 'global' ? 'Ranks everyone with a public profile by all-time profit — it fills in as players finish games.' : 'Ranks you and the players you follow by all-time profit. Play a few games and follow your crew.'}</p>
-          <a href="/" class="btn inline-block no-underline">Open a game</a>
-          <p class="text-xs text-faint mt-4">{boardScope === 'global' ? 'You appear here only if your profile is public.' : 'Use the Feed search to follow players.'} Change visibility on your <a href="/account">account</a>.</p>
+          {#if boardScope === 'city' && !user?.city}
+            <div class="text-3xl mb-2" aria-hidden="true">📍</div>
+            <p class="font-semibold text-lg mb-1">Where do you play?</p>
+            <p class="text-muted text-sm mb-5 max-w-[42ch] mx-auto">Add your home city to see the local leaderboard and let nearby players find your games.</p>
+            <a href="/account" class="btn inline-block no-underline">Set your city</a>
+          {:else}
+            <div class="text-3xl mb-2" aria-hidden="true">{boardScope === 'city' ? '📍' : '🏆'}</div>
+            <p class="font-semibold text-lg mb-1">Nothing to rank yet</p>
+            <p class="text-muted text-sm mb-5 max-w-[42ch] mx-auto">{boardScope === 'global' ? 'Ranks everyone with a public profile by all-time profit — it fills in as players finish games.' : boardScope === 'city' ? `No ranked players in ${boardCity || user?.city} yet — invite the locals to potcount.` : 'Ranks you and the players you follow by all-time profit. Play a few games and follow your crew.'}</p>
+            <a href="/" class="btn inline-block no-underline">Open a game</a>
+            <p class="text-xs text-faint mt-4">{boardScope === 'global' ? 'You appear here only if your profile is public.' : boardScope === 'city' ? 'You appear here if your profile is public and your city matches.' : 'Use the Feed search to follow players.'} Change visibility on your <a href="/account">account</a>.</p>
+          {/if}
         </div>
       {:else}
         {#each board as row, i (row.user.id)}

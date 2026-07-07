@@ -14,6 +14,7 @@
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
   let badges = $state<any>(null);
+  let hasSettlementSpeed = $state(false);
   let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
 
   // Login form
@@ -232,6 +233,7 @@
       const data = await res.json();
       stats = data.stats;
       badges = data.badges || null;
+      hasSettlementSpeed = !!data.hasSettlementSpeed;
     } catch {}
   }
 
@@ -507,6 +509,20 @@
   let regionCode = $state('');
   let savingRegion = $state(false);
   $effect(() => { if (user) regionCode = user.country || ''; });
+
+  // Home city — public, powers the by-city leaderboard + finding local players.
+  let cityInput = $state('');
+  let savingCity = $state(false);
+  $effect(() => { if (user) cityInput = user.city || ''; });
+  async function saveCity() {
+    savingCity = true;
+    try {
+      await fetch('/api/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: cityInput.trim() }) });
+      await invalidateAll();
+      toast(cityInput.trim() ? 'City saved' : 'City cleared');
+    } catch (e: any) { toast(e.message); }
+    finally { savingCity = false; }
+  }
   async function saveRegion() {
     savingRegion = true;
     try {
@@ -600,6 +616,17 @@
             <button class="btn-small btn" disabled={savingRegion} onclick={saveRegion}>Save</button>
           </div>
         {/if}
+      </div>
+
+      <!-- Home city: public — powers the by-city leaderboard + finding local players -->
+      <div class="mt-4 pt-4 border-t border-border-soft">
+        <label class="block text-xs text-muted font-medium mb-1" for="acct-city">Home city <span class="text-faint font-normal">· public</span></label>
+        <div class="flex gap-2">
+          <input id="acct-city" class="input flex-1" bind:value={cityInput} placeholder="e.g. Amsterdam" maxlength="60" autocapitalize="words" autocomplete="address-level2"
+                 onkeydown={(e) => { if (e.key === 'Enter') saveCity(); }} />
+          <button class="btn-small btn" disabled={savingCity || cityInput.trim() === (user.city || '')} onclick={saveCity}>Save</button>
+        </div>
+        <p class="text-faint text-xs mt-1">Appear on your city's leaderboard and let local players find your games.</p>
       </div>
 
       {#if account}
@@ -739,6 +766,15 @@
             <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
             <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
           </div>
+        {/if}
+        {#if hasSettlementSpeed}
+          <button class="card text-center !mb-0 relative overflow-hidden cursor-pointer" onclick={() => toast('Settlement speed is a Pro feature — coming soon')}>
+            <div class="text-xl font-extrabold tabular-nums font-display blur-md select-none" aria-hidden="true">1.2d</div>
+            <div class="text-muted text-xs mt-1 blur-md select-none" aria-hidden="true">avg settle time</div>
+            <div class="absolute inset-0 flex items-center justify-center bg-surface/60">
+              <span class="text-xs font-bold text-accent uppercase tracking-widest">Pro</span>
+            </div>
+          </button>
         {/if}
       </div>
 

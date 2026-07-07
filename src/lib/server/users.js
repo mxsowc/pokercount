@@ -94,6 +94,7 @@ export function publicUser(u) {
     avatar: u.avatar || null,
     provider: u.provider,
     privacy: u.privacy || 'public', // who can see this profile/stats: public | members | private
+    city: u.city || null,          // home city — for the by-city leaderboard + finding locals
     needsHandle: !!u.needsHandle, // true until an OAuth user has chosen their name
     onboarded: !!u.onboardedAt,   // whether to prompt the one-time onboarding questions
   };
@@ -264,9 +265,15 @@ const MAX_AVATAR_BYTES = 200 * 1024; // cap inline data-URL avatars to keep user
 // null/'' to reset to their OAuth photo. `privacy` is one of PRIVACY_LEVELS.
 // Each field is optional — only provided ones change. Editable any time.
 /** @param {string} userId @param {{ name?: string, avatar?: string|null, privacy?: string, newsletter?: boolean, email?: string|null }} input @returns {User} */
-export function updateProfile(userId, { name, avatar, privacy, newsletter, email } = {}) {
+export function updateProfile(userId, { name, avatar, privacy, newsletter, email, city } = {}) {
   const u = byId.get(userId);
   if (!u) fail('not signed in', 401);
+
+  if (city !== undefined) {
+    // Home city — powers the by-city leaderboard and finding local players. Free
+    // text (people know their own city best); empty clears it.
+    u.city = String(city || '').trim().replace(/\s+/g, ' ').slice(0, 60) || null;
+  }
 
   if (email !== undefined) {
     // Optional, UNVERIFIED contact email — a PIN user can add one so the account
