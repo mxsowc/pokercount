@@ -32,45 +32,42 @@ function endedGameWithDebt() {
   return g.id;
 }
 
-test('backfill confirms past debts 1 day after settling, and the debtor reads 1d', () => {
+test('backfill resets EVERY past debt to 1 day — even ones already confirmed', () => {
   const id = endedGameWithDebt();
-  const before = getGame(id);
-  assert.equal(before.settlement.transfers.length, 1, 'B owes A one transfer');
-  assert.ok(!before.settlement.transfers[0].confirmedAt, 'starts unconfirmed');
+  const g0 = getGame(id);
+  const computed = new Date(g0.settlement.computedAt).getTime();
+  // Simulate a pre-existing REAL confirmation 3 days out (the data we're discarding).
+  mutate(id, (game) => {
+    const t = game.settlement.transfers[0];
+    t.paid = true; t.paidAt = new Date(computed + 3 * DAY).toISOString();
+    t.confirmed = true; t.confirmedAt = new Date(computed + 3 * DAY).toISOString(); t.confirmedBy = 'someone';
+  });
 
   const n = backfillSettleConfirmations();
-  assert.equal(n, 1, 'one transfer backfilled');
+  assert.equal(n, 1, 'one transfer reset');
 
-  const g = getGame(id);
-  const t = g.settlement.transfers[0];
-  assert.equal(t.paid, true);
-  assert.equal(t.confirmed, true);
-  assert.equal(t.confirmedBy, 'potcount');
-  const delta = new Date(t.confirmedAt).getTime() - new Date(g.settlement.computedAt).getTime();
-  assert.equal(delta, DAY, 'confirmed exactly one day after settling');
-  assert.equal(g.status, 'settled', 'all transfers paid → game settled');
+  const t = getGame(id).settlement.transfers[0];
+  const delta = new Date(t.confirmedAt).getTime() - computed;
+  assert.equal(delta, DAY, 'the real 3-day confirmation was overwritten to 1 day');
+  assert.equal(getGame(id).status, 'settled', 'all transfers paid → game settled');
 
-  // The debtor (B / ub) — who owed the transfer — now shows avg settle time 1d.
+  // The debtor (B / ub) now reads exactly 1d — not a 3d/blend.
   const bStats = computeUserStats(allGames(), 'ub');
   assert.ok(bStats.settlementSpeed, 'debtor has a settlement-speed stat');
   assert.equal(bStats.settlementSpeed.avgDays, 1);
-  assert.equal(bStats.settlementSpeed.count, 1);
 
   // The creditor (A / ua) never owed anything → no settle-time stat (as expected).
   assert.equal(computeUserStats(allGames(), 'ua').settlementSpeed, null);
 });
 
-test('backfill is idempotent (marker-guarded) and leaves real confirmations alone', () => {
-  // A fresh debt confirmed "for real" 3 days after settling.
+test('backfill is idempotent (marker-guarded) — never runs twice', () => {
+  // A game finished AFTER the migration already ran must be left completely alone.
   const id = endedGameWithDebt();
-  const real = getGame(id);
-  const realAt = new Date(new Date(real.settlement.computedAt).getTime() + 3 * DAY).toISOString();
+  const realAt = new Date(new Date(getGame(id).settlement.computedAt).getTime() + 3 * DAY).toISOString();
   mutate(id, (game) => {
     const t = game.settlement.transfers[0];
     t.paid = true; t.confirmed = true; t.confirmedAt = realAt; t.confirmedBy = 'someone';
   });
-
-  // Marker already written by the first test's run → this is a no-op.
-  assert.equal(backfillSettleConfirmations(), 0, 'does not run twice');
-  assert.equal(getGame(id).settlement.transfers[0].confirmedAt, realAt, 'real confirmation untouched');
+  assert.equal(backfillSettleConfirmations(), 0, 'marker present → no-op');
+  assert.equal(getGame(id).settlement.transfers[0].confirmedAt, realAt, 'post-migration data untouched');
 });

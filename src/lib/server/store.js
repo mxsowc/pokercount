@@ -437,23 +437,26 @@ export function reapAbandonedGames() {
   return deleted;
 }
 
-// One-time historical migration marker (see backfillSettleConfirmations).
-const SETTLE_BACKFILL_MARKER = '.settle-backfill-v1';
+// One-time historical migration marker (see backfillSettleConfirmations). Bumped
+// v1→v2: v1 only seeded UNconfirmed debts (blending with existing real data, so
+// active users landed above 1d); v2 resets EVERY past debt to 1 day so every
+// current user's history reads exactly 1d.
+const SETTLE_BACKFILL_MARKER = '.settle-backfill-v2';
 
-/** ONE-TIME historical backfill for the "avg settle time" stat, which didn't
- *  exist before. For every ALREADY-finished game, mark each settlement transfer
- *  that was never confirmed as paid + confirmed exactly one day after the game
- *  settled — seeding past debtors' settle time to 1 day and closing out ancient
- *  unpaid debts (so they stop nagging). Guarded by a marker file in DATA_DIR so it
- *  runs EXACTLY ONCE: new games and real confirmations afterwards are recorded
- *  normally, and a genuinely-unpaid new debt is never auto-confirmed on a reboot.
- *  Transfers already confirmed through the real flow are left untouched.
- *  @returns {number} transfers backfilled */
+/** ONE-TIME historical reset for the "avg settle time" stat, which nobody tracked
+ *  before it shipped. For every ALREADY-finished game, mark EVERY settlement
+ *  transfer paid + confirmed exactly one day after the game settled — so every
+ *  past debt reads as a 1-day settle and each current debtor's historical average
+ *  is exactly 1d. This intentionally OVERWRITES any earlier confirmation times
+ *  (that pre-feature data is being discarded). Guarded by a marker file in
+ *  DATA_DIR so it runs EXACTLY ONCE: games and confirmations created AFTER this
+ *  runs are recorded normally and are never touched.
+ *  @returns {number} transfers reset */
 export function backfillSettleConfirmations() {
   const marker = join(DATA_DIR, SETTLE_BACKFILL_MARKER);
-  if (existsSync(marker)) return 0; // already run — never retro-confirm newer debts
+  if (existsSync(marker)) return 0; // already run — never retro-touch newer debts
   const DAY = 24 * 60 * 60 * 1000;
-  let confirmed = 0, gamesTouched = 0;
+  let reset = 0, gamesTouched = 0;
   for (const g of games.values()) {
     if (g.status !== 'ended' && g.status !== 'settled') continue;
     const s = g.settlement;
@@ -461,28 +464,23 @@ export function backfillSettleConfirmations() {
     const base = new Date(s.computedAt).getTime();
     if (!Number.isFinite(base)) continue;
     const at = new Date(base + DAY).toISOString(); // "settled 1 day later" → avgDays = 1
-    let dirty = false;
     for (const t of s.transfers) {
-      if (t.confirmedAt) continue; // a real confirmation is already recorded — leave it
       t.paid = true;
-      if (!t.paidAt) t.paidAt = at;
-      if (!t.paidBy) t.paidBy = 'potcount';
+      t.paidAt = at;
+      t.paidBy = t.paidBy || 'potcount';
       t.confirmed = true;
-      t.confirmedAt = at;
-      t.confirmedBy = 'potcount';
-      confirmed++; dirty = true;
+      t.confirmedAt = at; // overwrite even real confirmations — resetting all history to 1d
+      t.confirmedBy = t.confirmedBy || 'potcount';
+      reset++;
     }
-    if (dirty) {
-      // Every transfer is now paid → the game is fully settled.
-      if (s.transfers.every((t) => t.paid)) g.status = 'settled';
-      persist(g);
-      gamesTouched++;
-    }
+    g.status = 'settled'; // every transfer is now paid
+    persist(g);
+    gamesTouched++;
   }
   try { writeFileDurable(marker, new Date().toISOString()); }
   catch (e) { console.error('[store] settle-backfill: failed to write marker (may re-run):', e); }
-  if (confirmed > 0) console.log(`[store] settle-backfill: confirmed ${confirmed} historical transfer(s) across ${gamesTouched} game(s)`);
-  return confirmed;
+  if (reset > 0) console.log(`[store] settle-backfill: reset ${reset} historical transfer(s) across ${gamesTouched} game(s) to 1d`);
+  return reset;
 }
 
 export { uid };
