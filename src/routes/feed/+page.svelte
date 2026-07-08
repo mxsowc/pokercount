@@ -25,6 +25,22 @@
   const REACTIONS = ['👏', '🖕'];
   const initial = (n: string) => (n || '?').charAt(0).toUpperCase();
 
+  // Collapse the flat feed into one card per game: if several people you follow
+  // played the same night, they share a single grouped card instead of stacking N
+  // near-identical rows. Newest game first; players within a game ordered by result.
+  const groups = $derived.by(() => {
+    const map = new Map<string, { game: any; unit: string; at: string; players: any[] }>();
+    for (const it of items) {
+      const g = map.get(it.game.id);
+      if (g) { g.players.push(it); if (it.at > g.at) g.at = it.at; }
+      else map.set(it.game.id, { game: it.game, unit: it.unit, at: it.at, players: [it] });
+    }
+    const arr = [...map.values()];
+    for (const g of arr) g.players.sort((a, b) => (b.net ?? 0) - (a.net ?? 0));
+    arr.sort((a, b) => (a.at < b.at ? 1 : -1));
+    return arr;
+  });
+
   onMount(async () => {
     if (!user) { loading = false; return; }
     try {
@@ -92,6 +108,48 @@
         style="background: radial-gradient(circle at 50% 34%, #f0a47a, var(--color-accent) 60%, #a85a3a)">{initial(name)}</span>
 {/snippet}
 
+<!-- Reactions + comments for one result — shared by the single and grouped cards. -->
+{#snippet engagement(item: any)}
+  {@const key = item.game.id + item.playerId}
+  <div class="flex flex-wrap gap-1 mt-2">
+    {#each REACTIONS as emoji}
+      {@const n = item.reactions?.counts?.[emoji] || 0}
+      {@const mine = item.reactions?.mine === emoji}
+      <button type="button" onclick={(e) => react(item, emoji, e)}
+        class="text-sm leading-none px-2.5 py-1 rounded-full border transition-colors {mine ? 'bg-accent/20 border-accent' : 'bg-surface border-transparent hover:border-border'}">
+        {emoji}{#if n}<span class="ml-1 text-xs tabular-nums {mine ? 'text-text' : 'text-muted'}">{n}</span>{/if}
+      </button>
+    {/each}
+  </div>
+  {#if item.comments?.length}
+    <div class="mt-2 space-y-1">
+      {#each item.comments as c (c.id)}
+        <div class="text-sm leading-snug">
+          <a href="/u/{c.user.handle}" class="font-semibold text-info no-underline hover:underline">{c.user.displayName}</a>
+          <span class="text-text">{c.text}</span>
+          <span class="text-muted text-xs ml-1">{ago(c.at)}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+  <form class="flex gap-2 mt-2" onsubmit={(e) => { e.preventDefault(); postComment(item); }}>
+    <input class="input !py-1.5 !px-3 text-sm flex-1" bind:value={commentDraft[key]} maxlength="280"
+      placeholder="Add a comment..." aria-label="Add a comment" />
+    <button type="submit" class="btn-small" disabled={!commentDraft[key]?.trim()}>Send</button>
+  </form>
+{/snippet}
+
+<!-- One followed player's result line (name + won/lost amount). -->
+{#snippet resultText(item: any)}
+  {@const even = item.net === 0}
+  {@const won = item.net > 0}
+  <span role="link" tabindex="0" class="font-semibold text-info cursor-pointer hover:underline"
+    onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; }}
+    onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; } }}>{item.user.displayName}</span>
+  {even ? 'broke even' : (won ? 'won' : 'lost')}
+  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-win' : 'text-danger'} font-display">{fmtSigned(item.net, item.unit)}</span>{/if}
+{/snippet}
+
 <div class="wrap">
   <h1 class="text-2xl font-bold mb-4">Feed</h1>
 
@@ -107,11 +165,14 @@
     </div>
 
     {#if tab === 'feed'}
-      <!-- Search -->
+      <!-- Search: searches EVERYONE on potcount, not just who you follow -->
       <div class="relative mb-4">
-        <input class="input" type="search" bind:value={query} oninput={onSearch} placeholder="Search players by name..."
-          autocapitalize="none" autocomplete="off" aria-label="Search players"
+        <input class="input" type="search" bind:value={query} oninput={onSearch} placeholder="Search everyone on potcount by name…"
+          autocapitalize="none" autocomplete="off" aria-label="Search all players on potcount"
           onkeydown={(e) => { if (e.key === 'Escape') { searchOpen = false; e.currentTarget.blur(); } }} />
+        {#if !searchOpen}
+          <p class="text-faint text-xs mt-1.5 px-1">Find and follow anyone — not just people you already follow.</p>
+        {/if}
         {#if searchOpen}
           <div class="absolute top-full left-0 right-0 z-20 bg-surface border border-border rounded-[11px] mt-1 max-h-80 overflow-y-auto shadow-xl">
             {#if searchResults.length === 0}
@@ -142,56 +203,44 @@
           <p class="text-xs text-faint mt-4">Or use search above to follow players. Set your profile <a href="/account">private</a> any time.</p>
         </div>
       {:else}
-        {#each items as item (item.game.id + item.user.id)}
-          {@const even = item.net === 0}
-          {@const won = item.net > 0}
-          {@const key = item.game.id + item.playerId}
-          <div class="bg-surface-2 border border-border rounded-xl p-3 mb-2">
-            <a href="/game?g={item.game.id}" class="flex items-start gap-3 min-w-0 no-underline text-text">
-              {@render avatar(item.user.displayName, 'w-8 h-8 text-[.7rem] mt-0.5')}
-              <div class="min-w-0 flex-1">
-                <div class="text-[.95rem] leading-snug">
-                  <span role="link" tabindex="0" class="font-semibold text-info cursor-pointer hover:underline"
-                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; }}
-                    onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.location.href = `/u/${item.user.handle}`; } }}>{item.user.displayName}</span>
-                  {even ? 'broke even in' : (won ? 'won' : 'lost')}
-                  {#if !even}<span class="font-extrabold tabular-nums {won ? 'text-win' : 'text-danger'} font-display">{fmtSigned(item.net, item.unit)}</span> in{/if}
-                  <span class="text-muted">{item.game.name}</span>
+        {#each groups as grp (grp.game.id)}
+          {#if grp.players.length === 1}
+            {@const item = grp.players[0]}
+            <div class="bg-surface-2 border border-border rounded-xl p-3 mb-2">
+              <a href="/game?g={item.game.id}" class="flex items-start gap-3 min-w-0 no-underline text-text">
+                {@render avatar(item.user.displayName, 'w-8 h-8 text-[.7rem] mt-0.5')}
+                <div class="min-w-0 flex-1">
+                  <div class="text-[.95rem] leading-snug">
+                    {@render resultText(item)}
+                    {#if item.net !== 0}in{:else}in{/if}
+                    <span class="text-muted">{item.game.name}</span>
+                  </div>
+                  <div class="text-muted text-xs mt-0.5">{ago(item.at)}</div>
                 </div>
-                <div class="text-muted text-xs mt-0.5">{ago(item.at)}</div>
-              </div>
-            </a>
-
-            <!-- Reactions -->
-            <div class="flex flex-wrap gap-1 mt-2">
-              {#each REACTIONS as emoji}
-                {@const n = item.reactions?.counts?.[emoji] || 0}
-                {@const mine = item.reactions?.mine === emoji}
-                <button type="button" onclick={(e) => react(item, emoji, e)}
-                  class="text-sm leading-none px-2.5 py-1 rounded-full border transition-colors {mine ? 'bg-accent/20 border-accent' : 'bg-surface border-transparent hover:border-border'}">
-                  {emoji}{#if n}<span class="ml-1 text-xs tabular-nums {mine ? 'text-text' : 'text-muted'}">{n}</span>{/if}
-                </button>
+              </a>
+              {@render engagement(item)}
+            </div>
+          {:else}
+            <!-- Grouped: several people you follow played the same game -->
+            <div class="bg-surface-2 border border-border rounded-xl p-3 mb-2">
+              <a href="/game?g={grp.game.id}" class="flex items-center justify-between gap-3 no-underline text-text pb-2.5 mb-1 border-b border-border-soft">
+                <div class="min-w-0">
+                  <div class="font-semibold text-[.95rem] truncate">{grp.game.name}</div>
+                  <div class="text-muted text-xs mt-0.5">{grp.players.length} players you follow · {ago(grp.at)}</div>
+                </div>
+                <span class="text-faint text-lg leading-none shrink-0">›</span>
+              </a>
+              {#each grp.players as item, i (item.playerId)}
+                <div class="py-2.5 {i > 0 ? 'border-t border-border-soft' : ''}">
+                  <div class="flex items-center gap-2.5">
+                    {@render avatar(item.user.displayName, 'w-7 h-7 text-[.65rem]')}
+                    <div class="min-w-0 flex-1 text-[.92rem] leading-snug">{@render resultText(item)}</div>
+                  </div>
+                  {@render engagement(item)}
+                </div>
               {/each}
             </div>
-
-            <!-- Comments -->
-            {#if item.comments?.length}
-              <div class="mt-2 space-y-1">
-                {#each item.comments as c (c.id)}
-                  <div class="text-sm leading-snug">
-                    <a href="/u/{c.user.handle}" class="font-semibold text-info no-underline hover:underline">{c.user.displayName}</a>
-                    <span class="text-text">{c.text}</span>
-                    <span class="text-muted text-xs ml-1">{ago(c.at)}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-            <form class="flex gap-2 mt-2" onsubmit={(e) => { e.preventDefault(); postComment(item); }}>
-              <input class="input !py-1.5 !px-3 text-sm flex-1" bind:value={commentDraft[key]} maxlength="280"
-                placeholder="Add a comment..." aria-label="Add a comment" />
-              <button type="submit" class="btn-small" disabled={!commentDraft[key]?.trim()}>Send</button>
-            </form>
-          </div>
+          {/if}
         {/each}
       {/if}
 

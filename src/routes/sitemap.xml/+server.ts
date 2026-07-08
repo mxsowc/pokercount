@@ -1,4 +1,5 @@
 import { cityHubs } from '$lib/server/directory.js';
+import { GUIDES } from '$lib/guides.js';
 
 // Dynamic sitemap: the static pages plus every city hub with enough real content
 // to be worth indexing (enough public players, or an open game — see cityHubs).
@@ -10,6 +11,9 @@ const STATIC: { loc: string; changefreq: string; priority: string }[] = [
   { loc: '/', changefreq: 'weekly', priority: '1.0' },
   { loc: '/pot', changefreq: 'monthly', priority: '0.8' },
   { loc: '/poker-chip-tracker', changefreq: 'monthly', priority: '0.9' },
+  { loc: '/home-game-poker', changefreq: 'monthly', priority: '0.9' },
+  { loc: '/poker-counter', changefreq: 'monthly', priority: '0.9' },
+  { loc: '/guide', changefreq: 'weekly', priority: '0.7' },
   { loc: '/homegames', changefreq: 'daily', priority: '0.9' },
 ];
 
@@ -17,6 +21,7 @@ export function GET() {
   const cities = cityHubs().filter((c) => c.indexable);
   const urls = [
     ...STATIC,
+    ...GUIDES.map((g) => ({ loc: `/guide/${g.slug}`, changefreq: 'monthly', priority: '0.6' })),
     ...cities.map((c) => ({ loc: `/homegames/${c.slug}`, changefreq: 'daily', priority: '0.7' })),
   ];
   const body =

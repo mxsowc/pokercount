@@ -36,6 +36,23 @@ function persist() {
   writeFileDurable(FILE, JSON.stringify([...byId.values()], null, 2));
 }
 
+// Coalesced, off-the-critical-path persist for NON-critical field updates (e.g.
+// the "last seen" metric). The whole accounts file is large (inline avatars), and
+// writeFileDurable fsyncs synchronously — doing that inline on a page load blocked
+// every in-flight request. Deferring + debouncing keeps the fsync off the request
+// path and merges bursts into one write. Account-critical changes still call
+// persist() directly so they stay immediately durable.
+/** @type {ReturnType<typeof setTimeout> | null} */
+let deferredTimer = null;
+function persistSoon() {
+  if (deferredTimer) return;
+  deferredTimer = setTimeout(() => {
+    deferredTimer = null;
+    try { persist(); } catch (e) { console.error('[users] deferred persist failed:', e); }
+  }, 3000);
+  if (typeof deferredTimer.unref === 'function') deferredTimer.unref();
+}
+
 export function init() {
   if (!existsSync(FILE)) return 0;
   try {
@@ -73,7 +90,7 @@ export function touchLastSeen(userId) {
   const last = u.lastSeenAt ? Date.parse(u.lastSeenAt) : 0;
   if (Date.now() - last < 3600_000) return; // throttle disk writes to ≤ 1/hour/user
   u.lastSeenAt = now();
-  persist();
+  persistSoon(); // best-effort metric — never block the page load on this fsync
 }
 /** @param {string | null | undefined} handle @returns {User | null} */
 export function getByHandle(handle) {

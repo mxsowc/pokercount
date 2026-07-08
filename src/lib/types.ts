@@ -161,6 +161,9 @@ export interface Game {
   receipts?: Array<Settlement & { archivedAt: string }>;
   /** Optional series tag for recurring game groups. */
   series?: string | null;
+  /** Optional host note shown to players — any specifics (address hint, "BYO
+   *  chips", parking, dress code). Set at creation; ≤500 chars. */
+  note?: string | null;
   /** First-party, cookieless acquisition: where the creator first arrived from
    *  (campaign tag / external referrer host / first landing path). Set once at
    *  creation; absent on games created before source-tracking shipped. */
@@ -188,6 +191,17 @@ export interface NewGameInput {
   /** Planned start (ISO). When set, the game is created as `scheduled` — an
    *  invite-link lobby people RSVP to — instead of opening live. */
   scheduledFor?: string | null;
+  /** Create as a public/open game listed in the city directory. When set, the
+   *  unit is forced to 'blinds' (NL gambling law compliance). */
+  visibility?: 'public';
+  city?: string;
+  maxPlayers?: number;
+  minBuyIn?: number;
+  maxBuyIn?: number;
+  smallBlind?: number;
+  bigBlind?: number;
+  /** Optional host note shown to players (address hint, "BYO chips", etc.). */
+  note?: string;
 }
 
 export interface User {

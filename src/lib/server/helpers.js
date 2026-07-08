@@ -106,15 +106,48 @@ export function withProfiles(game) {
       voteTallies[cat] = tally;
     }
   }
+  const owner = safe.ownerId ? getUser(safe.ownerId) : null;
   return {
     ...safe,
     ...(voteTallies ? { voteTallies } : {}),
+    ...(owner ? { ownerHandle: owner.handle, ownerName: owner.displayName, ownerAvatar: owner.avatar || null } : {}),
     players: safe.players.map((p) => {
       if (!p.userId) return p;
       const u = getUser(p.userId);
       return u ? { ...p, handle: u.handle, displayName: u.displayName } : p;
     }),
   };
+}
+
+/** May the requester see a game's full internals (money, audit log, chat)? True
+ *  for a seated account, the game's owner, or a valid host-token holder. Used to
+ *  gate PUBLIC games, whose id is published on /homegames — a private game's id is
+ *  itself the secret, so this gate isn't applied there.
+ * @param {any} game @param {Request} request @returns {boolean} */
+export function isParticipant(game, request) {
+  if (!game) return false;
+  const su = sessionUser(request);
+  if (su) {
+    if ((game.players || []).some((p) => p.userId === su.id)) return true;
+    if (game.ownerId && game.ownerId === su.id) return true;
+  }
+  const hostToken = request.headers.get('x-host-token');
+  if (hostToken && verifyGameToken(hostToken, game.id)) return true;
+  return false;
+}
+
+/** The discovery-only view of a PUBLIC game for a NON-participant: enough to decide
+ *  whether to request a seat (name, city, blinds, seat count, roster) with the
+ *  money and behavioural internals removed — no transactions, settlement, final
+ *  stacks, audit log, receipts, or chat. This is what an anonymous visitor who
+ *  found the game on /homegames is allowed to see.
+ * @param {any} game @returns {any} */
+export function publicPreview(game) {
+  // withProfiles already strips joinRequests/acquisition, collapses votes, and
+  // (for public games) removes chat messages.
+  const g = withProfiles(game);
+  const { transactions, finalStacks, settlement, receipts, log, ...safe } = g;
+  return safe;
 }
 
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);

@@ -7,7 +7,9 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
+  import CityPicker from '$lib/components/CityPicker.svelte';
   import { currencyForCountry } from '$lib/utils/currencies';
+  import { citySlug } from '$lib/cities.js';
 
   // Focus a field as soon as it mounts (e.g. the Join view's code input) so the
   // keypad pops without an extra tap. Used via use:autofocus.
@@ -123,6 +125,7 @@
     unitInput = defaultUnit();
     minSchedule = localInputValue();
     nudgeDismissed = !!localStorage.getItem('pc_host_nudge_dismissed');
+    if (user?.city) openCity = user.city;
     loadAccountGames();
     // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
     if (browser && $page.url.searchParams.get('start') === 'open') showOpen();
@@ -133,6 +136,7 @@
   let openCode = $state('');
   let openSeats = $state(0);
   let openSeries = $state('');
+  let openNote = $state(''); // optional host note shown to players (address, BYO chips…)
   let openBuyIn = $state(''); // table's standard buy-in → seeds the quick-buy on the game page
   // Schedule-for-later: when on, the game is created as a `scheduled` invite lobby
   // (people RSVP) instead of opening live. `openSchedule` is a datetime-local
@@ -140,6 +144,14 @@
   let scheduling = $state(false);
   let openSchedule = $state('');
   let minSchedule = $state('');
+  // Open game (public/city directory) fields
+  let isOpenGame = $state(false);
+  let openCity = $state('');
+  let openSmallBlind = $state('');
+  let openBigBlind = $state('');
+  let openMaxPlayers = $state('');
+  let openMinBuyIn = $state('');
+  let openMaxBuyIn = $state('');
 
   const TAGLINES = [
     'Who has the boat?',
@@ -189,6 +201,11 @@
   async function openGame() {
     const you = openName.trim();
     if (!you) { toast('Enter your name'); return; }
+    if (isOpenGame) {
+      if (!user) { toast('Sign in to create an open game'); return; }
+      if (!openCity.trim()) { toast('Enter a city for your open game'); return; }
+      if (!openSmallBlind || !openBigBlind || Number(openSmallBlind) <= 0 || Number(openBigBlind) <= 0) { toast('Set the blinds for your open game'); return; }
+    }
     // Scheduling? Require a future date. A scheduled game opens as an empty RSVP
     // lobby, so we seat only the host (no filler "Player 2" seats).
     let scheduledFor: string | undefined;
@@ -206,10 +223,25 @@
     const code = openCode.replace(/[^0-9]/g, '');
     const buyIn = Number(String(openBuyIn).replace(',', '.').trim());
     try {
+      const payload: any = { name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined, scheduledFor, source: getAcq() || undefined };
+      if (openNote.trim()) payload.note = openNote.trim();
+      if (isOpenGame && openCity.trim()) {
+        payload.visibility = 'public';
+        payload.city = openCity.trim();
+        const sb = Number(openSmallBlind), bb = Number(openBigBlind);
+        if (sb > 0) payload.smallBlind = sb;
+        if (bb > 0) payload.bigBlind = bb;
+        const mp = Number(openMaxPlayers);
+        if (mp >= 2) payload.maxPlayers = mp;
+        const mi = Number(openMinBuyIn);
+        if (mi > 0) payload.minBuyIn = mi;
+        const ma = Number(openMaxBuyIn);
+        if (ma > 0) payload.maxBuyIn = ma;
+      }
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Actor-Id': getActor().id, 'X-Actor-Name': encodeURIComponent(you) },
-        body: JSON.stringify({ name: generatedTitle, unit: unitInput.trim() || '€', players, code: code || undefined, defaultBuyIn: buyIn > 0 ? buyIn : undefined, scheduledFor, source: getAcq() || undefined })
+        body: JSON.stringify(payload)
       });
       const game = await res.json();
       if (!res.ok) {
@@ -273,7 +305,7 @@
 
   function showOpen() {
     view = 'open';
-    openName = getActor().name;
+    openName = user?.displayName || getActor().name;
     generatedTitle = gameTitle();
   }
   function showJoin() {
@@ -296,7 +328,7 @@
         pot<span class="text-accent font-bold">count</span>
       </h1>
       <p class="text-accent uppercase tracking-[0.18em] text-xs font-bold mb-3 text-center max-md:text-left w-full">
-        Home poker scorekeeper &amp; stats
+        Home game poker tracker, counter &amp; stats
       </p>
       <p class="text-muted text-[1.05rem] max-w-[50ch] text-center max-md:text-left mb-5 w-full">
         Keep score at your poker night, track everyone's record over time, and open your games so friends can join. Free, social, and just for fun.
@@ -413,7 +445,7 @@
             Just splitting one pot right now? The <a href="/pot">Split tool</a> does it instantly — no game needed.
           </p>
           <p class="text-muted text-xs text-center mt-1.5 max-w-[48ch] mx-auto">
-            New to this? See how the <a href="/poker-chip-tracker">poker chip tracker</a> works.
+            New to this? Read the <a href="/guide">step-by-step guides</a>, or about the <a href="/home-game-poker">home game poker</a> tracker, <a href="/poker-counter">poker counter</a> and <a href="/poker-chip-tracker">chip tracker</a>.
           </p>
           <p class="text-muted text-xs text-center mt-1.5 max-w-[48ch] mx-auto">
             Looking for a game near you? <a href="/homegames">Find a home poker game by city</a>.
@@ -439,7 +471,7 @@
   {:else if view === 'open'}
     <button class="btn-small btn-ghost mb-3" onclick={() => view = 'intro'}>← Back</button>
     <h1 class="text-2xl font-bold mb-1">Open a game</h1>
-    <p class="text-muted mb-4">You'll get a code to share. Everyone else just joins with it.</p>
+    <p class="text-muted mb-4">{isOpenGame ? 'Listed publicly — locals in your city can request to join.' : 'You’ll get a code to share. Everyone else just joins with it.'}</p>
     <div class="card">
       <div class="flex items-center gap-2 mb-3">
         <span class="text-muted text-sm flex-1 italic truncate">{generatedTitle}</span>
@@ -447,6 +479,48 @@
       </div>
       <label class="block text-xs text-muted font-medium mb-1">Your name</label>
       <input class="input" bind:value={openName} placeholder="e.g. Max" maxlength="40" autocapitalize="words" autocomplete="name" enterkeyhint="done" />
+
+      <!-- Game type: Private (code-only) vs Open (city directory) -->
+      <div class="seg grid-cols-2 mt-3">
+        <button type="button" class="seg-item {!isOpenGame ? 'is-active' : ''}" onclick={() => isOpenGame = false}>Private game</button>
+        <button type="button" class="seg-item {isOpenGame ? 'is-active' : ''}" onclick={() => isOpenGame = true}>Open game</button>
+      </div>
+      {#if isOpenGame}
+        <p class="text-xs text-faint mt-1">Listed on the <a href="/homegames">home games</a> directory. Players request to join — you approve who sits down. Currency is set to blinds.</p>
+        {#if !user}
+          <div class="banner banner-warn mt-2">You need to <a href="/account?next=/?start=open">sign in</a> to create an open game.</div>
+        {/if}
+
+        <label class="block text-xs text-muted font-medium mb-1 mt-3" for="open-city">City</label>
+        <CityPicker bind:value={openCity} id="open-city" placeholder="Start typing — e.g. Amsterdam" />
+
+        <div class="flex gap-2.5 mt-3">
+          <div class="flex-1">
+            <label class="block text-xs text-muted font-medium mb-1">Small blind</label>
+            <input class="input" bind:value={openSmallBlind} inputmode="decimal" placeholder="e.g. 1" />
+          </div>
+          <div class="flex-1">
+            <label class="block text-xs text-muted font-medium mb-1">Big blind</label>
+            <input class="input" bind:value={openBigBlind} inputmode="decimal" placeholder="e.g. 2" />
+          </div>
+        </div>
+
+        <div class="flex gap-2.5 mt-3">
+          <div class="flex-1">
+            <label class="block text-xs text-muted font-medium mb-1">Max players</label>
+            <input class="input" bind:value={openMaxPlayers} inputmode="numeric" placeholder="e.g. 8" />
+          </div>
+          <div class="flex-1">
+            <label class="block text-xs text-muted font-medium mb-1">Min buy-in (blinds)</label>
+            <input class="input" bind:value={openMinBuyIn} inputmode="decimal" placeholder="e.g. 100" />
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="block text-xs text-muted font-medium mb-1">Max buy-in (blinds, optional)</label>
+          <input class="input" bind:value={openMaxBuyIn} inputmode="decimal" placeholder="Leave empty for fixed buy-in" />
+          <p class="text-xs text-faint mt-1">Empty = fixed buy-in at the minimum. Set a max for a range (e.g. 100–200).</p>
+        </div>
+      {/if}
 
       <div class="seg grid-cols-2 mt-3">
         <button type="button" class="seg-item {!scheduling ? 'is-active' : ''}" onclick={() => scheduling = false}>Start now</button>
@@ -461,10 +535,18 @@
       <details class="mt-3">
         <summary class="text-sm text-muted cursor-pointer">More options</summary>
 
-        <!-- Currency: searchable + custom -->
-        <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
-        <CurrencyPicker bind:value={unitInput} />
-        <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be “big blinds”, “chips”, anything.</p>
+        <!-- Host note: any specifics for players (address, "BYO chips", parking…). -->
+        <label class="block text-xs text-muted font-medium mb-1 mt-3" for="open-note">Note for players (optional)</label>
+        <textarea id="open-note" class="input min-h-[68px] resize-y" bind:value={openNote} maxlength="500"
+                  placeholder={scheduling ? 'e.g. My place, 8pm — buzzer 3B. BYO chips. Parking on the street.' : 'e.g. BYO chips. Snacks provided.'}></textarea>
+        <p class="text-xs text-faint mt-1">Shown to everyone who opens the game{#if isOpenGame} or its directory listing{/if}.</p>
+
+        {#if !isOpenGame}
+          <!-- Currency: searchable + custom (hidden for open games — forced to blinds) -->
+          <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
+          <CurrencyPicker bind:value={unitInput} />
+          <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be "big blinds", "chips", anything.</p>
+        {/if}
 
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Series (optional)</label>
         <input class="input" bind:value={openSeries} placeholder="e.g. Thursday PLO" maxlength="60" />
@@ -485,13 +567,13 @@
           </div>
         </div>
       </details>
-      <button class="btn w-full mt-4" disabled={busy} onclick={openGame}>{busy ? (scheduling ? 'Scheduling...' : 'Opening...') : (scheduling ? 'Schedule game' : 'Open game')}</button>
+      <button class="btn w-full mt-4" disabled={busy || (isOpenGame && !user)} onclick={openGame}>{busy ? (scheduling ? 'Scheduling...' : 'Creating...') : isOpenGame ? (scheduling ? 'Schedule & list publicly' : 'Create & list publicly') : (scheduling ? 'Schedule game' : 'Open game')}</button>
     </div>
 
   {:else if view === 'join'}
     <button class="btn-small btn-ghost mb-3" onclick={() => view = 'intro'}>← Back</button>
     <h1 class="text-2xl font-bold mb-1">Join a game</h1>
-    <p class="text-muted mb-4">Enter the code the host shared and your name.</p>
+    <p class="text-muted mb-4">Enter the code the host shared — or browse open games in your city.</p>
     <div class="card">
       <label class="block text-xs text-muted font-medium mb-1 mt-3">Game code</label>
       <input class="input tracking-widest text-xl" bind:value={joinCode} inputmode="numeric" enterkeyhint="next" placeholder="2137" maxlength="6"
@@ -503,6 +585,18 @@
              onkeydown={(e) => { if (e.key === 'Enter') joinGame(); }} />
       <button class="btn w-full mt-4" disabled={busy} onclick={joinGame}>{busy ? 'Joining...' : 'Join game'}</button>
     </div>
+
+    <!-- No code? Browse the public city directory instead. -->
+    <div class="flex items-center gap-3 my-4 text-muted text-xs">
+      <span class="h-px bg-border flex-1"></span> or <span class="h-px bg-border flex-1"></span>
+    </div>
+    {#if user?.city}
+      <a href="/homegames/{citySlug(user.city)}" class="btn btn-secondary w-full no-underline text-center">Browse open games in {user.city} →</a>
+      <p class="text-faint text-xs text-center mt-2">Public tables near you — request a seat, the host approves.</p>
+    {:else}
+      <a href="/homegames" class="btn btn-secondary w-full no-underline text-center">Browse home games by city →</a>
+      <p class="text-faint text-xs text-center mt-2">Find a public table near you and request a seat. <a href="/account">Set your city</a> to jump straight to it.</p>
+    {/if}
   {/if}
 </div>
 

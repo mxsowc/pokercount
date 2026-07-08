@@ -1,5 +1,5 @@
 import { getGame, onChange } from '$lib/server/store.js';
-import { withProfiles } from '$lib/server/helpers.js';
+import { withProfiles, isParticipant, publicPreview } from '$lib/server/helpers.js';
 import { clientIp } from '$lib/server/ratelimit.js';
 
 const MAX_PER_GAME = 100;
@@ -24,6 +24,11 @@ export function GET(event) {
   const id = g0.id;
   const ip = clientIp(event);
   const ipKey = `${ip}:${id}`;
+
+  // Decide the view once, at connect: a non-participant watching a PUBLIC game
+  // only ever receives the discovery preview (no money/log/chat) on every frame.
+  const previewOnly = g0.visibility === 'public' && !isParticipant(g0, event.request);
+  const view = (game: any) => (previewOnly ? publicPreview(game) : withProfiles(game));
 
   if ((gameConns.get(id) || 0) >= MAX_PER_GAME) {
     return new Response(JSON.stringify({ error: 'Too many listeners on this game.' }), {
@@ -50,7 +55,7 @@ export function GET(event) {
         catch { cleanup(); }
       };
 
-      send(withProfiles(getGame(id)));
+      send(view(getGame(id)));
 
       unsub = onChange((game: any) => {
         if (game.id !== id) return;
@@ -59,7 +64,7 @@ export function GET(event) {
           cleanup();
           return;
         }
-        send(withProfiles(game));
+        send(view(game));
       });
 
       hb = setInterval(() => {

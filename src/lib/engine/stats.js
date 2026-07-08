@@ -64,22 +64,33 @@ export function computeUserStats(games, userId, convert) {
     }
 
     // Net in the game's OWN unit: frozen snapshot if present, else live compute.
+    // Grab ALL players' lines too, so we can rank this player at the table.
     let net = null;
-    if (g.settlement && Array.isArray(g.settlement.lines)) {
-      const ln = g.settlement.lines.find((l) => l.playerId === seat.id);
+    let lines = g.settlement && Array.isArray(g.settlement.lines) ? g.settlement.lines : null;
+    if (lines) {
+      const ln = lines.find((l) => l.playerId === seat.id);
       if (ln && ln.net != null) net = ln.net;
     }
-    if (net == null) {
+    if (net == null || !lines) {
       const s = computeSettlement(g.players, g.transactions, g.finalStacks);
-      const ln = s.lines.find((l) => l.playerId === seat.id);
-      net = ln ? ln.net : 0;
+      lines = s.lines;
+      if (net == null) { const ln = s.lines.find((l) => l.playerId === seat.id); net = ln ? ln.net : 0; }
+    }
+    // Table placement — ONLY when the game is fully finished (everyone's net is
+    // final). `better` = how many players beat you (rank = better + 1). Powers
+    // "nights won" (nobody beat you) and "top-half finishes". Unit-independent, so
+    // chip/other-unit games count here even though they're left out of money totals.
+    let place = null;
+    if (finished && Array.isArray(lines)) {
+      const withNet = lines.filter((l) => typeof l.net === 'number');
+      if (withNet.length >= 2) place = { better: withNet.filter((l) => l.net > net).length, n: withNet.length };
     }
     // Total this user put on the table across the WHOLE game — buy-ins + top-ups
     // (every transaction on their seat), in cents to avoid drift.
     const invested = (g.transactions || []).reduce(
       (s, t) => t.playerId === seat.id ? s + Math.round((t.amount || 0) * 100) : s, 0) / 100;
     const hrs = g.hours && seat ? g.hours[seat.id] : null;
-    finishedAll.push({ id: g.id, name: g.name, unit, net, invested, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status });
+    finishedAll.push({ id: g.id, name: g.name, unit, net, invested, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status, place });
   }
 
   // Report in the player's most-used convertible currency (default €).
@@ -173,6 +184,19 @@ export function computeUserStats(games, userId, convert) {
     };
   }
 
+  // Table placement across fully-finished games: how often this player finished
+  // the night on top, and how often in the top half of the table.
+  let nightsWon = 0, topHalf = 0, placementGames = 0;
+  for (const r of finishedAll) {
+    if (!r.place) continue;
+    placementGames++;
+    if (r.place.better === 0) nightsWon++;
+    if (r.place.n > 1 && r.place.better / (r.place.n - 1) <= 0.5) topHalf++;
+  }
+  const placement = placementGames
+    ? { games: placementGames, nightsWon, topHalfPct: Math.round((topHalf / placementGames) * 100) }
+    : null;
+
   const totalProfit = totalProfitC / 100;
   const avgProfit = gamesPlayed ? round2(totalProfit / gamesPlayed) : 0;
   const avgBuyIn = gamesPlayed ? round2((investedC / 100) / gamesPlayed) : 0;
@@ -200,6 +224,7 @@ export function computeUserStats(games, userId, convert) {
     streak,
     hourly,
     settlementSpeed,
+    placement,
     recent: recent.slice(0, 30),
     ledger,
     level,

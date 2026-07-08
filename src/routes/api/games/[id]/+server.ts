@@ -1,10 +1,16 @@
 import { json } from '@sveltejs/kit';
 import { getGame, deleteGame } from '$lib/server/store.js';
-import { withProfiles, isGameHost } from '$lib/server/helpers.js';
+import { withProfiles, isGameHost, isParticipant, publicPreview } from '$lib/server/helpers.js';
 
-export function GET({ params }) {
+export function GET({ params, request }) {
   const game = getGame(params.id.toUpperCase());
   if (!game) return json({ error: 'game not found' }, { status: 404 });
+  // A PUBLIC game's id is published on /homegames, so a non-participant gets only
+  // the discovery preview (no money, audit log, or chat). Private games are
+  // reachable only by their secret id/code, so full access there is unchanged.
+  if (game.visibility === 'public' && !isParticipant(game, request)) {
+    return json(publicPreview(game));
+  }
   return json(withProfiles(game));
 }
 

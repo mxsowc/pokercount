@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "seed:mock": "node scripts/seed-mock.mjs",
+    "dev:mock": "node scripts/seed-mock.mjs && PC_DATA_DIR=./data-mock PC_FX_DISABLE=1 vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",

@@ -131,6 +131,12 @@
         <div>
           <h2 class="text-xl font-bold m-0">{profileUser.displayName}</h2>
           <div class="text-muted text-sm">@{profileUser.handle}</div>
+          {#if profileUser.city}
+            <div class="text-muted text-sm flex items-center gap-1 mt-0.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="shrink-0 text-faint" aria-hidden="true"><path d="M12 21s7-5.686 7-11a7 7 0 10-14 0c0 5.314 7 11 7 11z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="2"/></svg>
+              {profileUser.city}
+            </div>
+          {/if}
           {#if stats?.level}
             {#if stats.level.reliability >= 40}
               <div class="text-sm font-semibold mt-1 {stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted'}">
@@ -196,12 +202,20 @@
     {/if}
 
     {#if stats.gamesPlayed}
+    <!-- Two headline stats — the clearest read on a player: how often they play,
+         and how much they win/lose a night. Everything else sits smaller below. -->
+    <div class="grid grid-cols-2 gap-2.5 mt-4">
+      <div class="card text-center !mb-0 !py-5">
+        <div class="text-3xl font-extrabold tabular-nums font-display">{stats.gamesPlayed}</div>
+        <div class="text-muted text-xs mt-1.5 uppercase tracking-wide">games played</div>
+      </div>
+      <div class="card text-center !mb-0 !py-5">
+        <div class="text-3xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.avgProfit, stats.unit)}</div>
+        <div class="text-muted text-xs mt-1.5 uppercase tracking-wide">avg / game</div>
+      </div>
+    </div>
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-5 mb-3">Breakdown</h2>
     <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
-      <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
-        <div class="text-muted text-xs mt-1">avg / game</div>
-      </div>
       <div class="card text-center !mb-0">
         <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? stats.profitablePct + '%' : '—'}</div>
         <div class="text-muted text-xs mt-1">% profitable</div>
@@ -214,10 +228,12 @@
         <div class="text-xl font-extrabold tabular-nums font-display">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">worst night</div>
       </div>
-      <div class="card text-center !mb-0">
-        <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed}</div>
-        <div class="text-muted text-xs mt-1">games played</div>
-      </div>
+      {#if stats.placement}
+        <div class="card text-center !mb-0">
+          <div class="text-xl font-extrabold tabular-nums font-display {stats.placement.nightsWon > 0 ? 'text-win' : ''}">{stats.placement.nightsWon}<span class="text-sm text-muted">×</span></div>
+          <div class="text-muted text-xs mt-1">finished as chip leader</div>
+        </div>
+      {/if}
       <div class="card text-center !mb-0">
         <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
         <div class="text-muted text-xs mt-1">avg buy-in</div>
@@ -229,17 +245,20 @@
         </div>
       {/if}
       {#if stats.settlementSpeed}
-        <div class="card text-center !mb-0">
+        <!-- Own/preview value is shown, but it's a Pro-only stat — tapping says so. -->
+        <button class="card text-center !mb-0 relative overflow-hidden cursor-pointer" onclick={() => toast('Avg time to pay is a Pro-only stat — available to Pro members')}>
+          <span class="absolute top-1.5 right-1.5 text-[9px] font-bold text-accent uppercase tracking-[0.15em] leading-none bg-accent/12 border border-accent/30 rounded-full px-1.5 py-0.5">Pro</span>
           <div class="text-xl font-extrabold tabular-nums font-display">{stats.settlementSpeed.avgDays}d</div>
           <div class="text-muted text-xs mt-1">avg settle time · {stats.settlementSpeed.count} transfers</div>
-        </div>
+        </button>
       {:else if hasSettlementSpeed}
+        <!-- Pro-gated: keep the label readable so the stat sells itself; blur only
+             the value and tuck "Pro" into a corner badge (a full overlay hid what
+             the stat even was). -->
         <button class="card text-center !mb-0 relative overflow-hidden cursor-pointer" onclick={() => toast('Settlement speed is a Pro feature — coming soon')}>
-          <div class="text-xl font-extrabold tabular-nums font-display blur-md select-none" aria-hidden="true">1.2d</div>
-          <div class="text-muted text-xs mt-1 blur-md select-none" aria-hidden="true">avg settle time</div>
-          <div class="absolute inset-0 flex items-center justify-center bg-surface/60">
-            <span class="text-xs font-bold text-accent uppercase tracking-widest">Pro</span>
-          </div>
+          <span class="absolute top-1.5 right-1.5 text-[9px] font-bold text-accent uppercase tracking-[0.15em] leading-none bg-accent/12 border border-accent/30 rounded-full px-1.5 py-0.5">Pro</span>
+          <div class="text-xl font-extrabold tabular-nums font-display blur-[6px] select-none opacity-80" aria-hidden="true">1.2d</div>
+          <div class="text-muted text-xs mt-1">avg settle time</div>
         </button>
       {/if}
     </div>

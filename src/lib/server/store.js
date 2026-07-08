@@ -280,7 +280,7 @@ export function publicGamesByCity(slug) {
 }
 
 /** @param {NewGameInput} input @returns {Game} */
-export function createGame({ name, unit, players, code, defaultBuyIn, series, scheduledFor }) {
+export function createGame({ name, unit, players, code, defaultBuyIn, series, scheduledFor, visibility, city, maxPlayers, minBuyIn, maxBuyIn, smallBlind, bigBlind, note }) {
   const humanCode = code ? normalizeCustomCode(code) : gameCode();
   // Internal id: unguessable, immutable, never shown. Shared links use this, so
   // they keep pointing at THIS game even after `humanCode` is recycled later.
@@ -307,6 +307,10 @@ export function createGame({ name, unit, players, code, defaultBuyIn, series, sc
   const db = Number(defaultBuyIn);
   if (Number.isFinite(db) && db > 0) game.defaultBuyIn = Math.round(db * 100) / 100;
   if (series != null && String(series).trim()) game.series = String(series).trim().slice(0, 60);
+  // Optional host note — any specifics for players (address hint, "BYO chips",
+  // dress code, parking…). Shown on the game/lobby page and, for open games, on
+  // the public directory card.
+  if (note != null && String(note).trim()) game.note = String(note).trim().slice(0, 500);
   // A planned game opens as a `scheduled` lobby (invite link + RSVPs) instead of
   // a live table; the host flips it to `active` on game night. Only a FUTURE
   // instant makes it scheduled — a past/garbage value is ignored (opens live),
@@ -318,6 +322,23 @@ export function createGame({ name, unit, players, code, defaultBuyIn, series, sc
       game.scheduledFor = new Date(t).toISOString();
     }
   }
+  // Open game: listed publicly in the city directory from birth.
+  if (visibility === 'public' && city && String(city).trim()) {
+    game.visibility = 'public';
+    game.city = String(city).trim().replace(/\s+/g, ' ').slice(0, 60);
+    game.unit = 'blinds'; // NL gambling law: public games are social play, never real-money
+    const mp = Number(maxPlayers);
+    if (Number.isFinite(mp) && mp >= 2) game.maxPlayers = Math.min(50, Math.floor(mp));
+    const mi = Number(minBuyIn);
+    if (Number.isFinite(mi) && mi > 0) game.minBuyIn = Math.min(1_000_000, Math.floor(mi));
+    const ma = Number(maxBuyIn);
+    if (Number.isFinite(ma) && ma > 0) game.maxBuyIn = Math.min(1_000_000, Math.max(Math.floor(ma), game.minBuyIn || 0));
+    const sb = Number(smallBlind), bb = Number(bigBlind);
+    if (Number.isFinite(sb) && sb > 0 && Number.isFinite(bb) && bb > 0) {
+      game.blinds = { small: Math.min(sb, bb), big: Math.max(sb, bb) };
+    }
+  }
+
   for (const p of players || []) {
     const nm = p && p.name != null ? String(p.name).trim() : '';
     if (nm) game.players.push({ id: uid(6), name: nm.slice(0, 40) });

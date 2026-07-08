@@ -14,7 +14,7 @@
     <h1 class="text-2xl font-extrabold font-display m-0">Find a home poker game near you</h1>
     <p class="text-muted mt-2 max-w-[52ch]">
       Home games, by city. See the local players on potcount, then find an open table
-      or start your own — we track every buy-in and work out who pays who.
+      or start your own — keep score for the whole table and track everyone's record over time.
     </p>
   </header>
 
@@ -44,7 +44,7 @@
 
   <div class="card mt-8">
     <h2 class="text-base font-bold m-0">Hosting one?</h2>
-    <p class="text-muted mt-1.5 mb-3">Open a table, share one code, and everyone at the table sees their own money.</p>
+    <p class="text-muted mt-1.5 mb-3">Open a table, share one code, and everyone keeps their own score. Social play, blinds only.</p>
     <a href="/" class="btn no-underline inline-block">Start a home game</a>
   </div>
 </div>

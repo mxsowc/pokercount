@@ -2,9 +2,7 @@
   import { page } from '$app/stores';
   import { invalidateAll, goto } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
-  import { money, fmtSigned } from '$lib/utils/money';
-  import { AWARDS } from '$lib/awards';
-  import Sparkline from '$lib/components/Sparkline.svelte';
+  import { fmtSigned } from '$lib/utils/money';
   import ShareCard from '$lib/components/ShareCard.svelte';
   import CountryPicker from '$lib/components/CountryPicker.svelte';
   import { countryName } from '$lib/utils/currencies.js';
@@ -15,9 +13,7 @@
   let user = $derived($page.data?.user ?? null);
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
-  let badges = $state<any>(null);
   let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
-  let chartTab = $state<'profit' | 'level'>('profit');
 
   // Login form
   let loginHandle = $state('');
@@ -74,6 +70,7 @@
   // ---- multi-select game stats -----------------------------------------------
   let selectedGames = $state(new Set<string>());
   let selectMode = $state(false);
+  let showGames = $state(false); // the games list is collapsed behind an arrow by default
   const selectedStats = $derived.by(() => {
     if (!stats?.recent || selectedGames.size === 0) return null;
     // Only sum games already in the display currency — non-convertible games
@@ -234,12 +231,12 @@
       const res = await fetch(`/api/users/${encodeURIComponent(user.handle)}/stats`);
       const data = await res.json();
       stats = data.stats;
-      badges = data.badges || null;
     } catch {}
   }
 
   // ---- export / share -------------------------------------------------------
   let showShare = $state(false);
+  let showExport = $state(false); // Export & share is collapsed behind an arrow
   const hasResults = $derived(!!stats && (stats.gamesPlayed > 0 || stats.otherGames > 0));
   function exportCsv() {
     if (stats) downloadText(statementFilename(user.handle, 'csv'), buildStatementCSV(user, stats));
@@ -519,14 +516,17 @@
   $effect(() => { if (user) regionCode = user.country || ''; });
 
   // Home city — public, powers the by-city leaderboard + finding local players.
+  // Collapsed to a summary once set (like the Region row); reveal to edit.
   let cityInput = $state('');
   let savingCity = $state(false);
+  let editCity = $state(false);
   $effect(() => { if (user) cityInput = user.city || ''; });
   async function saveCity() {
     savingCity = true;
     try {
       await fetch('/api/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: cityInput.trim() }) });
       await invalidateAll();
+      editCity = false;
       toast(cityInput.trim() ? 'City saved' : 'City cleared');
     } catch (e: any) { toast(e.message); }
     finally { savingCity = false; }
@@ -635,15 +635,26 @@
         {/if}
       </div>
 
-      <!-- Home city: public — powers the by-city leaderboard + finding local players -->
+      <!-- Home city: public — collapsed to a summary (mirrors the Region row above);
+           reveal to edit. Powers the by-city leaderboard + finding local players. -->
       <div class="mt-4 pt-4 border-t border-border-soft">
-        <label class="block text-xs text-muted font-medium mb-1" for="acct-city">Home city <span class="text-faint font-normal">· public</span></label>
-        <div class="flex gap-2">
-          <input id="acct-city" class="input flex-1" bind:value={cityInput} placeholder="e.g. Amsterdam" maxlength="60" autocapitalize="words" autocomplete="address-level2"
-                 onkeydown={(e) => { if (e.key === 'Enter') saveCity(); }} />
-          <button class="btn-small btn" disabled={savingCity || cityInput.trim() === (user.city || '')} onclick={saveCity}>Save</button>
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs text-muted font-medium">Home city <span class="text-faint font-normal">· public</span></div>
+            <div class="font-semibold truncate">{user.city || 'Not set'}</div>
+          </div>
+          <button class="btn-small btn-ghost shrink-0" onclick={() => { editCity = !editCity; cityInput = user.city || ''; }}>
+            {editCity ? 'Done' : 'Change'}
+          </button>
         </div>
-        <p class="text-faint text-xs mt-1">Appear on your city's leaderboard and let local players find your games. If your profile is public, your <b>username and city</b> show on your city's public <a href="/homegames">home-games page</a> (no name or photo). Set your profile to private or clear your city to opt out.</p>
+        {#if editCity}
+          <div class="flex gap-2 mt-3">
+            <input id="acct-city" class="input flex-1" aria-label="Home city" bind:value={cityInput} placeholder="e.g. Amsterdam" maxlength="60" autocapitalize="words" autocomplete="address-level2"
+                   onkeydown={(e) => { if (e.key === 'Enter') saveCity(); }} />
+            <button class="btn-small btn" disabled={savingCity || cityInput.trim() === (user.city || '')} onclick={saveCity}>Save</button>
+          </div>
+          <p class="text-faint text-xs mt-1">Appear on your city's leaderboard and let local players find your games. If your profile is public, your <b>username and city</b> show on your city's public <a href="/homegames">home-games page</a> (no name or photo). Set your profile to private or clear your city to opt out.</p>
+        {/if}
       </div>
 
       {#if account}
@@ -735,156 +746,67 @@
     {/if}
 
     {#if stats}
-      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mt-6 mb-3">
-        Your stats
-        {#if stats.gamesPlayed}<span class="normal-case tracking-normal text-faint font-normal">· in {stats.unit}</span>{/if}
-      </h2>
-      {#if stats.otherGames > 0}
-        <p class="text-xs text-faint mb-3">{stats.otherGames} game{stats.otherGames === 1 ? '' : 's'} in chips / other units aren't included in the totals.</p>
-      {/if}
-      {#if stats.level}
-        <details class="card !mb-3 group">
-          <summary class="flex items-center justify-between cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-            <div>
-              <div class="text-lg font-extrabold font-display {stats.level.reliability >= 40 ? (stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted') : 'text-faint'}">
-                {stats.level.reliability >= 40 ? `Lv. ${stats.level.level.toFixed(2)} · ${stats.level.label}` : 'Not yet rated'}
-              </div>
-              {#if stats.level.reliability >= 40}
-                <div class="text-muted text-xs mt-0.5">{stats.level.reliability}% reliable</div>
-              {:else}
-                <div class="text-faint text-xs mt-0.5">Play more games to get your level ({stats.level.reliability}% → 40%)</div>
-              {/if}
+      <!-- Stats live on your PUBLIC PROFILE — no need to duplicate the whole grid,
+           chart and badges here. A one-line headline + a link keeps the account
+           page about settings, not a second copy of the profile. -->
+      {#if hasResults}
+        <a href="/u/{user.handle}" class="card mt-6 flex items-center justify-between gap-3 no-underline text-text hover:border-border">
+          <div class="min-w-0">
+            <div class="text-xs uppercase tracking-widest text-muted font-semibold mb-1.5">Your stats{#if stats.gamesPlayed}<span class="normal-case tracking-normal text-faint font-normal"> · in {stats.unit}</span>{/if}</div>
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="text-2xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.totalProfit, stats.unit)}</span>
+              <span class="text-muted text-sm">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}</span>
             </div>
-            <span class="text-muted text-xs leading-none transition-transform group-open:rotate-90">›</span>
-          </summary>
-          <div class="text-xs text-muted mt-3 pt-3 border-t border-border-soft space-y-1.5">
-            <p><b class="text-text">Win rate</b> — how often you leave the table up.</p>
-            <p><b class="text-text">ROI</b> — average profit relative to your buy-in.</p>
-            <p><b class="text-text">Consistency</b> — steadier results score higher.</p>
-            <p><b class="text-text">Opponents</b> — beating strong players boosts you more; farming weak ones doesn't.</p>
-            <p class="text-faint">Reliability rises with more games and more tracked opponents. Your score adjusts after every finished game.</p>
+            <div class="text-faint text-xs mt-1">Full breakdown, chart & badges on your profile →</div>
           </div>
-        </details>
+          <span class="text-faint text-lg leading-none shrink-0">›</span>
+        </a>
       {/if}
-      <div class="grid grid-cols-3 gap-2.5 max-[380px]:grid-cols-2">
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.totalProfit, stats.unit)}</div>
-          <div class="text-muted text-xs mt-1">total profit</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.avgProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{stats.gamesPlayed ? fmtSigned(stats.avgProfit, stats.unit) : '—'}</div>
-          <div class="text-muted text-xs mt-1">avg / game</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? stats.profitablePct + '%' : '—'}</div>
-          <div class="text-muted text-xs mt-1">% profitable</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.best?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'} font-display">{stats.best ? fmtSigned(stats.best.net, stats.unit) : '—'}</div>
-          <div class="text-muted text-xs mt-1">best night</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {(stats.worst?.net ?? 0) >= 0 ? 'text-win' : 'text-danger'} font-display">{stats.worst ? fmtSigned(stats.worst.net, stats.unit) : '—'}</div>
-          <div class="text-muted text-xs mt-1">worst night</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed}</div>
-          <div class="text-muted text-xs mt-1">games played</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums font-display">{stats.gamesPlayed ? money(stats.avgBuyIn, stats.unit) : '—'}</div>
-          <div class="text-muted text-xs mt-1">avg buy-in</div>
-        </div>
-        <div class="card text-center !mb-0">
-          <div class="text-xl font-extrabold tabular-nums {stats.streak?.kind === 'win' ? 'text-win' : stats.streak?.kind === 'loss' ? 'text-danger' : ''} font-display">
-            {stats.streak && stats.streak.current > 0 ? `${stats.streak.kind === 'win' ? '🔥' : '❄️'} ${stats.streak.current}${stats.streak.kind === 'win' ? 'W' : 'L'}` : '—'}
-          </div>
-          <div class="text-muted text-xs mt-1">current streak</div>
-        </div>
-        {#if stats.hourly}
-          <div class="card text-center !mb-0">
-            <div class="text-xl font-extrabold tabular-nums {stats.hourly.rate >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.hourly.rate, stats.unit)}<span class="text-sm text-muted">/h</span></div>
-            <div class="text-muted text-xs mt-1">per hour · {stats.hourly.games}g · {stats.hourly.hours}h</div>
-          </div>
-        {/if}
-        {#if stats.settlementSpeed}
-          <div class="card text-center !mb-0">
-            <div class="text-xl font-extrabold tabular-nums font-display">{stats.settlementSpeed.avgDays}d</div>
-            <div class="text-muted text-xs mt-1">avg settle time · {stats.settlementSpeed.count} transfers</div>
-          </div>
-        {/if}
-      </div>
 
-      {#if stats.curve && stats.curve.length >= 2}
-        <div class="card mt-3">
-          <div class="flex items-center justify-between mb-2">
-            {#if stats.levelCurve?.length >= 2}
-              <div class="flex gap-1 text-xs font-semibold">
-                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'profit' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'profit'}>Profit</button>
-                <button class="px-2 py-0.5 rounded-full transition-colors {chartTab === 'level' ? 'bg-surface-3 text-text' : 'text-faint'}" onclick={() => chartTab = 'level'}>Level</button>
+      <!-- Export & share — collapsed behind an arrow like Dangerous actions. -->
+      {#if hasResults}
+        <div class="mt-6">
+          <button type="button" aria-expanded={showExport}
+                  class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-widest text-muted hover:text-text transition-colors"
+                  onclick={() => showExport = !showExport}>
+            <span class="inline-block transition-transform {showExport ? 'rotate-90' : ''}">▸</span>
+            Export &amp; share
+          </button>
+          {#if showExport}
+            <div class="card mt-3">
+              <div class="text-muted text-xs mb-3">A story card for the group chat, or your full session statement.</div>
+              <div class="flex gap-2 flex-wrap">
+                <button class="btn-small btn" onclick={() => showShare = true}>Share stats</button>
+                <button class="btn-small btn-secondary" onclick={exportCsv}>Export CSV</button>
+                <a class="btn-small btn-secondary no-underline" href="/account/statement">Statement / PDF</a>
               </div>
-            {:else}
-              <span class="text-xs uppercase tracking-widest text-muted font-semibold">Profit over time</span>
-            {/if}
-            {#if chartTab === 'profit'}
-              <span class="text-sm font-bold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(stats.totalProfit, stats.unit)}</span>
-            {:else}
-              <span class="text-sm font-bold tabular-nums text-accent">Lv. {stats.level.level.toFixed(2)}</span>
-            {/if}
-          </div>
-          {#if chartTab === 'profit'}
-            <Sparkline points={stats.curve.map((p: any) => p.cum)} />
-          {:else}
-            <Sparkline points={stats.levelCurve} baseline={false} color="var(--color-accent)" />
+            </div>
           {/if}
         </div>
       {/if}
 
-      <!-- Award badges (peer-voted, across all games) -->
-      {#if badges && AWARDS.some((a) => badges[a.key] > 0)}
-        <div class="flex flex-wrap gap-2 mt-4">
-          {#each AWARDS as award (award.key)}
-            {#if badges[award.key] > 0}
-              <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 border border-border text-sm">
-                <span>{award.emoji}</span>
-                <span class="font-semibold">{award.label}</span>
-                <span class="text-muted">× {badges[award.key]}</span>
-              </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Export & share: turn your record into a shareable story card or a
-           downloadable statement (CSV now, printable PDF via the statement page). -->
-      {#if hasResults}
-        <div class="card mt-4 flex items-center justify-between gap-3 flex-wrap">
-          <div class="min-w-0">
-            <div class="font-semibold">Export &amp; share</div>
-            <div class="text-muted text-xs">A story card for the group chat, or your full session statement.</div>
-          </div>
-          <div class="flex gap-2 flex-wrap">
-            <button class="btn-small btn" onclick={() => showShare = true}>Share stats</button>
-            <button class="btn-small btn-secondary" onclick={exportCsv}>Export CSV</button>
-            <a class="btn-small btn-secondary no-underline" href="/account/statement">Statement / PDF</a>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Recent games with multi-select -->
+      <!-- Recent games with multi-select — collapsed behind an arrow by default -->
       {#if stats.recent?.length}
         <div class="flex items-center justify-between mt-6 mb-3">
-          <h2 class="text-sm font-semibold uppercase tracking-widest text-muted m-0">Your games</h2>
-          {#if selectMode}
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-muted">{selectedGames.size} selected</span>
-              <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={clearSelection}>Done</button>
-            </div>
-          {:else}
-            <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={() => selectMode = true}>Compare</button>
+          <button type="button" aria-expanded={showGames}
+                  class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-widest text-muted hover:text-text transition-colors"
+                  onclick={() => { showGames = !showGames; if (!showGames) clearSelection(); }}>
+            <span class="inline-block transition-transform {showGames ? 'rotate-90' : ''}">▸</span>
+            Your recent games <span class="text-faint font-normal normal-case tracking-normal">({stats.recent.length})</span>
+          </button>
+          {#if showGames}
+            {#if selectMode}
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted">{selectedGames.size} selected</span>
+                <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={clearSelection}>Done</button>
+              </div>
+            {:else}
+              <button class="btn-small btn-ghost !py-1.5 !px-2.5" onclick={() => selectMode = true}>Compare</button>
+            {/if}
           {/if}
         </div>
 
+        {#if showGames}
         {#if selectedStats}
           <div class="card !border-accent/40 mb-3">
             <div class="sub-label mb-2">Selected {selectedStats.count} games</div>
@@ -931,6 +853,7 @@
             </a>
           {/if}
         {/each}
+        {/if}
       {/if}
     {/if}
 

@@ -1263,6 +1263,14 @@
         {#if game.scheduledFor}<div class="text-accent text-sm font-semibold mt-0.5">{untilLabel(game.scheduledFor, nowMs)}</div>{/if}
       </div>
 
+      <!-- Host note -->
+      {#if game.note}
+        <div class="card mt-4 !bg-surface-2">
+          <div class="text-xs uppercase tracking-widest font-bold text-muted">From the host</div>
+          <p class="mt-1 whitespace-pre-wrap">{game.note}</p>
+        </div>
+      {/if}
+
       <!-- Your RSVP -->
       <div class="card mt-4">
         {#if mySeat}
@@ -1302,6 +1310,35 @@
           {/each}
         {/if}
       </div>
+
+      <!-- Public game info (visible to all players) -->
+      {#if game.visibility === 'public'}
+        <div class="card mt-4 !py-3 !border-accent/20">
+          <div class="flex items-center gap-2 text-sm flex-wrap">
+            <span class="pill !border-accent/45 text-accent">Open game</span>
+            {#if game.blinds}<span class="tabular-nums text-muted">{game.blinds.small}/{game.blinds.big} blinds</span>{/if}
+            {#if game.maxPlayers}<span class="text-muted">{game.players.length}/{game.maxPlayers} seats</span>{/if}
+            {#if game.minBuyIn > 0}
+              <span class="text-muted tabular-nums">Buy-in: {game.maxBuyIn > 0 ? `${game.minBuyIn}–${game.maxBuyIn}` : game.minBuyIn} blinds</span>
+            {/if}
+          </div>
+          {#if game.ownerHandle}
+            <div class="flex items-center gap-2 mt-2 text-sm">
+              {#if game.ownerAvatar}
+                <img src={game.ownerAvatar} alt="" class="w-5 h-5 rounded-full" referrerpolicy="no-referrer" />
+              {/if}
+              <span class="text-muted">Hosted by <a href="/u/{game.ownerHandle}" class="text-text font-semibold hover:text-accent">{game.ownerName}</a></span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Host: list this game publicly / manage join requests (works on scheduled too) -->
+      {#if amHost}
+        <div class="mt-2.5">
+          <HostListing {game} {api} defaultCity={myAccount?.city || ''} onUpdate={(g) => (game = g)} />
+        </div>
+      {/if}
 
       <!-- Coordination thread — address, timing, who's bringing chips -->
       {@render chatSection('mt-5')}
@@ -1490,6 +1527,28 @@
             <button class="btn-small btn-ghost" onclick={shareLink}>Copy link</button>
             <button class="btn-small btn-ghost" onclick={() => showShareBanner = false}>✕</button>
           </div>
+        </div>
+      {/if}
+
+      <!-- Public game info: visible to all players (not just the host) -->
+      {#if game.visibility === 'public'}
+        <div class="card mt-2.5 !py-3 !border-accent/20">
+          <div class="flex items-center gap-2 text-sm flex-wrap">
+            <span class="pill !border-accent/45 text-accent">Open game</span>
+            {#if game.blinds}<span class="tabular-nums text-muted">{game.blinds.small}/{game.blinds.big} blinds</span>{/if}
+            {#if game.maxPlayers}<span class="text-muted">{game.players.length}/{game.maxPlayers} seats</span>{/if}
+            {#if game.minBuyIn > 0}
+              <span class="text-muted tabular-nums">Buy-in: {game.maxBuyIn > 0 ? `${game.minBuyIn}–${game.maxBuyIn}` : game.minBuyIn} blinds</span>
+            {/if}
+          </div>
+          {#if game.ownerHandle}
+            <div class="flex items-center gap-2 mt-2 text-sm">
+              {#if game.ownerAvatar}
+                <img src={game.ownerAvatar} alt="" class="w-5 h-5 rounded-full" referrerpolicy="no-referrer" />
+              {/if}
+              <span class="text-muted">Hosted by <a href="/u/{game.ownerHandle}" class="text-text font-semibold hover:text-accent">{game.ownerName}</a></span>
+            </div>
+          {/if}
         </div>
       {/if}
 
