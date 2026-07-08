@@ -217,6 +217,10 @@ export interface User {
   privacy?: string;
   /** Home city (free text) — powers the by-city leaderboard and finding local players. */
   city?: string | null;
+  /** True when `city` was auto-inferred from who they play with (not set by the
+   *  user). Inferred cities are never used as evidence to infer others (no cascade),
+   *  and an explicit choice clears this flag. */
+  cityInferred?: boolean;
   /** How the account was originally created: 'local' (handle + PIN) | 'google' | 'apple'. */
   provider: string;
   providerSub: string | null;

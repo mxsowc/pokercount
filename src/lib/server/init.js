@@ -1,6 +1,6 @@
 // One-time server initialization — called from hooks.server.ts.
-import { init as initStore, reapStaleGames, reapAbandonedGames, backfillSettleConfirmations } from './store.js';
-import { init as initUsers } from './users.js';
+import { init as initStore, reapStaleGames, reapAbandonedGames, backfillSettleConfirmations, allGames } from './store.js';
+import { init as initUsers, seedHomeCities, inferCitiesFromCoplayers } from './users.js';
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
@@ -16,6 +16,7 @@ export function ensureInit() {
   if (done) return;
   initAuth();
   const usersLoaded = initUsers();
+  seedHomeCities(); // one-off: set listed accounts' home city to Amsterdam (marker-guarded)
   const socialLoaded = initSocial();
   const reactionsLoaded = initReactions();
   const commentsLoaded = initComments();
@@ -29,9 +30,10 @@ export function ensureInit() {
 
   // Housekeeping, hourly: first delete abandoned tables (not real, 24h+ old),
   // then auto-close any game left active with no activity for 12h+ (order matters
-  // — reap junk before bothering to settle/close it), then remind both sides of
-  // any debt still unpaid 24h after a game ended.
-  const housekeep = () => { reapAbandonedGames(); reapStaleGames(); remindUnsettledDebts(); };
+  // — reap junk before bothering to settle/close it), remind both sides of any
+  // debt still unpaid 24h after a game ended, and infer a home city for accounts
+  // that never set one from who they consistently play with.
+  const housekeep = () => { reapAbandonedGames(); reapStaleGames(); remindUnsettledDebts(); inferCitiesFromCoplayers(allGames()); };
   housekeep();
   setInterval(housekeep, 3_600_000); // every hour
 

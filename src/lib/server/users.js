@@ -8,6 +8,7 @@ import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { DATA_DIR } from "./paths.js";
 import { writeFileDurable } from "./fsutil.js";
 import { citySlug, cityLabel } from "../cities.js";
+import { isRealGame } from "../engine/stats.js";
 import { join } from "node:path";
 const FILE = join(DATA_DIR, 'users.json');
 
@@ -344,8 +345,10 @@ export function updateProfile(userId, { name, avatar, privacy, newsletter, email
 
   if (city !== undefined) {
     // Home city — powers the by-city leaderboard and finding local players. Free
-    // text (people know their own city best); empty clears it.
+    // text (people know their own city best); empty clears it. An explicit choice
+    // is ground truth, so it clears any earlier auto-inference.
     u.city = String(city || '').trim().replace(/\s+/g, ' ').slice(0, 60) || null;
+    u.cityInferred = false;
   }
 
   if (email !== undefined) {
@@ -401,6 +404,89 @@ export function updateProfile(userId, { name, avatar, privacy, newsletter, email
 
   persist();
   return u;
+}
+
+// ONE-OFF admin edit: set specific early accounts' home city to Amsterdam (and
+// correct Eric's country from Senegal → NL), since there's no admin user-editor.
+// Marker-guarded so it runs exactly once on the next boot; safe to delete this
+// function + its call in init.js afterwards.
+const CITY_SEED_MARKER = '.city-seed-amsterdam-v1';
+export function seedHomeCities() {
+  const marker = join(DATA_DIR, CITY_SEED_MARKER);
+  if (existsSync(marker)) return 0; // already applied
+  // Target by handle (as shown in admin: @ferdi, @snepvangerslucas, …).
+  const HANDLES = ['ferdi', 'snepvangerslucas', 'eric', 'maxsurowy1', 'maxsurowy'];
+  let changed = 0;
+  for (const h of HANDLES) {
+    const u = byId.get(handleIndex.get(normalizeHandle(h)) || '');
+    if (!u) continue;
+    u.city = 'Amsterdam';
+    if (h === 'eric') u.country = 'NL'; // was Senegal — relocate to the Netherlands
+    changed++;
+  }
+  if (changed > 0) persist();
+  try { writeFileDurable(marker, new Date().toISOString()); }
+  catch (e) { console.error('[users] city-seed: failed to write marker (may re-run):', e); }
+  if (changed > 0) console.log(`[users] city-seed: set home city Amsterdam for ${changed} account(s)`);
+  return changed;
+}
+
+/** Auto-populate `city` for accounts that never set one, inferring it from who
+ *  they actually play with. A game only points to a city if EVERY city-declared
+ *  co-player in it is from the SAME city (a game spanning multiple cities is
+ *  ambiguous and ignored); an account is set only when MORE THAN 2 of its games
+ *  consistently point to one — and only one — city. Rules:
+ *   - only fills EMPTY cities (never overrides a choice);
+ *   - evidence is EXPLICIT co-player cities only (an inferred city is never used
+ *     to infer another → no cascade / compounding);
+ *   - anonymous (not-logged-in) seats are ignored — they have no account/city.
+ *  Idempotent-ish: once set, an account has a city and is skipped next time.
+ *  @param {import('../types').Game[]} games @returns {number} accounts updated */
+export function inferCitiesFromCoplayers(games) {
+  // Ground-truth evidence: only cities users set themselves (or admin-seeded).
+  /** @type {Map<string,string>} userId -> raw city label */
+  const cityOf = new Map();
+  for (const u of byId.values()) if (u.city && !u.cityInferred) cityOf.set(u.id, u.city);
+  if (!cityOf.size) return 0;
+
+  // candidate userId -> (city slug -> { label, games:Set<gameId> })
+  /** @type {Map<string, Map<string, { label: string, games: Set<string> }>>} */
+  const votes = new Map();
+  for (const g of games) {
+    if (!isRealGame(g)) continue;
+    const seats = (g.players || []).filter((p) => p.userId); // logged-in seats only
+    if (seats.length < 2) continue;
+    // City-declared seats in this game (explicit cities only).
+    const present = seats
+      .map((p) => { const c = cityOf.get(p.userId); return c ? { userId: p.userId, slug: citySlug(c), label: c } : null; })
+      .filter(Boolean);
+    if (!present.length) continue;
+    for (const p of seats) {
+      const u = byId.get(p.userId);
+      if (!u || u.city) continue; // only accounts with no city of their own
+      // Distinct cities among the OTHER city-declared players in this game.
+      const distinct = new Map();
+      for (const ev of present) if (ev.userId !== p.userId && !distinct.has(ev.slug)) distinct.set(ev.slug, ev.label);
+      if (distinct.size !== 1) continue; // 0 = no evidence · ≥2 = mixed city → ignore this game
+      const [[slug, label]] = distinct;
+      if (!votes.has(p.userId)) votes.set(p.userId, new Map());
+      const m = votes.get(p.userId);
+      if (!m.has(slug)) m.set(slug, { label, games: new Set() });
+      m.get(slug).games.add(g.id);
+    }
+  }
+
+  let updated = 0;
+  for (const [userId, m] of votes) {
+    // Need consistency with ONE specific city: exactly one city over the threshold.
+    const qualifying = [...m.entries()].filter(([, info]) => info.games.size > 2);
+    if (qualifying.length !== 1) continue;
+    const [slug, info] = qualifying[0];
+    const u = byId.get(userId);
+    if (u && !u.city) { u.city = cityLabel(slug, info.label); u.cityInferred = true; updated++; }
+  }
+  if (updated > 0) { persist(); console.log(`[users] inferred home city for ${updated} account(s) from co-players`); }
+  return updated;
 }
 
 // ---- account linking & deletion ---------------------------------------------
