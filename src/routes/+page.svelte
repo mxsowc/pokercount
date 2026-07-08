@@ -108,6 +108,30 @@
     } catch {}
   }
 
+  // Drop "ghost" entries: games this device remembers locally (pc_games) that the
+  // server no longer has — e.g. an abandoned single-player / no-buy-in table the
+  // cleanup reaper deleted after 24h. Without this they linger on the home list
+  // with a dead "Continue" button (and never appear in admin, which reads live).
+  async function pruneDeletedGames() {
+    if (!browser) return;
+    const local = listMyGames();
+    if (!local.length) return;
+    try {
+      const res = await fetch('/api/games/exists', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: local.map((g: any) => g.id) }),
+      });
+      if (!res.ok) return; // never prune on a failed/absent response — only on a confirmed answer
+      const { existing } = await res.json();
+      const keep = new Set<string>(existing || []);
+      const pruned = local.filter((g: any) => keep.has(g.id));
+      if (pruned.length !== local.length) {
+        localStorage.setItem('pc_games', JSON.stringify(pruned));
+        games = games.filter((g: any) => keep.has(g.id));
+      }
+    } catch {}
+  }
+
   // Format an instant as a datetime-local input value (local YYYY-MM-DDTHH:mm).
   function localInputValue(d = new Date()): string {
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -126,7 +150,8 @@
     minSchedule = localInputValue();
     nudgeDismissed = !!localStorage.getItem('pc_host_nudge_dismissed');
     if (user?.city) openCity = user.city;
-    loadAccountGames();
+    // Prune server-deleted ghosts first, then fold in account-linked games.
+    pruneDeletedGames().then(loadAccountGames);
     // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
     if (browser && $page.url.searchParams.get('start') === 'open') showOpen();
   });
@@ -587,16 +612,18 @@
     </div>
 
     <!-- No code? Browse the public city directory instead. -->
-    <div class="flex items-center gap-3 my-4 text-muted text-xs">
+    <div class="flex items-center gap-3 my-6 text-muted text-xs">
       <span class="h-px bg-border flex-1"></span> or <span class="h-px bg-border flex-1"></span>
     </div>
-    {#if user?.city}
-      <a href="/homegames/{citySlug(user.city)}" class="btn btn-secondary w-full no-underline text-center">Browse open games in {user.city} →</a>
-      <p class="text-faint text-xs text-center mt-2">Public tables near you — request a seat, the host approves.</p>
-    {:else}
-      <a href="/homegames" class="btn btn-secondary w-full no-underline text-center">Browse home games by city →</a>
-      <p class="text-faint text-xs text-center mt-2">Find a public table near you and request a seat. <a href="/account">Set your city</a> to jump straight to it.</p>
-    {/if}
+    <div class="rounded-2xl border border-border-soft p-4 text-center">
+      {#if user?.city}
+        <a href="/homegames/{citySlug(user.city)}" class="btn btn-secondary w-full no-underline">Browse open home games →</a>
+        <p class="text-faint text-xs mt-3 leading-relaxed">Public tables in {user.city} — request a seat, the host approves.<br />You can search other cities there too.</p>
+      {:else}
+        <a href="/homegames" class="btn btn-secondary w-full no-underline">Browse open home games →</a>
+        <p class="text-faint text-xs mt-3 leading-relaxed">Find a public table near you and request a seat. <a href="/account">Set your city</a> to jump straight to it.</p>
+      {/if}
+    </div>
   {/if}
 </div>
 

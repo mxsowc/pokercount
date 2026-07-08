@@ -134,6 +134,12 @@
             <div class="min-w-0">
               <div class="font-semibold truncate">{r.name}{#if r.handle} <span class="text-muted font-normal">@{r.handle}</span>{/if}</div>
               {#if r.message}<div class="text-muted text-sm truncate">{r.message}</div>{/if}
+              {#if r.mutual}
+                {@const shown = r.mutual.users.slice(0, 3).map((u: any) => '@' + u.handle).join(', ')}
+                <div class="text-xs text-win mt-0.5 truncate" title="People you've both played with before">
+                  🤝 Also played with {shown}{r.mutual.count > 3 ? ` +${r.mutual.count - 3} more` : ''} — {r.mutual.count === 1 ? 'someone' : 'people'} you've played with
+                </div>
+              {/if}
             </div>
             <div class="ml-auto flex gap-1.5 shrink-0">
               <button class="btn-small btn" disabled={busy} onclick={() => decide(r.id, 'approve')}>Approve</button>

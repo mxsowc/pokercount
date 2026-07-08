@@ -1,8 +1,19 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { fmtSigned } from '$lib/utils/money';
+  import CityPicker from '$lib/components/CityPicker.svelte';
+  import { citySlug } from '$lib/cities.js';
 
   let { data } = $props();
+
+  // Browse another city: type/pick a city and jump to its directory page.
+  let searchCity = $state('');
+  function goCity(e: Event) {
+    e.preventDefault();
+    const c = searchCity.trim();
+    if (c) goto(`/homegames/${citySlug(c)}`);
+  }
   const label = $derived(data.label as string);
   const slug = $derived(data.slug as string);
   // Directory is data-minimised: handle only (no real name / photo on the indexed
@@ -131,6 +142,12 @@
       {/if}
     </p>
   </header>
+
+  <!-- Browse a different city -->
+  <form class="flex gap-2 mb-8" onsubmit={goCity}>
+    <div class="flex-1"><CityPicker bind:value={searchCity} placeholder="Browse another city — e.g. Berlin" /></div>
+    <button class="btn btn-secondary shrink-0 no-underline" type="submit">Browse →</button>
+  </form>
 
   {#if openGames.length}
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">Open games in {label}</h2>

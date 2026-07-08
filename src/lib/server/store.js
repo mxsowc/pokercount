@@ -437,4 +437,52 @@ export function reapAbandonedGames() {
   return deleted;
 }
 
+// One-time historical migration marker (see backfillSettleConfirmations).
+const SETTLE_BACKFILL_MARKER = '.settle-backfill-v1';
+
+/** ONE-TIME historical backfill for the "avg settle time" stat, which didn't
+ *  exist before. For every ALREADY-finished game, mark each settlement transfer
+ *  that was never confirmed as paid + confirmed exactly one day after the game
+ *  settled — seeding past debtors' settle time to 1 day and closing out ancient
+ *  unpaid debts (so they stop nagging). Guarded by a marker file in DATA_DIR so it
+ *  runs EXACTLY ONCE: new games and real confirmations afterwards are recorded
+ *  normally, and a genuinely-unpaid new debt is never auto-confirmed on a reboot.
+ *  Transfers already confirmed through the real flow are left untouched.
+ *  @returns {number} transfers backfilled */
+export function backfillSettleConfirmations() {
+  const marker = join(DATA_DIR, SETTLE_BACKFILL_MARKER);
+  if (existsSync(marker)) return 0; // already run — never retro-confirm newer debts
+  const DAY = 24 * 60 * 60 * 1000;
+  let confirmed = 0, gamesTouched = 0;
+  for (const g of games.values()) {
+    if (g.status !== 'ended' && g.status !== 'settled') continue;
+    const s = g.settlement;
+    if (!s || !Array.isArray(s.transfers) || !s.transfers.length || !s.computedAt) continue;
+    const base = new Date(s.computedAt).getTime();
+    if (!Number.isFinite(base)) continue;
+    const at = new Date(base + DAY).toISOString(); // "settled 1 day later" → avgDays = 1
+    let dirty = false;
+    for (const t of s.transfers) {
+      if (t.confirmedAt) continue; // a real confirmation is already recorded — leave it
+      t.paid = true;
+      if (!t.paidAt) t.paidAt = at;
+      if (!t.paidBy) t.paidBy = 'potcount';
+      t.confirmed = true;
+      t.confirmedAt = at;
+      t.confirmedBy = 'potcount';
+      confirmed++; dirty = true;
+    }
+    if (dirty) {
+      // Every transfer is now paid → the game is fully settled.
+      if (s.transfers.every((t) => t.paid)) g.status = 'settled';
+      persist(g);
+      gamesTouched++;
+    }
+  }
+  try { writeFileDurable(marker, new Date().toISOString()); }
+  catch (e) { console.error('[store] settle-backfill: failed to write marker (may re-run):', e); }
+  if (confirmed > 0) console.log(`[store] settle-backfill: confirmed ${confirmed} historical transfer(s) across ${gamesTouched} game(s)`);
+  return confirmed;
+}
+
 export { uid };

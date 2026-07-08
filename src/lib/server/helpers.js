@@ -1,7 +1,7 @@
 // Shared helpers for API routes.
 import { sessionUid, verifyGameToken } from './auth.js';
-import { getUser } from './users.js';
-import { uid } from './store.js';
+import { getUser, publicUser } from './users.js';
+import { uid, allGames } from './store.js';
 import { isFollowing } from './social.js';
 
 /** @typedef {import('../types').Game} Game */
@@ -73,6 +73,37 @@ export function logEntry(actor, action, extra = {}) {
 export function areConnected(a, b) {
   if (!a || !b || a === b) return false;
   return isFollowing(a, b) || isFollowing(b, a);
+}
+
+/** Everyone (by account id) who has shared a table with `userId` across all games. */
+function coPlayers(userId) {
+  const set = new Set();
+  for (const g of allGames()) {
+    const seats = g.players || [];
+    if (!seats.some((p) => p.userId === userId)) continue;
+    for (const p of seats) if (p.userId && p.userId !== userId) set.add(p.userId);
+  }
+  return set;
+}
+
+/** Social proof for a host deciding a join request: the people the REQUESTER has
+ *  played with that the HOST has ALSO played with — i.e. mutual poker
+ *  acquaintances. Only returned when the two have NEVER shared a table themselves
+ *  (that's when the host needs a reason to trust a stranger); null otherwise, so
+ *  the UI shows nothing. Requires both to be signed-in accounts.
+ * @param {string} hostId @param {string} requesterId
+ * @returns {{ count: number, users: Array<{handle:string, displayName:string}> } | null} */
+export function mutualCoPlayers(hostId, requesterId) {
+  if (!hostId || !requesterId || hostId === requesterId) return null;
+  const hostCo = coPlayers(hostId);
+  if (hostCo.has(requesterId)) return null; // they've already played together — no message
+  const reqCo = coPlayers(requesterId);
+  const users = [...reqCo]
+    .filter((id) => id !== hostId && hostCo.has(id))
+    .map((id) => publicUser(getUser(id)))
+    .filter(Boolean)
+    .map((u) => ({ handle: u.handle, displayName: u.displayName }));
+  return users.length ? { count: users.length, users } : null;
 }
 
 /** Attach public profile info (handle) to seated players who have linked an

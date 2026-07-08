@@ -1,5 +1,5 @@
 // One-time server initialization — called from hooks.server.ts.
-import { init as initStore, reapStaleGames, reapAbandonedGames } from './store.js';
+import { init as initStore, reapStaleGames, reapAbandonedGames, backfillSettleConfirmations } from './store.js';
 import { init as initUsers } from './users.js';
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
@@ -21,6 +21,10 @@ export function ensureInit() {
   const commentsLoaded = initComments();
   initNotifications();
   const gamesLoaded = initStore();
+  // One-time: seed the new "avg settle time" stat for historical games (marks past
+  // debts paid+confirmed ~1 day after the game). Marker-guarded, so it's a no-op
+  // after the first boot and never touches games created afterwards.
+  backfillSettleConfirmations();
   console.log(`potcount ready (${gamesLoaded} game(s), ${usersLoaded} user(s), ${socialLoaded} follow(s), ${reactionsLoaded} reaction set(s), ${commentsLoaded} comment thread(s))`);
 
   // Housekeeping, hourly: first delete abandoned tables (not real, 24h+ old),

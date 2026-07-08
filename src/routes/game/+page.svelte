@@ -269,15 +269,10 @@
     }
     // Prefer the table's standard buy-in set at creation (falls back to the device default).
     if (game?.defaultBuyIn > 0) bulkAmount = String(game.defaultBuyIn);
-    try { myAccount = (await api('GET', '/api/me')).user; } catch {}
-    if (myAccount) {
-      try { const f = await api('GET', '/api/me/following'); followingSet = new Set((f.following || []).map((u: any) => u.id)); } catch {}
-      try { const v = await api('GET', `/api/games/${gameId}/vote`); myVotes = v.myVotes || {}; } catch {}
-    }
-    // Load series data if this game belongs to one
-    if (game.series) {
-      try { seriesData = await api('GET', `/api/series?name=${encodeURIComponent(game.series)}`); } catch {}
-    }
+    // Paint the moment the game is in. Everything below only ENHANCES the page
+    // (account, who-you-follow, your votes, series standings), so it must not block
+    // first paint — it used to run as a 4-request serial chain, adding seconds
+    // before anything showed. Now it loads in the background, in parallel.
     loading = false;
     if (showShareBanner) toast('Game started!');
 
@@ -299,19 +294,34 @@
     });
     unsub = () => es.close();
 
-    // Returned here from sign-in to claim a seat. If exactly ONE unclaimed seat
-    // matches the account name, link it automatically (they already said "that's
-    // me" by signing in); anything ambiguous (0 or >1) still opens the picker.
+    void loadSecondary();
+  });
+  onDestroy(() => unsub?.());
+
+  // Account + account-scoped data (who you follow, your votes) and any series
+  // standings. Runs AFTER first paint and parallelised — so it costs one
+  // round-trip of background wait, not four in series before the page appears.
+  async function loadSecondary() {
+    try { myAccount = (await api('GET', '/api/me')).user; } catch {}
+    const jobs: Promise<any>[] = [];
+    if (myAccount) {
+      jobs.push(api('GET', '/api/me/following').then((f) => { followingSet = new Set((f.following || []).map((u: any) => u.id)); }).catch(() => {}));
+      jobs.push(api('GET', `/api/games/${gameId}/vote`).then((v) => { myVotes = v.myVotes || {}; }).catch(() => {}));
+    }
+    if (game?.series) {
+      jobs.push(api('GET', `/api/series?name=${encodeURIComponent(game.series)}`).then((s) => { seriesData = s; }).catch(() => {}));
+    }
+    // Returned here from sign-in to claim a seat — needs the account loaded first.
+    // If exactly ONE unclaimed seat matches the account name, link it automatically;
+    // anything ambiguous (0 or >1) opens the picker.
     if ($page.url.searchParams.get('claim') === '1' && myAccount && !mySeat) {
       const dn = (myAccount.displayName || '').trim().toLowerCase();
       const matches = unclaimedSeats.filter((p: any) => p.name.trim().toLowerCase() === dn);
       if (matches.length === 1) claimSeat(matches[0].id);
       else claimOpen = true;
     }
-    // Note: we no longer auto-pop the join modal. Viewing a shared game shouldn't
-    // hit a name-entry wall — people opt in via the "Take a seat" button instead.
-  });
-  onDestroy(() => unsub?.());
+    await Promise.all(jobs);
+  }
 
   // ---- describe log entries -------------------------------------------------
   function describe(e: any): string {

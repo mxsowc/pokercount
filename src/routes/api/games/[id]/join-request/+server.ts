@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
-import { sessionUser, isGameHost, httpError } from '$lib/server/helpers.js';
+import { sessionUser, isGameHost, mutualCoPlayers, httpError } from '$lib/server/helpers.js';
 import { notify } from '$lib/server/notifications.js';
 
 // A signed-in user asks to join a PUBLIC game. Unlike code-join, this never seats
@@ -62,6 +62,12 @@ export function GET({ request, params }) {
   const g0 = getGame(id);
   if (!g0) return json({ error: 'game not found' }, { status: 404 });
   if (!isGameHost(g0, request)) return json({ error: 'Only the host can see join requests.' }, { status: 403 });
-  const requests = (g0.joinRequests || []).filter((r: any) => r.status === 'pending');
+  // Enrich each pending request with mutual-poker-acquaintance social proof for
+  // the (signed-in) host: people the requester has played with that the host has
+  // too — only shown when the host & requester have never played together.
+  const hostId = sessionUser(request)?.id;
+  const requests = (g0.joinRequests || [])
+    .filter((r: any) => r.status === 'pending')
+    .map((r: any) => ({ ...r, mutual: hostId ? mutualCoPlayers(hostId, r.userId) : null }));
   return json({ requests });
 }
