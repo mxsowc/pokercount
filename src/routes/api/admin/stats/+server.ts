@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { timingSafeEqual } from 'node:crypto';
-import { allUsers, getUser } from '$lib/server/users.js';
+import { allUsers, getUser, isPro } from '$lib/server/users.js';
 import { allGames } from '$lib/server/store.js';
 import { allReports } from '$lib/server/reports.js';
 import { reasonLabel } from '$lib/reports';
@@ -217,6 +217,7 @@ export async function POST(event) {
     .sort((a, b) => (String(a.createdAt) < String(b.createdAt) ? 1 : -1))
     .slice(0, 30)
     .map((u) => ({
+      id: u.id,
       handle: u.handle,
       displayName: u.displayName,
       provider: u.provider,
@@ -225,8 +226,19 @@ export async function POST(event) {
       ageRange: u.ageRange || null,
       country: u.country || null,
       heardFrom: u.heardFrom || null,
+      pro: isPro(u),
       createdAt: u.createdAt,
     }));
+
+  // Pro members — the whole list (for the admin Pro panel), newest membership first.
+  const proMembers = users
+    .filter((u) => isPro(u))
+    .map((u) => ({
+      id: u.id, handle: u.handle, displayName: u.displayName,
+      plan: u.pro?.plan || '?', since: u.pro?.since || null,
+      currentPeriodEnd: u.pro?.currentPeriodEnd || null, grantedBy: u.pro?.grantedBy || null,
+    }))
+    .sort((a, b) => (String(a.since) < String(b.since) ? 1 : -1));
 
   // Player reports for the review queue: newest-first, still-open only, enriched
   // with both profiles + a link to a game they've shared (if any), for context.
@@ -242,8 +254,8 @@ export async function POST(event) {
   const briefUser = (id: string) => {
     const u = getUser(id);
     return u
-      ? { id: u.id, handle: u.handle, displayName: u.displayName, banned: !!u.banned }
-      : { id, handle: null, displayName: '(deleted)', banned: false };
+      ? { id: u.id, handle: u.handle, displayName: u.displayName, banned: !!u.banned, pro: isPro(u) }
+      : { id, handle: null, displayName: '(deleted)', banned: false, pro: false };
   };
   const reports = allReports()
     .filter((r: any) => r.status !== 'closed')
@@ -258,6 +270,7 @@ export async function POST(event) {
 
   return json({
     reports,
+    proMembers,
     total: users.length,
     active30,
     withEmail,

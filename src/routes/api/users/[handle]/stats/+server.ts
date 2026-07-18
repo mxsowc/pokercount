@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { getByHandle, publicUser } from '$lib/server/users.js';
+import { getByHandle, publicUser, isPro } from '$lib/server/users.js';
 import { privacyBlock, sessionUser } from '$lib/server/helpers.js';
 import { allGames } from '$lib/server/store.js';
 import { computeUserStats } from '$lib/engine/stats.js';
@@ -27,7 +27,8 @@ export function GET({ params, request }) {
   }
 
   const stats = computeUserStats(games, u.id, converter());
-  const isOwnProfile = sessionUser(request)?.id === u.id;
+  const viewer = sessionUser(request);
+  const isOwnProfile = viewer?.id === u.id;
 
   // Settlement speed: visible to yourself, Pro-gated for others. The full dated
   // ledger (uncapped history + per-game buy-ins) is a private export — never
@@ -35,9 +36,15 @@ export function GET({ params, request }) {
   const hasSettlementSpeed = !!stats.settlementSpeed;
   const { settlementSpeed, ledger, ...publicStats } = stats;
 
+  // Own profile → everything. Others → the capped public stats, PLUS the Pro-only
+  // "avg settle time" when the VIEWER is a Pro member. The full dated ledger stays
+  // owner-only (a private export, never handed out even to Pro).
+  const outStats = isOwnProfile
+    ? stats
+    : (isPro(viewer) ? { ...publicStats, settlementSpeed } : publicStats);
   return json({
     user: publicUser(u),
-    stats: isOwnProfile ? stats : publicStats,
+    stats: outStats,
     badges,
     hasSettlementSpeed,
   });

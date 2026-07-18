@@ -68,6 +68,24 @@
     finally { banningId = null; }
   }
 
+  // Grant / revoke Pro (manual comp) for an account. Reuses the held admin password.
+  let proBusyId = $state<string | null>(null);
+  async function setProAdmin(userId: string, pro: boolean, name?: string) {
+    if (!pro && !confirm(`Remove Pro from ${name || 'this account'}?`)) return;
+    proBusyId = userId;
+    error = '';
+    try {
+      const res = await fetch('/api/admin/pro', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, userId, pro }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { error = d.error || 'Failed'; return; }
+      await load(password);
+    } catch (e: any) { error = e.message; }
+    finally { proBusyId = null; }
+  }
+
   onMount(() => {
     const saved = browser ? sessionStorage.getItem('pc_admin_pw') : null;
     if (saved) { password = saved; load(saved); }
@@ -293,17 +311,35 @@
       {/if}
     {/if}
 
+    {#if data.proMembers?.length}
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">👑 Pro members ({data.proMembers.length})</h2>
+      <div class="card !p-0 overflow-hidden mb-5">
+        {#each data.proMembers as p (p.id)}
+          <div class="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-border last:border-0">
+            <div class="min-w-0">
+              <a href="/u/{p.handle}" target="_blank" rel="noopener" class="font-semibold text-sm text-text hover:text-accent no-underline truncate block">👑 @{p.handle}</a>
+              <div class="text-muted text-xs truncate">{p.plan}{p.grantedBy === 'admin' ? ' · comp' : ''}{p.currentPeriodEnd ? ' · renews ' + fmtDate(p.currentPeriodEnd) : ''}{p.since ? ' · since ' + fmtDate(p.since) : ''}</div>
+            </div>
+            <button class="btn-small btn-ghost shrink-0" disabled={proBusyId === p.id} onclick={() => setProAdmin(p.id, false, '@' + p.handle)}>{proBusyId === p.id ? '…' : 'Revoke'}</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Recent signups</h2>
     <div class="card !p-0 overflow-hidden">
       {#each data.recent as u (u.handle)}
         <div class="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-border last:border-0">
           <div class="min-w-0">
-            <div class="font-semibold text-sm truncate">{u.displayName} <span class="text-muted font-normal">@{u.handle}</span></div>
+            <div class="font-semibold text-sm truncate">{u.displayName}{#if u.pro} 👑{/if} <span class="text-muted font-normal">@{u.handle}</span></div>
             <div class="text-muted text-xs truncate">
               {u.provider}{u.email ? ' · ' + u.email : ''}{u.country ? ' · ' + u.country : ''}{u.ageRange ? ' · ' + u.ageRange : ''}{u.heardFrom ? ' · ' + u.heardFrom : ''}{u.newsletter ? ' · 📧 opted in' : ''}
             </div>
           </div>
-          <div class="text-muted text-xs shrink-0 text-right">{fmtDate(u.createdAt)}</div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button class="btn-small btn-ghost !px-2 text-xs" disabled={proBusyId === u.id} onclick={() => setProAdmin(u.id, !u.pro, '@' + u.handle)}>{proBusyId === u.id ? '…' : (u.pro ? 'Revoke Pro' : 'Grant Pro')}</button>
+            <span class="text-muted text-xs text-right">{fmtDate(u.createdAt)}</span>
+          </div>
         </div>
       {/each}
     </div>

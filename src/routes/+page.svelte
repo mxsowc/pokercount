@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { goto, afterNavigate, replaceState } from '$app/navigation';
   import { toast } from '$lib/stores/toast';
   import { ago } from '$lib/utils/time';
   import { money } from '$lib/utils/money';
@@ -166,17 +166,8 @@
     // Prune server-deleted ghosts first, then fold in account-linked games.
     pruneDeletedGames().then(loadAccountGames);
     loadSentRequests();
-    // Deep links into the create form:
-    //   ?start=open        → open the form (private default; e.g. /poker-chip-tracker)
-    //   ?host=open[&city=…] → open it in OPEN (public) mode, city pre-filled — used
-    //                          by "Start a home game" on the /homegames directory.
-    if (browser) {
-      const sp = $page.url.searchParams;
-      const cityParam = sp.get('city');
-      if (cityParam) openCity = cityParam;
-      if (sp.get('host') === 'open') { isOpenGame = true; showOpen(); }
-      else if (sp.get('start') === 'open') showOpen();
-    }
+    // Deep links into the create form (?start=open / ?host=open&city=…) are applied
+    // by afterNavigate, which also fires on this initial load.
   });
 
   // Open game form
@@ -379,15 +370,51 @@
     games = games.filter((g: any) => g.id !== id);
   }
 
+  // The create/join screens are a client-side `view` on the `/` route, not their
+  // own URL. Mirror the view into a `?start=` query param so that navigating home
+  // (clicking the potcount logo / bottom-nav home → href="/") is a REAL URL change
+  // that resets the view — otherwise the logo resolves to the same URL and the
+  // form just stays put. `afterNavigate` below is what applies the reset.
+  function setViewUrl(v: View) {
+    if (!browser) return;
+    const url = new URL(location.href);
+    url.searchParams.delete('host');
+    if (v === 'open') url.searchParams.set('start', 'open');
+    else if (v === 'join') url.searchParams.set('start', 'join');
+    else url.searchParams.delete('start');
+    const next = url.pathname + url.search;
+    if (next !== location.pathname + location.search) replaceState(next, {});
+  }
+
   function showOpen() {
     view = 'open';
     openName = user?.displayName || getActor().name;
     generatedTitle = gameTitle();
+    setViewUrl('open');
   }
   function showJoin() {
     view = 'join';
     joinName = getActor().name;
+    setViewUrl('join');
   }
+  function backToDashboard() {
+    view = 'intro';
+    setViewUrl('intro');
+  }
+
+  // Derive the view from the URL on every navigation (incl. the initial load and
+  // the logo/home click). replaceState from setViewUrl doesn't fire this, so
+  // there's no loop — only genuine navigations reset the screen.
+  afterNavigate(() => {
+    if (!browser || $page.url.pathname !== '/') return;
+    const sp = $page.url.searchParams;
+    const city = sp.get('city');
+    if (city) openCity = city;
+    if (sp.get('host') === 'open') { isOpenGame = true; showOpen(); }
+    else if (sp.get('start') === 'open') showOpen();
+    else if (sp.get('start') === 'join') showJoin();
+    else backToDashboard();
+  });
 </script>
 
 <svelte:head>
@@ -569,7 +596,7 @@
     </section>
 
   {:else if view === 'open'}
-    <button class="btn-small btn-ghost mb-3" onclick={() => view = 'intro'}>← Back</button>
+    <button class="btn-small btn-ghost mb-3" onclick={backToDashboard}>← Back</button>
     <h1 class="text-2xl font-bold mb-1">Open a game</h1>
     <p class="text-muted mb-4">{isOpenGame ? 'Listed publicly — locals in your city can request to join.' : 'You’ll get a code to share. Everyone else just joins with it.'}</p>
     <div class="card">
@@ -681,7 +708,7 @@
     </div>
 
   {:else if view === 'join'}
-    <button class="btn-small btn-ghost mb-3" onclick={() => view = 'intro'}>← Back</button>
+    <button class="btn-small btn-ghost mb-3" onclick={backToDashboard}>← Back</button>
     <h1 class="text-2xl font-bold mb-1">Join a game</h1>
     <p class="text-muted mb-4">Enter the code the host shared — or browse open games in your city.</p>
     <div class="card">

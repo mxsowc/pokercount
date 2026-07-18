@@ -254,6 +254,8 @@ export interface User {
   /** Suspended by an admin (from a report). A banned account can't sign in and any
    *  live session is rejected. Never in PublicUser. */
   banned?: boolean;
+  /** Pro subscription, if any (see ProSubscription). Absent = free tier. */
+  pro?: ProSubscription;
   createdAt: string;
 }
 
@@ -285,6 +287,24 @@ export interface PublicUser {
   needsHandle: boolean;
   /** Whether onboarding has been completed/skipped (so the client can prompt once). */
   onboarded?: boolean;
+  /** True for an active Pro member — drives the 👑 crown. Safe to expose publicly. */
+  pro?: boolean;
+}
+
+/** A user's Pro subscription. In Phase 1 this is only ever an admin-granted comp
+ *  (`plan: 'comp'`, no billing); Phase 2's payment webhooks fill the paid fields. */
+export interface ProSubscription {
+  status: 'active' | 'past_due' | 'canceled';
+  /** 'monthly' | 'yearly' (paid) or 'comp' (admin-granted, no billing). */
+  plan: string;
+  /** Paid period end / renewal date. Absent for a comp/perpetual grant. */
+  currentPeriodEnd?: string | null;
+  since: string;
+  /** How it was created: 'admin' (manual) or the payment provider's name. */
+  grantedBy?: string;
+  /** Payment-provider ids — set by Phase 2 webhooks, unused in Phase 1. */
+  customerId?: string;
+  subscriptionId?: string;
 }
 
 /** Who made a change — a signed-in account or an anonymous device. */

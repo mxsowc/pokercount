@@ -152,7 +152,7 @@
     <div class="card">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-xl font-bold m-0">{profileUser.displayName}</h2>
+          <h2 class="text-xl font-bold m-0">{profileUser.displayName}{#if profileUser.pro}<span title="potcount Pro member"> 👑</span>{/if}</h2>
           <div class="text-muted text-sm">@{profileUser.handle}</div>
           {#if profileUser.city}
             <div class="text-muted text-sm flex items-center gap-1 mt-0.5">

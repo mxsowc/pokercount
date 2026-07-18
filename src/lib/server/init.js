@@ -1,6 +1,6 @@
 // One-time server initialization — called from hooks.server.ts.
 import { init as initStore, reapStaleGames, reapAbandonedGames, backfillSettleConfirmations, allGames } from './store.js';
-import { init as initUsers, seedHomeCities, inferCitiesFromCoplayers } from './users.js';
+import { init as initUsers, seedHomeCities, inferCitiesFromCoplayers, seedConfiguredPro } from './users.js';
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
@@ -19,6 +19,7 @@ export function ensureInit() {
   initAuth();
   const usersLoaded = initUsers();
   seedHomeCities(); // one-off: set listed accounts' home city to Amsterdam (marker-guarded)
+  seedConfiguredPro(); // grant a comp Pro to owner handles in PRO_HANDLES (idempotent)
   const socialLoaded = initSocial();
   const reactionsLoaded = initReactions();
   const commentsLoaded = initComments();

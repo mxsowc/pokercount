@@ -101,8 +101,54 @@ export function getByHandle(handle) {
 export function getByProvider(provider, sub) {
   return byId.get(providerIndex.get(`${provider}:${sub}`) || '') || null;
 }
+/** Find the user tied to a Stripe customer — webhook fallback when a subscription
+ *  event carries no metadata.userId. @param {string} customerId @returns {User | null} */
+export function getByStripeCustomer(customerId) {
+  if (!customerId) return null;
+  for (const u of byId.values()) if (u.pro && u.pro.customerId === customerId) return u;
+  return null;
+}
 
 // Public-safe view (never leak pinHash).
+/** Is this an active Pro member? Active or in the dunning grace window (past_due),
+ *  and — for a paid plan — not past its renewal date. A comp grant has no end date.
+ *  @param {User | null | undefined} u @returns {boolean} */
+export function isPro(u) {
+  const p = u && u.pro;
+  if (!p || (p.status !== 'active' && p.status !== 'past_due')) return false;
+  if (p.currentPeriodEnd && new Date(p.currentPeriodEnd).getTime() < Date.now()) return false;
+  return true;
+}
+
+/** Grant or clear a Pro subscription. In Phase 1 this is the admin's manual
+ *  comp/revoke; Phase 2's webhooks call it with the paid subscription object.
+ *  @param {string} userId @param {import('../types').ProSubscription | null} pro @returns {boolean} */
+export function setPro(userId, pro) {
+  const u = byId.get(userId);
+  if (!u) return false;
+  if (pro) u.pro = pro; else delete u.pro;
+  persist();
+  return true;
+}
+
+/** On boot, grant a permanent comp Pro to every handle in the PRO_HANDLES env var
+ *  (comma-separated) — for founder/owner accounts. Idempotent: skips anyone who's
+ *  already Pro, so it never clobbers a real paid subscription. @returns {number} */
+export function seedConfiguredPro() {
+  const raw = process.env.PRO_HANDLES;
+  if (!raw) return 0;
+  let n = 0;
+  for (const h of raw.split(',')) {
+    const u = getByHandle(h.trim());
+    if (u && !isPro(u)) {
+      u.pro = { status: 'active', plan: 'comp', since: now(), grantedBy: 'config' };
+      n++;
+    }
+  }
+  if (n) persist();
+  return n;
+}
+
 /** @param {User | null | undefined} u @returns {PublicUser | null} */
 export function publicUser(u) {
   if (!u) return null;
@@ -116,6 +162,7 @@ export function publicUser(u) {
     city: u.city || null,          // home city — for the by-city leaderboard + finding locals
     needsHandle: !!u.needsHandle, // true until an OAuth user has chosen their name
     onboarded: !!u.onboardedAt,   // whether to prompt the one-time onboarding questions
+    pro: isPro(u),                // active Pro member → 👑 crown (safe to expose)
   };
 }
 

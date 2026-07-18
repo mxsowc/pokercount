@@ -13,7 +13,32 @@
   let user = $derived($page.data?.user ?? null);
   let tab = $state<'login' | 'signup'>('login');
   let stats = $state<any>(null);
-  let config = $state<{ googleClientId?: string | null; appleClientId?: string | null }>({});
+  let config = $state<{ googleClientId?: string | null; appleClientId?: string | null; proEnabled?: boolean; proPrice?: { monthly: string; yearly: string } }>({});
+
+  // ---- potcount Pro (subscription) ------------------------------------------
+  let proBusy = $state(false);
+  async function goPro(plan: 'monthly' | 'yearly') {
+    if (proBusy) return;
+    proBusy = true;
+    try {
+      const res = await fetch('/api/pro/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
+      window.location.href = data.url; // hand off to Stripe's hosted page
+    } catch (e: any) { toast(e.message); proBusy = false; }
+  }
+  async function manageBilling() {
+    if (proBusy) return;
+    proBusy = true;
+    try {
+      const res = await fetch('/api/pro/portal', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Could not open billing.');
+      window.location.href = data.url;
+    } catch (e: any) { toast(e.message); proBusy = false; }
+  }
 
   // Login form
   let loginHandle = $state('');
@@ -480,6 +505,11 @@
     // a new guest, so open on Create account — they can still switch to Log in.
     if (!user && $page.url.searchParams.has('next')) tab = 'signup';
     try { config = await (await fetch('/api/config')).json(); } catch {}
+    // Returning from Stripe Checkout. Entitlement is set by the webhook, which may
+    // land a beat later, so refresh once and nudge the user if it hasn't yet.
+    const pro = $page.url.searchParams.get('pro');
+    if (pro === 'success') { await invalidateAll(); toast('Welcome to potcount Pro 👑'); }
+    else if (pro === 'cancel') toast('Checkout canceled — no charge.');
   });
 
   // (Re)draw Google's official button whenever the signed-out view is shown —
@@ -568,8 +598,8 @@
             <span class="absolute inset-x-0 bottom-0 text-[9px] leading-tight bg-black/55 text-white py-0.5 text-center">{avatarBusy ? '…' : 'Edit'}</span>
           </button>
           <div class="min-w-0">
-            <h2 class="text-xl font-bold m-0 truncate">{user.displayName}</h2>
-            <div class="text-muted text-sm truncate">@{user.handle} · {user.provider}</div>
+            <h2 class="text-xl font-bold m-0 truncate">{user.displayName}{#if user.pro}<span title="potcount Pro member"> 👑</span>{/if}</h2>
+            <div class="text-muted text-sm truncate">@{user.handle} · {user.provider}{#if user.pro} · <span class="text-accent font-semibold">Pro</span>{/if}</div>
             {#if stats?.level}
               {#if stats.level.reliability >= 40}
                 <div class="text-sm font-semibold mt-0.5 {stats.level.level >= 6 ? 'text-gold' : stats.level.level >= 5 ? 'text-accent' : stats.level.level >= 4 ? 'text-info' : 'text-muted'}">
@@ -583,6 +613,37 @@
         </div>
         <button class="btn-small btn-danger shrink-0" onclick={doLogout}>Log out</button>
       </div>
+
+      <!-- potcount Pro -->
+      {#if config.proEnabled}
+        <div class="mt-4 pt-4 border-t border-border-soft">
+          {#if user.pro}
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-semibold text-accent">potcount Pro 👑</div>
+                <div class="text-xs text-muted">
+                  {user.proPlan === 'comp' ? 'Complimentary — thanks for building this 🙌' : 'Thanks for supporting potcount.'}
+                </div>
+              </div>
+              {#if user.proPlan !== 'comp'}
+                <button class="btn-small btn-ghost shrink-0" disabled={proBusy} onclick={manageBilling}>Manage billing</button>
+              {/if}
+            </div>
+          {:else}
+            <div class="font-semibold">Go Pro 👑</div>
+            <p class="text-xs text-muted mt-0.5 mb-2">Unlock your average settle time and support the app.</p>
+            <div class="flex gap-2">
+              <button class="btn-small btn flex-1" disabled={proBusy} onclick={() => goPro('monthly')}>
+                Monthly · {config.proPrice?.monthly ?? '€3.99'}
+              </button>
+              <button class="btn-small btn flex-1" disabled={proBusy} onclick={() => goPro('yearly')}>
+                Yearly · {config.proPrice?.yearly ?? '€29.99'}
+              </button>
+            </div>
+            <p class="text-[11px] text-faint mt-1.5">Cancel anytime · VAT invoice emailed automatically</p>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Display name / handle -->
       <label class="block text-xs text-muted font-medium mb-1 mt-4">Name</label>

@@ -14,7 +14,10 @@ export const load: LayoutServerLoad = ({ request }) => {
   // default their games to. publicUser() stays clean so other people's profiles
   // never leak these fields.
   const user = full
-    ? { ...publicUser(full), country: full.country || null, homeUnit: currencyForCountry(full.country) }
+    ? { ...publicUser(full), country: full.country || null, homeUnit: currencyForCountry(full.country),
+        // Own-account only: the plan lets the UI show "Manage billing" for paid
+        // subs but not for a comp/founder grant (which has nothing to manage).
+        proPlan: full.pro?.plan || null }
     : null;
   return { user };
 };
