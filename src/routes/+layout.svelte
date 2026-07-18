@@ -119,7 +119,7 @@
                class="w-6 h-6 rounded-full object-cover shrink-0" style="box-shadow: 0 0 0 1px rgba(0,0,0,.28);" />
         {:else}
           <span class="relative w-6 h-6 rounded-full grid place-items-center text-[.72rem] font-extrabold text-accent-ink shrink-0"
-                style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #9a86f2, var(--color-accent) 60%, #4a37a6); box-shadow: inset 0 0 0 2px rgba(18,10,40,.38), 0 0 0 1px rgba(0,0,0,.28), 0 0 10px rgba(107,79,224,.42);">
+                style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #9c88c4, var(--color-accent) 60%, #493970); box-shadow: inset 0 0 0 2px rgba(18,10,40,.38), 0 0 0 1px rgba(0,0,0,.28), 0 0 10px rgba(106,82,163,.42);">
             {initial}
           </span>
         {/if}
@@ -163,7 +163,7 @@
            class="w-[22px] h-[22px] rounded-full object-cover" style="box-shadow: 0 0 0 1px rgba(0,0,0,.28);" />
     {:else if user}
       <span class="w-[22px] h-[22px] rounded-full grid place-items-center text-[.66rem] font-extrabold text-accent-ink"
-            style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #9a86f2, var(--color-accent) 60%, #4a37a6); box-shadow: inset 0 0 0 2px rgba(18,10,40,.38), 0 0 0 1px rgba(0,0,0,.28);">{initial}</span>
+            style="font-family: var(--font-display); background: radial-gradient(circle at 50% 34%, #9c88c4, var(--color-accent) 60%, #493970); box-shadow: inset 0 0 0 2px rgba(18,10,40,.38), 0 0 0 1px rgba(0,0,0,.28);">{initial}</span>
     {:else}
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6"/>

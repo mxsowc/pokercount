@@ -20,12 +20,12 @@
   const C = {
     bg: '#0a0b0d', surface: '#16181b', border: 'rgba(255,255,255,0.09)',
     text: '#e9ebed', muted: '#9aa0a6', faint: '#666b70',
-    accent: '#6b4fe0', win: '#34d399', danger: '#ff5f6d', gold: '#f4c451',
+    accent: '#6a52a3', win: '#34d399', danger: '#ff5f6d', gold: '#f4c451',
   };
 
   // The chip logo, inline so the canvas never makes a network request.
   const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-    <circle cx="16" cy="16" r="15.3" fill="#4a37a6"/>
+    <circle cx="16" cy="16" r="15.3" fill="#493970"/>
     <g fill="#eef2f6">
       <rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/>
       <g transform="rotate(60 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
@@ -34,7 +34,7 @@
       <g transform="rotate(240 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
       <g transform="rotate(300 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
     </g>
-    <circle cx="16" cy="16" r="12.1" fill="#6b4fe0"/>
+    <circle cx="16" cy="16" r="12.1" fill="#6a52a3"/>
     <circle cx="16" cy="16" r="9" fill="none" stroke="#f3cd6b" stroke-width="0.9" stroke-dasharray="0.2 2.55" stroke-linecap="round"/>
     <circle cx="16" cy="16" r="7.2" fill="#0d0a1a"/>
     <path transform="translate(16 16) scale(0.6) translate(-12 -11.6)" fill="#f3cd6b"
@@ -86,8 +86,8 @@
     ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, W, H);
     const glow = ctx.createRadialGradient(W / 2, -120, 40, W / 2, -120, 1100);
-    glow.addColorStop(0, 'rgba(107,79,224,0.28)');
-    glow.addColorStop(1, 'rgba(107,79,224,0)');
+    glow.addColorStop(0, 'rgba(106,82,163,0.28)');
+    glow.addColorStop(1, 'rgba(106,82,163,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
 
