@@ -145,12 +145,12 @@
           <div class="text-muted text-xs mt-1">avg buy-in / person</div>
         </div>
         <div class="card text-center !mb-0">
-          <div class="text-2xl font-extrabold font-display">€{data.games.avgPotPerPlayerEUR ?? 0}</div>
-          {#if data.games.avgPotPerPlayerPts}<div class="text-sm font-bold text-muted tabular-nums">{data.games.avgPotPerPlayerPts} pts</div>{/if}
-          {#each Object.entries(data.games.avgPotPerPlayerCrypto ?? {}) as [tk, v]}
+          <div class="text-2xl font-extrabold font-display">€{data.games.avgPotPerGameEUR ?? 0}</div>
+          {#if data.games.avgPotPerGamePts}<div class="text-sm font-bold text-muted tabular-nums">{data.games.avgPotPerGamePts} pts</div>{/if}
+          {#each Object.entries(data.games.avgPotPerGameCrypto ?? {}) as [tk, v]}
             <div class="text-sm font-bold text-muted tabular-nums">{v} {tk}</div>
           {/each}
-          <div class="text-muted text-xs mt-1">pot per player</div>
+          <div class="text-muted text-xs mt-1">avg pot / game</div>
         </div>
         <div class="card text-center !mb-0">
           <div class="text-2xl font-extrabold {data.engagement.avgNetPerPlayerEUR >= 0 ? 'text-win' : 'text-danger'} font-display">€{data.engagement.avgNetPerPlayerEUR}</div>

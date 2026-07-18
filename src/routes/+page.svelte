@@ -290,7 +290,15 @@
       }
       rememberGame(game);
       if (scheduling) toast('Game scheduled — share the invite link');
-      goto(`/game?g=${game.id}&new=1`);
+      // An open/public game lives on its city directory (that's where locals find
+      // it and request a seat, and the shareable page) — land the host there,
+      // with their new table already listed. Private games go straight to the
+      // table to start tracking.
+      if (isOpenGame && openCity.trim()) {
+        goto(`/homegames/${citySlug(openCity)}`);
+      } else {
+        goto(`/game?g=${game.id}&new=1`);
+      }
     } catch (e: any) { toast('Could not reach the server — check your connection'); }
     finally { busy = false; }
   }

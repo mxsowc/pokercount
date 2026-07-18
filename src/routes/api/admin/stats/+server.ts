@@ -89,13 +89,11 @@ export async function POST(event) {
   let ptsSeats = 0, ptsBuyInAmount = 0;
   /** crypto ticker → { seats, amount } */
   const cryptoBuyIn: Record<string, { seats: number; amount: number }> = {};
-  // Pot-per-player: each game's (pot ÷ its players), then averaged across games
-  // so every game counts equally regardless of size (distinct from the pooled
-  // avg-buy-in/person above). Same three currency buckets.
-  let eurPotPP = 0, eurPotPPGames = 0;
-  let ptsPotPP = 0, ptsPotPPGames = 0;
-  /** crypto ticker → { sum, games } */
-  const cryptoPotPP: Record<string, { sum: number; games: number }> = {};
+  // Games per currency bucket, so we can average the whole pot ACROSS games
+  // (avg pot / game — total money on the table per game, regardless of headcount).
+  let eurGames = 0, ptsGames = 0;
+  /** crypto ticker → game count */
+  const cryptoGames: Record<string, number> = {};
   for (const g of played) {
     gameStatus[g.status] = (gameStatus[g.status] || 0) + 1;
     const seats = g.players?.length || 0;
@@ -105,12 +103,11 @@ export async function POST(event) {
     const gameTotal = (g.transactions || []).reduce((s: number, t: any) => s + (t.amount || 0), 0);
     const b = bucketOf(unit, gameTotal);
     if (!b) continue;
-    const perPlayer = seats > 0 ? b.value / seats : 0;
-    if (b.bucket === 'eur') { eurSeats += seats; eurBuyInAmount += b.value; eurPotPP += perPlayer; eurPotPPGames++; }
-    else if (b.bucket === 'pts') { ptsSeats += seats; ptsBuyInAmount += b.value; ptsPotPP += perPlayer; ptsPotPPGames++; }
+    if (b.bucket === 'eur') { eurSeats += seats; eurBuyInAmount += b.value; eurGames++; }
+    else if (b.bucket === 'pts') { ptsSeats += seats; ptsBuyInAmount += b.value; ptsGames++; }
     else {
       (cryptoBuyIn[b.bucket] ??= { seats: 0, amount: 0 }); cryptoBuyIn[b.bucket].seats += seats; cryptoBuyIn[b.bucket].amount += b.value;
-      (cryptoPotPP[b.bucket] ??= { sum: 0, games: 0 }); cryptoPotPP[b.bucket].sum += perPlayer; cryptoPotPP[b.bucket].games++;
+      cryptoGames[b.bucket] = (cryptoGames[b.bucket] || 0) + 1;
     }
   }
   const finishedGames = (gameStatus.ended || 0) + (gameStatus.settled || 0);
@@ -251,11 +248,11 @@ export async function POST(event) {
       avgBuyInPerPlayerCrypto: Object.fromEntries(
         Object.entries(cryptoBuyIn).map(([tk, v]) => [tk, v.seats ? round6(v.amount / v.seats) : 0])
       ),
-      // Pot per player: average of each game's (pot ÷ players).
-      avgPotPerPlayerEUR: eurPotPPGames ? round2(eurPotPP / eurPotPPGames) : 0,
-      avgPotPerPlayerPts: ptsPotPPGames ? round2(ptsPotPP / ptsPotPPGames) : 0,
-      avgPotPerPlayerCrypto: Object.fromEntries(
-        Object.entries(cryptoPotPP).map(([tk, v]) => [tk, v.games ? round6(v.sum / v.games) : 0])
+      // Avg pot per game: the whole pot (buy-ins + top-ups) ÷ number of games.
+      avgPotPerGameEUR: eurGames ? round2(eurBuyInAmount / eurGames) : 0,
+      avgPotPerGamePts: ptsGames ? round2(ptsBuyInAmount / ptsGames) : 0,
+      avgPotPerGameCrypto: Object.fromEntries(
+        Object.entries(cryptoBuyIn).map(([tk, v]) => [tk, cryptoGames[tk] ? round6(v.amount / cryptoGames[tk]) : 0])
       ),
       totalDistinctPlayers: allPlayerCount.size,
       recentGames,
