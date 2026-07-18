@@ -417,7 +417,7 @@
         {#each socialList.users as u (u.id)}
           <a href="/u/{u.handle}" class="flex items-center gap-2.5 p-2.5 no-underline text-text hover:bg-surface-2 rounded-lg transition-colors">
             <span class="w-7 h-7 rounded-full grid place-items-center text-[.65rem] font-extrabold text-accent-ink shrink-0"
-                  style="background: radial-gradient(circle at 50% 34%, #9c88c4, var(--color-accent) 60%, #493970)">
+                  style="background: radial-gradient(circle at 50% 34%, #cf5a68, var(--color-accent) 60%, #5f1420)">
               {(u.displayName || '?').charAt(0).toUpperCase()}
             </span>
             <div>
