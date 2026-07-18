@@ -50,6 +50,24 @@
     finally { deletingId = null; }
   }
 
+  // Ban / un-ban an account from the reports queue. Reuses the held admin password.
+  let banningId = $state<string | null>(null);
+  async function setBan(userId: string, banned: boolean, reportId?: string, name?: string) {
+    if (banned && !confirm(`Ban ${name || 'this account'}? They'll be signed out and can't sign back in.`)) return;
+    banningId = userId;
+    error = '';
+    try {
+      const res = await fetch('/api/admin/ban', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, userId, banned, reportId }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { error = d.error || 'Ban failed'; return; }
+      await load(password);
+    } catch (e: any) { error = e.message; }
+    finally { banningId = null; }
+  }
+
   onMount(() => {
     const saved = browser ? sessionStorage.getItem('pc_admin_pw') : null;
     if (saved) { password = saved; load(saved); }
@@ -77,6 +95,41 @@
       {#if error}<p class="text-danger text-sm mt-2">{error}</p>{/if}
     </div>
   {:else}
+    {#if data.reports?.length}
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-danger mb-2">⚠ Reports ({data.reports.length})</h2>
+      <div class="grid gap-2.5 mb-6">
+        {#each data.reports as r (r.id)}
+          <div class="card !mb-0 !border-danger/30">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="text-sm">
+                {#if r.reporter.handle}<a href="/u/{r.reporter.handle}" target="_blank" rel="noopener" class="text-text font-semibold hover:text-accent">@{r.reporter.handle}</a>{:else}<span class="text-muted">{r.reporter.displayName}</span>{/if}
+                <span class="text-muted">reported</span>
+                {#if r.reported.handle}<a href="/u/{r.reported.handle}" target="_blank" rel="noopener" class="font-semibold {r.reported.banned ? 'text-danger line-through' : 'text-text hover:text-accent'}">@{r.reported.handle}</a>{:else}<span class="text-muted">{r.reported.displayName}</span>{/if}
+                {#if r.reported.banned}<span class="pill !border-danger/50 text-danger ml-1">banned</span>{/if}
+              </div>
+              <span class="text-xs text-faint tabular-nums shrink-0">{fmtDate(r.at)}</span>
+            </div>
+            <div class="mt-1.5"><span class="pill !border-danger/40 text-danger">{r.reasonLabel}</span></div>
+            {#if r.message}<p class="text-muted text-sm mt-2 whitespace-pre-wrap">“{r.message}”</p>{/if}
+            <div class="flex items-center gap-3 mt-3 flex-wrap">
+              {#if r.sharedGame}
+                <a href="/game?g={r.sharedGame.id}" target="_blank" rel="noopener" class="text-xs text-accent hover:underline">Shared game: #{r.sharedGame.code} {r.sharedGame.name}</a>
+              {:else}
+                <span class="text-xs text-faint">No shared game</span>
+              {/if}
+              {#if r.reported.handle}
+                {#if r.reported.banned}
+                  <button class="btn-small btn-ghost ml-auto" disabled={banningId === r.reported.id} onclick={() => setBan(r.reported.id, false)}>{banningId === r.reported.id ? '…' : 'Un-ban'}</button>
+                {:else}
+                  <button class="btn-small btn-danger ml-auto" disabled={banningId === r.reported.id} onclick={() => setBan(r.reported.id, true, r.id, '@' + r.reported.handle)}>{banningId === r.reported.id ? '…' : 'Ban account'}</button>
+                {/if}
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-2">Users</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
       <div class="card text-center !mb-0">

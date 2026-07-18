@@ -955,6 +955,11 @@
   // long internal id if the host opened via a permanent link; prefer the code.)
   const shareUrl = () => `${location.origin}/game?g=${game?.code ?? gameId}`;
   function shareLink() { shareOpen = true; }
+  // Public open games have a standalone shareable page (/g/[id]) a host can post anywhere.
+  function shareOpenGame() {
+    const url = `${location.origin}/g/${gameId}`;
+    navigator.clipboard.writeText(url).then(() => toast('Public link copied — paste it anywhere')).catch(() => toast('Could not copy'));
+  }
   function copyShareLink() {
     navigator.clipboard.writeText(shareUrl()).then(() => toast('Link copied')).catch(() => toast('Could not copy'));
   }
@@ -1331,6 +1336,7 @@
             {#if game.minBuyIn > 0}
               <span class="text-muted tabular-nums">Buy-in: {game.maxBuyIn > 0 ? `${game.minBuyIn}–${game.maxBuyIn}` : game.minBuyIn} blinds</span>
             {/if}
+            <button class="btn-small btn-ghost !py-1 !px-2.5 ml-auto shrink-0" onclick={shareOpenGame}>Share link</button>
           </div>
           {#if game.ownerHandle}
             <div class="flex items-center gap-2 mt-2 text-sm">
@@ -1550,6 +1556,7 @@
             {#if game.minBuyIn > 0}
               <span class="text-muted tabular-nums">Buy-in: {game.maxBuyIn > 0 ? `${game.minBuyIn}–${game.maxBuyIn}` : game.minBuyIn} blinds</span>
             {/if}
+            <button class="btn-small btn-ghost !py-1 !px-2.5 ml-auto shrink-0" onclick={shareOpenGame}>Share link</button>
           </div>
           {#if game.ownerHandle}
             <div class="flex items-center gap-2 mt-2 text-sm">

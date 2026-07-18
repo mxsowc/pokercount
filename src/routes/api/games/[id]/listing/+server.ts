@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { getGame, mutate } from '$lib/server/store.js';
 import { getActor, isGameHost, logEntry } from '$lib/server/helpers.js';
 import { withProfiles } from '$lib/server/helpers.js';
+import { normFormat } from '$lib/formats.js';
 
 // Host-only: publish a game to the public city directory (or pull it back).
 // Body: { visibility?: 'public'|'private', city?: string|null, maxPlayers?: number|null }.
@@ -61,6 +62,11 @@ export async function PUT({ request, params }) {
           delete g.blinds;
           detail.blinds = null;
         }
+      }
+
+      if (body.format !== undefined) {
+        g.format = normFormat(body.format); // unknown/empty → NLH
+        detail.format = g.format;
       }
 
       if (body.visibility !== undefined) {

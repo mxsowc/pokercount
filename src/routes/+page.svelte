@@ -8,8 +8,10 @@
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
   import CityPicker from '$lib/components/CityPicker.svelte';
+  import { FORMATS } from '$lib/formats';
   import { currencyForCountry } from '$lib/utils/currencies';
-  import { citySlug } from '$lib/cities.js';
+  import { citySlug, cityLabel } from '$lib/cities.js';
+  import { nearestCity } from '$lib/city-coords';
 
   // Focus a field as soon as it mounts (e.g. the Join view's code input) so the
   // keypad pops without an extra tap. Used via use:autofocus.
@@ -132,6 +134,17 @@
     } catch {}
   }
 
+  // Home-game join requests this account has sent — so a pending/declined request
+  // is visible somewhere (approved ones also show up seated in the lists above).
+  let sentRequests = $state<any[]>([]);
+  async function loadSentRequests() {
+    if (!browser || !user) return;
+    try {
+      const res = await fetch('/api/me/join-requests');
+      if (res.ok) sentRequests = (await res.json()).requests || [];
+    } catch {}
+  }
+
   // Format an instant as a datetime-local input value (local YYYY-MM-DDTHH:mm).
   function localInputValue(d = new Date()): string {
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -152,6 +165,7 @@
     if (user?.city) openCity = user.city;
     // Prune server-deleted ghosts first, then fold in account-linked games.
     pruneDeletedGames().then(loadAccountGames);
+    loadSentRequests();
     // Deep links into the create form:
     //   ?start=open        → open the form (private default; e.g. /poker-chip-tracker)
     //   ?host=open[&city=…] → open it in OPEN (public) mode, city pre-filled — used
@@ -186,6 +200,25 @@
   let openMaxPlayers = $state('');
   let openMinBuyIn = $state('');
   let openMaxBuyIn = $state('');
+  let openFormat = $state('NLH'); // poker variant for the open game — NLH is the standard
+
+  // Convenience: map the device's location to the nearest curated city (first-party,
+  // no third-party geocoding) and pre-fill the city field.
+  let geoBusy = $state(false);
+  function useMyLocation() {
+    if (!browser || !navigator.geolocation) { toast('Location not available on this device'); return; }
+    geoBusy = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        geoBusy = false;
+        const near = nearestCity(pos.coords.latitude, pos.coords.longitude);
+        if (near) { openCity = cityLabel(near.slug, ''); toast(`Nearest city: ${openCity}`); }
+        else toast("Couldn't match your location to a listed city — type it in");
+      },
+      () => { geoBusy = false; toast('Location permission denied'); },
+      { timeout: 8000, maximumAge: 300000 }
+    );
+  }
 
   const TAGLINES = [
     'Who has the boat?',
@@ -262,6 +295,7 @@
       if (isOpenGame && openCity.trim()) {
         payload.visibility = 'public';
         payload.city = openCity.trim();
+        payload.format = openFormat; // defaults to NLH
         const sb = Number(openSmallBlind), bb = Number(openBigBlind);
         if (sb > 0) payload.smallBlind = sb;
         if (bb > 0) payload.bigBlind = bb;
@@ -421,6 +455,30 @@
         </div>
       {/if}
 
+      <!-- Home-game requests you've sent (approved ones also appear seated above). -->
+      {#if sentRequests.length > 0}
+        <div class="w-full mb-5">
+          <h3 class="sub-label mb-2">🃏 Requests you've sent</h3>
+          {#each sentRequests as r (r.gameId)}
+            <a href="/g/{r.gameId}" class="player-row no-underline text-text hover:border-border">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">{r.name}{#if r.city} <span class="text-muted font-normal">· {r.city}</span>{/if}</div>
+                <div class="text-muted text-xs mt-0.5">
+                  {r.format}{#if r.blinds} · {r.blinds.small}/{r.blinds.big} blinds{/if}{#if r.host} · {r.host.displayName}{/if}
+                </div>
+              </div>
+              {#if r.status === 'approved'}
+                <span class="pill pill-win shrink-0">✓ Approved</span>
+              {:else if r.status === 'rejected'}
+                <span class="pill pill-lose shrink-0">Declined</span>
+              {:else}
+                <span class="pill shrink-0">Waiting</span>
+              {/if}
+            </a>
+          {/each}
+        </div>
+      {/if}
+
       <!-- "Host your own" nudge — shown once after a player's first completed game -->
       {#if games.length > 0 && games.some((g: any) => g.status === 'ended' || g.status === 'settled') && !games.some((g: any) => g.isHost) && browser && !nudgeDismissed}
         <div class="card !bg-surface !border-accent/25 !p-3 w-full mb-3">
@@ -533,8 +591,18 @@
           <div class="banner banner-warn mt-2">You need to <a href="/account?next=/?start=open">sign in</a> to create an open game.</div>
         {/if}
 
-        <label class="block text-xs text-muted font-medium mb-1 mt-3" for="open-city">City</label>
+        <div class="flex items-center justify-between mb-1 mt-3">
+          <label class="block text-xs text-muted font-medium" for="open-city">City</label>
+          <button type="button" class="text-xs text-accent hover:underline disabled:opacity-50" disabled={geoBusy} onclick={useMyLocation}>
+            {geoBusy ? 'Locating…' : '📍 Use my location'}
+          </button>
+        </div>
         <CityPicker bind:value={openCity} id="open-city" placeholder="Start typing — e.g. Amsterdam" />
+
+        <label class="block text-xs text-muted font-medium mb-1 mt-3" for="open-format">Game</label>
+        <select id="open-format" class="input" bind:value={openFormat}>
+          {#each FORMATS as f}<option value={f}>{f}</option>{/each}
+        </select>
 
         <div class="flex gap-2.5 mt-3">
           <div class="flex-1">

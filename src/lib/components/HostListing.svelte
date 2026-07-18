@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ago } from '$lib/utils/time';
+  import { FORMATS } from '$lib/formats';
   // Host-only panel: publish a game to the public /homegames city directory and
   // work the incoming request queue. Self-contained so the (large) game page only
   // needs to drop in <HostListing …/>. All calls go through the parent's `api`
@@ -20,6 +22,7 @@
 
   // Editable fields — seeded once; the host types freely from here.
   let cityInput = $state(game?.city || defaultCity || '');
+  let formatInput = $state(game?.format || 'NLH');
   let maxInput = $state<number | ''>(game?.maxPlayers && game.maxPlayers > 0 ? game.maxPlayers : '');
   let minBuyInput = $state<number | ''>(game?.minBuyIn && game.minBuyIn > 0 ? game.minBuyIn : '');
   let maxBuyInput = $state<number | ''>(game?.maxBuyIn && game.maxBuyIn > 0 ? game.maxBuyIn : '');
@@ -51,6 +54,7 @@
       const body: any = { visibility: nextVisibility };
       if (nextVisibility === 'public') {
         body.city = cityInput.trim();
+        body.format = formatInput;
         body.maxPlayers = maxInput === '' ? 0 : Number(maxInput);
         body.minBuyIn = minBuyInput === '' ? 0 : Number(minBuyInput);
         // A max buy-in only means anything alongside a min; without a min it's cleared.
@@ -97,6 +101,9 @@
     </p>
     <div class="grid gap-2 mt-3 sm:grid-cols-3">
       <input class="input" placeholder="City (e.g. Amsterdam)" bind:value={cityInput} maxlength="60" />
+      <select class="input" bind:value={formatInput} aria-label="Game">
+        {#each FORMATS as f}<option value={f}>{f}</option>{/each}
+      </select>
       <input class="input" type="number" min="2" max="50" placeholder="Max players" bind:value={maxInput} />
       <div class="flex items-center gap-1.5">
         <input class="input w-full" type="number" min="0" step="0.5" placeholder="SB" bind:value={smallBlindInput} aria-label="Small blind" />
@@ -122,7 +129,7 @@
     </button>
   {:else}
     <p class="text-muted text-sm mt-2">
-      Listed in <b>{game.city}</b>{#if game.blinds} · blinds {game.blinds.small}/{game.blinds.big}{/if}{#if game.maxPlayers} · max {game.maxPlayers} players{/if}{#if game.minBuyIn} · {#if game.maxBuyIn}{game.minBuyIn}–{game.maxBuyIn}{:else}{game.minBuyIn}{/if} blinds buy-in{#if game.minBuyIn && !game.maxBuyIn} (fixed){/if}{/if}.
+      Listed in <b>{game.city}</b>{#if game.format} · {game.format}{/if}{#if game.blinds} · blinds {game.blinds.small}/{game.blinds.big}{/if}{#if game.maxPlayers} · max {game.maxPlayers} players{/if}{#if game.minBuyIn} · {#if game.maxBuyIn}{game.minBuyIn}–{game.maxBuyIn}{:else}{game.minBuyIn}{/if} blinds buy-in{#if game.minBuyIn && !game.maxBuyIn} (fixed){/if}{/if}.
     </p>
 
     {#if loadingReqs}
@@ -133,6 +140,9 @@
           <div class="transfer-row">
             <div class="min-w-0">
               <div class="font-semibold truncate">{r.name}{#if r.handle} <span class="text-muted font-normal">@{r.handle}</span>{/if}</div>
+              {#if r.accountCreatedAt}
+                <div class="text-xs text-faint" title="How long they've had a potcount account">Account created {ago(r.accountCreatedAt)}</div>
+              {/if}
               {#if r.message}<div class="text-muted text-sm truncate">{r.message}</div>{/if}
               {#if r.mutual}
                 {@const shown = r.mutual.users.slice(0, 3).map((u: any) => '@' + u.handle).join(', ')}

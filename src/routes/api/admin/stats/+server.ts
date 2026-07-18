@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { timingSafeEqual } from 'node:crypto';
-import { allUsers } from '$lib/server/users.js';
+import { allUsers, getUser } from '$lib/server/users.js';
 import { allGames } from '$lib/server/store.js';
+import { allReports } from '$lib/server/reports.js';
+import { reasonLabel } from '$lib/reports';
 import { userResults } from '$lib/server/insights.js';
 import { isRealGame } from '$lib/engine/stats.js';
 import { converter } from '$lib/server/fx.js';
@@ -226,7 +228,36 @@ export async function POST(event) {
       createdAt: u.createdAt,
     }));
 
+  // Player reports for the review queue: newest-first, still-open only, enriched
+  // with both profiles + a link to a game they've shared (if any), for context.
+  const sharedGame = (a: string, b: string) => {
+    for (const g of games) {
+      const ps = g.players || [];
+      if (ps.some((p: any) => p.userId === a) && ps.some((p: any) => p.userId === b)) {
+        return { id: g.id, code: g.code ?? g.id, name: g.name };
+      }
+    }
+    return null;
+  };
+  const briefUser = (id: string) => {
+    const u = getUser(id);
+    return u
+      ? { id: u.id, handle: u.handle, displayName: u.displayName, banned: !!u.banned }
+      : { id, handle: null, displayName: '(deleted)', banned: false };
+  };
+  const reports = allReports()
+    .filter((r: any) => r.status !== 'closed')
+    .slice()
+    .sort((a: any, b: any) => (a.at < b.at ? 1 : -1))
+    .map((r: any) => ({
+      id: r.id, at: r.at, reason: r.reason, reasonLabel: reasonLabel(r.reason), message: r.message,
+      reporter: briefUser(r.reporterId),
+      reported: briefUser(r.reportedId),
+      sharedGame: sharedGame(r.reporterId, r.reportedId),
+    }));
+
   return json({
+    reports,
     total: users.length,
     active30,
     withEmail,

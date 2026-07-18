@@ -3,6 +3,7 @@
   import { toast } from '$lib/stores/toast';
   import { money, fmtSigned } from '$lib/utils/money';
   import { AWARDS } from '$lib/awards';
+  import { REPORT_REASONS } from '$lib/reports';
   import Sparkline from '$lib/components/Sparkline.svelte';
 
   let handle = $derived($page.params.handle ?? '');
@@ -19,6 +20,28 @@
 
   // Social list overlay
   let socialList = $state<{ title: string; users: any[] } | null>(null);
+
+  // Report player
+  let reportOpen = $state(false);
+  let reportReason = $state('');
+  let reportMessage = $state('');
+  let reportBusy = $state(false);
+  async function submitReport() {
+    if (!reportReason) { toast('Pick a reason'); return; }
+    if (reportReason === 'other' && !reportMessage.trim()) { toast('Describe what happened'); return; }
+    reportBusy = true;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(handle)}/report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reportReason, message: reportMessage.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || 'Could not send report'); return; }
+      reportOpen = false; reportReason = ''; reportMessage = '';
+      toast('Report sent — thanks. An admin will review it.');
+    } catch (e: any) { toast(e.message || 'Could not send report'); }
+    finally { reportBusy = false; }
+  }
 
   // Multi-select game stats
   let selectedGames = $state(new Set<string>());
@@ -340,8 +363,43 @@
         {/if}
       {/each}
     {/if}
+
+    <!-- Report — small, tucked at the very bottom; signed-in, others' profiles only. -->
+    {#if me && profileUser && me.handle !== profileUser.handle}
+      <div class="mt-10 text-center">
+        <button class="text-xs text-faint hover:text-danger transition-colors" onclick={() => { reportReason = ''; reportMessage = ''; reportOpen = true; }}>Report @{profileUser.handle}</button>
+      </div>
+    {/if}
   {/if}
 </div>
+
+<!-- Report player -->
+{#if reportOpen && profileUser}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center"
+       onclick={(e) => { if (e.target === e.currentTarget) reportOpen = false }}>
+    <div class="w-full max-w-[640px] max-h-[85vh] overflow-y-auto bg-surface border border-border-soft rounded-t-2xl p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))]"
+         style="animation: sheetup .2s var(--ease-spring) both" onclick={(e) => e.stopPropagation()}>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-base font-bold m-0">Report {profileUser.displayName}</h3>
+        <button class="btn-small btn-ghost" onclick={() => reportOpen = false}>✕</button>
+      </div>
+      <p class="text-muted text-sm mb-3">What's going on? An admin reviews every report.</p>
+      <div class="grid gap-1.5">
+        {#each REPORT_REASONS as r (r.key)}
+          <button type="button" class="flex items-center gap-2.5 text-left p-2.5 rounded-lg border transition-colors {reportReason === r.key ? 'border-accent bg-accent/10' : 'border-border-soft hover:border-border'}" onclick={() => reportReason = r.key}>
+            <span class="text-lg shrink-0">{r.emoji}</span>
+            <span class="text-sm font-medium">{r.label}</span>
+          </button>
+        {/each}
+      </div>
+      <textarea class="input mt-3 min-h-[80px]" bind:value={reportMessage} maxlength="1000"
+        placeholder={reportReason === 'other' ? 'Describe what happened (required)' : 'Add any detail (optional)'}></textarea>
+      <button class="btn btn-danger w-full mt-3" disabled={reportBusy || !reportReason || (reportReason === 'other' && !reportMessage.trim())} onclick={submitReport}>
+        {reportBusy ? 'Sending…' : 'Send report'}
+      </button>
+    </div>
+  </div>
+{/if}
 
 <!-- Social list overlay -->
 {#if socialList}

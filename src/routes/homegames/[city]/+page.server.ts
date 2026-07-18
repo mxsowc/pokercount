@@ -3,6 +3,7 @@ import { publicUsersByCity, getUser, allUsers } from '$lib/server/users.js';
 import { publicGamesByCity, allGames } from '$lib/server/store.js';
 import { sessionUser } from '$lib/server/helpers.js';
 import { computeLeaderboard } from '$lib/server/insights.js';
+import { publicGameCard } from '$lib/server/directory.js';
 import { converter } from '$lib/server/fx.js';
 import { citySlug, cityLabel, cityCountry, INDEXABLE_MIN_PLAYERS } from '$lib/cities.js';
 
@@ -47,28 +48,9 @@ export function load({ params, request }) {
       });
   }
 
-  // Projection of each open game with host info + player roster for the cards.
-  const openGames = publicGamesByCity(slug).map((g) => {
-    const host = g.ownerId ? getUser(g.ownerId) : null;
-    const roster = g.players
-      .map((p) => ({ name: p.name, handle: p.userId ? getUser(p.userId)?.handle ?? null : null }))
-      .slice(0, 20);
-    return {
-      id: g.id,
-      name: g.name,
-      seated: g.players.length,
-      maxPlayers: g.maxPlayers || 0,
-      minBuyIn: g.minBuyIn || 0,
-      maxBuyIn: g.maxBuyIn || 0,
-      blinds: g.blinds || null,
-      scheduledFor: g.scheduledFor || null,
-      host: host ? { handle: host.handle, displayName: host.displayName, avatar: host.avatar || null } : null,
-      roster,
-      note: g.note || null,
-      youRequested: !!viewer && (g.joinRequests || []).some((r) => r.userId === viewer.id && r.status === 'pending'),
-      youSeated: !!viewer && g.players.some((p) => p.userId === viewer.id),
-    };
-  });
+  // Projection of each open game for the cards (shared with the /g/[id] share page).
+  const gamesAll = allGames();
+  const openGames = publicGamesByCity(slug).map((g) => publicGameCard(g, viewer?.id ?? null, gamesAll));
 
   // Thin pages hurt the whole domain: don't let Google index a city until it has
   // real content — enough public players OR at least one open game. Rendered

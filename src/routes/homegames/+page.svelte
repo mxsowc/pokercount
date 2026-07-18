@@ -1,8 +1,29 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+  import { toast } from '$lib/stores/toast';
+  import { browser } from '$app/environment';
+  import { nearestCity } from '$lib/city-coords';
+
   let { data } = $props();
   const cities = $derived(
     data.cities as { slug: string; label: string; players: number; games: number }[]
   );
+
+  let geoBusy = $state(false);
+  function nearMe() {
+    if (!browser || !navigator.geolocation) { toast('Location not available on this device'); return; }
+    geoBusy = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        geoBusy = false;
+        const near = nearestCity(pos.coords.latitude, pos.coords.longitude);
+        if (near) goto(`/homegames/${near.slug}`);
+        else toast("You're not near a listed city yet — browse below or start one");
+      },
+      () => { geoBusy = false; toast('Location permission denied'); },
+      { timeout: 8000, maximumAge: 300000 }
+    );
+  }
 </script>
 
 <svelte:head>
@@ -17,6 +38,10 @@
       or start your own — keep score for the whole table and track everyone's record over time.
     </p>
   </header>
+
+  <button type="button" class="btn-small btn-secondary mb-5" disabled={geoBusy} onclick={nearMe}>
+    {geoBusy ? 'Locating…' : '📍 Games near me'}
+  </button>
 
   {#if cities.length}
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">Cities</h2>

@@ -29,6 +29,31 @@ export function isRealGame(g) {
   return (g?.players?.length || 0) >= 2 && (g?.transactions?.length || 0) >= 2;
 }
 
+/** How quickly a user pays confirmed debts: average DAYS from a game settling
+ *  (`settlement.computedAt`) to each of their outgoing transfers being confirmed.
+ *  Only confirmed payments in real games count (never a bare unpaid debt).
+ *  @param {Array<import('../types').Game>} games @param {string} userId
+ *  @returns {{ avgDays: number, count: number } | null} */
+export function settleSpeedFor(games, userId) {
+  /** @type {number[]} */
+  const deltas = [];
+  for (const g of games) {
+    const seat = (g.players || []).find((p) => p.userId === userId);
+    if (!seat || !g.settlement?.transfers || !g.settlement.computedAt) continue;
+    if (!isRealGame(g)) continue; // stay consistent with every other counted surface
+    const computedMs = new Date(g.settlement.computedAt).getTime();
+    if (!Number.isFinite(computedMs)) continue;
+    for (const t of g.settlement.transfers) {
+      if (t.from !== seat.id || !t.confirmedAt) continue;
+      const delta = new Date(t.confirmedAt).getTime() - computedMs;
+      if (delta >= 0) deltas.push(delta);
+    }
+  }
+  if (!deltas.length) return null;
+  const avgMs = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+  return { avgDays: Math.ceil(avgMs / 86_400_000), count: deltas.length };
+}
+
 /**
  * @param {Array<import('../types').Game>} games  every game in the system
  * @param {string} userId
@@ -155,34 +180,8 @@ export function computeUserStats(games, userId, convert) {
   }
   const hourly = hHours > 0 ? { rate: round2((hNetC / 100) / hHours), hours: Math.round(hHours * 100) / 100, games: hGames } : null;
 
-  // Settlement speed: how quickly this user pays their debts, measured from the
-  // moment the game settles (`settlement.computedAt`) to when the payment is
-  // confirmed (`confirmedAt`). Confirmation is the trust anchor: two-sided when
-  // the payee has an account (they confirm receipt), one-sided when they don't
-  // (the payer's own "paid" claim auto-confirms it — see the settlement route).
-  // Either way it only counts once confirmed, never on a bare unpaid debt.
-  const settleDeltas = [];
-  for (const g of games) {
-    const seat = (g.players || []).find((p) => p.userId === userId);
-    if (!seat || !g.settlement?.transfers || !g.settlement.computedAt) continue;
-    if (!isRealGame(g)) continue; // stay consistent with every other counted surface
-    const computedMs = new Date(g.settlement.computedAt).getTime();
-    if (!Number.isFinite(computedMs)) continue;
-    for (const t of g.settlement.transfers) {
-      if (t.from !== seat.id) continue;
-      if (!t.confirmedAt) continue;
-      const delta = new Date(t.confirmedAt).getTime() - computedMs;
-      if (delta >= 0) settleDeltas.push(delta);
-    }
-  }
-  let settlementSpeed = null;
-  if (settleDeltas.length >= 1) {
-    const avgMs = settleDeltas.reduce((s, d) => s + d, 0) / settleDeltas.length;
-    settlementSpeed = {
-      avgDays: Math.ceil(avgMs / 86_400_000),
-      count: settleDeltas.length,
-    };
-  }
+  // Settlement speed — how quickly this user pays their debts (see settleSpeedFor).
+  const settlementSpeed = settleSpeedFor(games, userId);
 
   // Table placement across fully-finished games: how often this player finished
   // the night on top, and how often in the top half of the table.

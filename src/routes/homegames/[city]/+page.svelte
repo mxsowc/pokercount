@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { fmtSigned } from '$lib/utils/money';
   import CityPicker from '$lib/components/CityPicker.svelte';
+  import PublicGameCard from '$lib/components/PublicGameCard.svelte';
   import { citySlug } from '$lib/cities.js';
 
   let { data } = $props();
@@ -29,38 +30,6 @@
   const user = $derived($page.data?.user ?? null);
 
   const canonical = $derived(`https://potcount.com/homegames/${slug}`);
-
-  // Request-to-join state, keyed by game id: 'busy' | 'sent' | error string.
-  // Local optimistic overrides only; the persisted truth comes from the server
-  // (youRequested / youSeated), so a reload still shows "Request sent".
-  let reqState = $state<Record<string, string>>({});
-  const joinState = (g: { id: string; youRequested?: boolean; youSeated?: boolean }) =>
-    reqState[g.id] ?? (g.youSeated ? 'seated' : g.youRequested ? 'sent' : 'idle');
-  async function requestJoin(gameId: string) {
-    if (reqState[gameId] === 'busy' || reqState[gameId] === 'sent') return;
-    reqState = { ...reqState, [gameId]: 'busy' };
-    try {
-      const res = await fetch(`/api/games/${gameId}/join-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || 'Could not send request');
-      reqState = { ...reqState, [gameId]: 'sent' };
-    } catch (e: any) {
-      reqState = { ...reqState, [gameId]: e.message || 'Could not send request' };
-    }
-  }
-
-  function seatsLabel(g: { seated: number; maxPlayers: number }) {
-    return g.maxPlayers > 0 ? `${g.seated}/${g.maxPlayers} seats` : `${g.seated} seated`;
-  }
-  // Buy-in label in blinds: a range when a max is set, else a fixed amount.
-  function buyInLabel(g: { minBuyIn: number; maxBuyIn: number }) {
-    if (!g.minBuyIn) return '';
-    return g.maxBuyIn > 0 ? `${g.minBuyIn}–${g.maxBuyIn} blinds` : `${g.minBuyIn} blinds`;
-  }
 
   const faqs = $derived([
     {
@@ -153,70 +122,7 @@
     <h2 class="text-sm font-semibold uppercase tracking-widest text-muted mb-3">Open games in {label}</h2>
     <div class="grid gap-2.5 mb-8">
       {#each openGames as g (g.id)}
-        <div class="card !mb-0">
-          <!-- Title row -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="font-semibold truncate">{g.name}</span>
-            {#if g.blinds}<span class="pill !border-accent/45 text-accent shrink-0 tabular-nums">{g.blinds.small}/{g.blinds.big} blinds</span>{/if}
-            {#if g.scheduledFor}<span class="pill shrink-0">scheduled</span>{/if}
-          </div>
-
-          <!-- Details grid -->
-          <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted mt-2 tabular-nums">
-            <span>{seatsLabel(g)}</span>
-            {#if g.minBuyIn > 0}<span>Buy-in: {buyInLabel(g)}</span>{/if}
-          </div>
-
-          <!-- Host note -->
-          {#if g.note}
-            <p class="text-sm text-muted mt-2 whitespace-pre-wrap">{g.note}</p>
-          {/if}
-
-          <!-- Host -->
-          {#if g.host}
-            <div class="flex items-center gap-2 mt-3 pt-3 border-t border-border-soft">
-              {#if g.host.avatar}
-                <img src={g.host.avatar} alt="" class="w-6 h-6 rounded-full shrink-0" referrerpolicy="no-referrer" />
-              {/if}
-              <span class="text-sm text-muted">Hosted by <a href="/u/{g.host.handle}" class="text-text font-semibold hover:text-accent">{g.host.displayName}</a></span>
-            </div>
-          {/if}
-
-          <!-- Player roster -->
-          {#if g.roster.length}
-            <div class="flex flex-wrap gap-1.5 mt-2">
-              {#each g.roster as p}
-                {#if p.handle}
-                  <a href="/u/{p.handle}" class="pill no-underline hover:border-accent/50">@{p.handle}</a>
-                {:else}
-                  <span class="pill">{p.name}</span>
-                {/if}
-              {/each}
-            </div>
-          {/if}
-
-          <!-- Join action -->
-          <div class="mt-3">
-            {#if !user}
-              <a href="/account?next=/homegames/{slug}" class="btn-small btn-ghost no-underline">
-                Sign in to request a seat
-              </a>
-            {:else if joinState(g) === 'seated'}
-              <span class="text-win text-sm font-semibold">✓ You're in this game.</span>
-            {:else if joinState(g) === 'sent'}
-              <span class="text-win text-sm font-semibold">✓ Request sent — the host will decide.</span>
-            {:else}
-              <button class="btn-small btn"
-                      disabled={joinState(g) === 'busy'}
-                      onclick={() => requestJoin(g.id)}>
-                {joinState(g) === 'busy' ? 'Sending…' : 'Request to join'}
-              </button>
-              {#if joinState(g) !== 'idle' && joinState(g) !== 'busy'}
-                <span class="text-danger text-sm ml-2">{joinState(g)}</span>
-              {/if}
-            {/if}
-          </div>
-        </div>
+        <PublicGameCard game={g} {user} backTo={`/homegames/${slug}`} />
       {/each}
     </div>
   {/if}

@@ -2,7 +2,30 @@
 // storage), so it recomputes live on each request.
 
 import { computeSettlement } from '../engine/settle.js';
-import { isRealGame } from '../engine/stats.js';
+import { isRealGame, settleSpeedFor } from '../engine/stats.js';
+
+/** Group "time to pay debts" for the players seated in an open game — the mean of
+ *  each seated, account-linked player's own avg-settle-days, shown on the public
+ *  directory so a stranger can gauge how reliably this table settles up.
+ *  Privacy/Pro guardrails: PRIVATE-profile users are excluded entirely (their
+ *  settle-time is a private, Pro-only stat), only the AGGREGATE is ever returned
+ *  (never a per-user number), and it needs at least 2 contributors so it can't be
+ *  traced back to one person. `level` colours it: green <3d, yellow 3–7d, red >7d.
+ *  @param {Game[]} games @param {Array<{ id: string, privacy?: string } | null | undefined>} seatedUsers
+ *  @returns {{ avgDays: number, count: number, level: 'green'|'yellow'|'red' } | null} */
+export function groupSettleDays(games, seatedUsers) {
+  /** @type {number[]} */
+  const perUser = [];
+  for (const u of seatedUsers) {
+    if (!u || (u.privacy || 'public') === 'private') continue; // never use private users' stats
+    const s = settleSpeedFor(games, u.id);
+    if (s) perUser.push(s.avgDays);
+  }
+  if (perUser.length < 2) return null; // aggregate only — hide unless ≥2 people contribute
+  const avg = perUser.reduce((a, b) => a + b, 0) / perUser.length;
+  const level = avg < 3 ? 'green' : avg <= 7 ? 'yellow' : 'red';
+  return { avgDays: Math.round(avg * 10) / 10, count: perUser.length, level };
+}
 
 /** @typedef {import('../types').Game} Game */
 /** @typedef {{ gameId: string, name: string, net: number, unit: string, at: string }} Result */

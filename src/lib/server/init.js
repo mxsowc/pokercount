@@ -4,8 +4,10 @@ import { init as initUsers, seedHomeCities, inferCitiesFromCoplayers } from './u
 import { init as initSocial } from './social.js';
 import { init as initReactions } from './reactions.js';
 import { init as initComments } from './comments.js';
+import { init as initReports } from './reports.js';
 import { init as initNotifications } from './notifications.js';
 import { remindUnsettledDebts } from './debt-reminders.js';
+import { remindUpcomingGames } from './game-reminders.js';
 import { initAuth } from './auth.js';
 import { emailConfigured } from './email.js';
 import { sendDueMonthlySummaries } from './summary.js';
@@ -20,6 +22,7 @@ export function ensureInit() {
   const socialLoaded = initSocial();
   const reactionsLoaded = initReactions();
   const commentsLoaded = initComments();
+  initReports();
   initNotifications();
   const gamesLoaded = initStore();
   // One-time: seed the new "avg settle time" stat for historical games (marks past
@@ -33,7 +36,7 @@ export function ensureInit() {
   // — reap junk before bothering to settle/close it), remind both sides of any
   // debt still unpaid 24h after a game ended, and infer a home city for accounts
   // that never set one from who they consistently play with.
-  const housekeep = () => { reapAbandonedGames(); reapStaleGames(); remindUnsettledDebts(); inferCitiesFromCoplayers(allGames()); };
+  const housekeep = () => { reapAbandonedGames(); reapStaleGames(); remindUnsettledDebts(); remindUpcomingGames(); inferCitiesFromCoplayers(allGames()); };
   housekeep();
   setInterval(housekeep, 3_600_000); // every hour
 

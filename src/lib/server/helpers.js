@@ -14,7 +14,8 @@ import { isFollowing } from './social.js';
 export function sessionUser(request) {
   const cookie = request.headers.get('cookie') || '';
   const uidVal = sessionUid({ headers: { cookie } });
-  return uidVal ? getUser(uidVal) : null;
+  const u = uidVal ? getUser(uidVal) : null;
+  return u && !u.banned ? u : null; // a banned account's live sessions stop working
 }
 
 /** Privacy gate for a user's *detailed* profile data — stats and the

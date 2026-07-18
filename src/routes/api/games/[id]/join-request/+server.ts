@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
+import { getUser } from '$lib/server/users.js';
 import { sessionUser, isGameHost, mutualCoPlayers, httpError } from '$lib/server/helpers.js';
 import { notify } from '$lib/server/notifications.js';
 
@@ -31,6 +32,10 @@ export async function POST({ request, params }) {
       if (g.visibility !== 'public') throw httpError(403, "This game isn't open to requests.");
       if (g.players.some((p: any) => p.userId === su.id)) throw httpError(409, "You're already in this game.");
       if (!Array.isArray(g.joinRequests)) g.joinRequests = [];
+      // A declined request is final — the host said no, so no re-requesting this game.
+      if (g.joinRequests.some((r: any) => r.userId === su.id && r.status === 'rejected')) {
+        throw httpError(403, 'The host declined your earlier request, so you can’t request this game again.');
+      }
       // Idempotent: one live request per user. A prior pending one is returned as-is.
       const existing = g.joinRequests.find((r: any) => r.userId === su.id && r.status === 'pending');
       if (existing) { result = { request: existing, already: true }; return; }
@@ -68,6 +73,11 @@ export function GET({ request, params }) {
   const hostId = sessionUser(request)?.id;
   const requests = (g0.joinRequests || [])
     .filter((r: any) => r.status === 'pending')
-    .map((r: any) => ({ ...r, mutual: hostId ? mutualCoPlayers(hostId, r.userId) : null }));
+    .map((r: any) => ({
+      ...r,
+      mutual: hostId ? mutualCoPlayers(hostId, r.userId) : null,
+      // Account age is a trust signal — "3 months ago" vs "a couple days ago".
+      accountCreatedAt: getUser(r.userId)?.createdAt || null,
+    }));
   return json({ requests });
 }

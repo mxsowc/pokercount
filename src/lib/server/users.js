@@ -271,6 +271,7 @@ export function createLocal({ handle, displayName, pin, email, newsletter }) {
 export function loginLocal({ handle, pin }) {
   const u = getByHandle(handle);
   if (!u || u.provider !== 'local' || !checkPin(pin, u.pinHash)) fail('Wrong name or passcode', 401);
+  if (u.banned) fail('This account has been suspended.', 403); // after auth, so it's not an enumeration oracle
   u.lastSeenAt = now();
   persist();
   return u;
@@ -282,6 +283,7 @@ export function upsertOAuth({ provider, sub, displayName, avatar, handleHint, em
   const mail = cleanEmail(email);
   let u = getByProvider(provider, sub);
   if (u) {
+    if (u.banned) fail('This account has been suspended.', 403);
     // Returning user: refresh email and the cached OAuth photo, but NEVER clobber
     // a picture the user uploaded themselves (avatarCustom). Preserve their stored
     // newsletter choice (the opt-in checkbox only applies at first sign-up).
@@ -575,6 +577,18 @@ export function markSummarySent(userId, atMs = Date.now()) {
   if (!u) return;
   u.lastSummaryEmailAt = new Date(atMs).toISOString();
   persist();
+}
+
+/** Ban (suspend) or un-ban an account. A banned user can't sign in (loginLocal /
+ *  upsertOAuth reject them) and any live session is rejected by sessionUser, so
+ *  the ban takes effect immediately. Admin action (from a report).
+ *  @param {string} userId @param {boolean} banned @returns {boolean} */
+export function setBanned(userId, banned) {
+  const u = byId.get(userId);
+  if (!u) return false;
+  if (banned) u.banned = true; else delete u.banned;
+  persist();
+  return true;
 }
 
 /** Verify a local account's PIN (for re-confirming a sensitive action like

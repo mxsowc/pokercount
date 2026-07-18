@@ -153,6 +153,10 @@ export interface Game {
    *  set by the host when listing. Amounts are tracked in blinds; this is the
    *  stakes context locals see before requesting a seat. */
   blinds?: { small: number; big: number };
+  /** Poker variant for a public/open game (e.g. 'NLH', 'PLO', 'PLO5', 'Mixed').
+   *  Defaults to 'NLH' (the standard). Only meaningful for public games — private
+   *  code-only games don't collect it. Shown as a pill on the directory. */
+  format?: string;
   /** The host's queue of requests to join this public game. */
   joinRequests?: JoinRequest[];
   settlement?: Settlement;
@@ -200,6 +204,8 @@ export interface NewGameInput {
   maxBuyIn?: number;
   smallBlind?: number;
   bigBlind?: number;
+  /** Poker variant for a public game; defaults to 'NLH'. */
+  format?: string;
   /** Optional host note shown to players (address hint, "BYO chips", etc.). */
   note?: string;
 }
@@ -245,7 +251,24 @@ export interface User {
   onboardedAt?: string | null;
   /** Last time we saw this user signed in (throttled), for the active-users metric. */
   lastSeenAt?: string | null;
+  /** Suspended by an admin (from a report). A banned account can't sign in and any
+   *  live session is rejected. Never in PublicUser. */
+  banned?: boolean;
   createdAt: string;
+}
+
+/** A user's report of another player (see $lib/reports for reasons). Filed from a
+ *  profile, reviewed in the admin panel. */
+export interface Report {
+  id: string;
+  reporterId: string;
+  reportedId: string;
+  /** Reason key from $lib/reports (e.g. 'unpaid', 'cheating', 'other'). */
+  reason: string;
+  /** Free-text detail (required for 'other'). */
+  message: string;
+  at: string;
+  status: 'open' | 'closed';
 }
 
 /** Public-safe view of a user (never includes pinHash). */
