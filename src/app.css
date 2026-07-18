@@ -31,11 +31,11 @@
   --color-text: #e9ebed;
   --color-muted: #919599;
   --color-faint: #60656a;
-  --color-accent: #da7756;
-  --color-accent-2: #e48a6a;
-  --color-accent-b: #b5603f; /* darker end of the accent gradient (was hardcoded 13×) */
-  --color-accent-ink: #1a0800;
-  --color-accent-glow: rgba(218, 119, 86, 0.45);
+  --color-accent: #6b4fe0;
+  --color-accent-2: #8a72ee;
+  --color-accent-b: #5039c2; /* darker end of the accent gradient (was hardcoded 13×) */
+  --color-accent-ink: #f4f1ff; /* near-white ink — accent is dark enough for light text */
+  --color-accent-glow: rgba(107, 79, 224, 0.45);
   --color-win: #34d399;
   --color-win-ink: #04140d;
   --color-win-glow: rgba(52, 211, 153, 0.45);
@@ -72,7 +72,7 @@ body { min-height: 100dvh; }
 /* ambient warm glow + grain */
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
-  background: radial-gradient(130% 78% at 50% -24%, rgba(218,119,86,.10), transparent 56%), var(--color-bg);
+  background: radial-gradient(130% 78% at 50% -24%, rgba(107,79,224,.10), transparent 56%), var(--color-bg);
 }
 body::after {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .04;
@@ -180,7 +180,7 @@ body::after {
   }
   .input:focus {
     @apply border-accent bg-surface;
-    box-shadow: 0 0 0 3px rgba(218,119,86,.16);
+    box-shadow: 0 0 0 3px rgba(107,79,224,.16);
   }
   .input::placeholder { @apply text-faint; }
   .input-sm { @apply py-2; }

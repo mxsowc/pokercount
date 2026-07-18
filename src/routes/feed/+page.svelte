@@ -105,7 +105,7 @@
 
 {#snippet avatar(name: string, size: string)}
   <span class="{size} rounded-full grid place-items-center font-extrabold text-accent-ink shrink-0"
-        style="background: radial-gradient(circle at 50% 34%, #f0a47a, var(--color-accent) 60%, #a85a3a)">{initial(name)}</span>
+        style="background: radial-gradient(circle at 50% 34%, #9a86f2, var(--color-accent) 60%, #4a37a6)">{initial(name)}</span>
 {/snippet}
 
 <!-- Reactions + comments for one result — shared by the single and grouped cards. -->
@@ -158,9 +158,9 @@
   {:else}
     <!-- Tabs -->
     <div class="grid grid-cols-2 gap-1 bg-surface-2 border border-border rounded-xl p-1 mb-4">
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'feed' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'feed' ? 'bg-gradient-to-b from-accent to-[#5039c2] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={() => (tab = 'feed')}>Feed</button>
-      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'leaderboard' ? 'bg-gradient-to-b from-accent to-[#b5603f] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
+      <button class="py-2 rounded-lg font-semibold text-sm transition-all {tab === 'leaderboard' ? 'bg-gradient-to-b from-accent to-[#5039c2] text-accent-ink shadow-md' : 'text-muted hover:text-text'}"
         onclick={showLeaderboard}>Leaderboard</button>
     </div>
 

@@ -8,8 +8,8 @@
       <stop offset="1" stop-color="#070708"/>
     </linearGradient>
     <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#da7756" stop-opacity="0.20"/>
-      <stop offset="1" stop-color="#da7756" stop-opacity="0"/>
+      <stop offset="0" stop-color="#6b4fe0" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#6b4fe0" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
@@ -20,18 +20,18 @@
     <circle cx="990" cy="300" r="430" fill="url(#glow)"/>
 
     <!-- big faint spade watermark, right side -->
-    <path transform="translate(740 95) scale(22)" fill="#da7756" fill-opacity="0.06"
+    <path transform="translate(740 95) scale(22)" fill="#6b4fe0" fill-opacity="0.06"
           d="M12 2C12 2 4.5 8.4 4.5 13.4C4.5 15.9 6.2 17.5 8.2 17.5C9.4 17.5 10.4 16.9 11 16.1C10.8 18.3 10 19.9 8.6 20.9L15.4 20.9C14 19.9 13.2 18.3 13 16.1C13.6 16.9 14.6 17.5 15.8 17.5C17.8 17.5 19.5 15.9 19.5 13.4C19.5 8.4 12 2 12 2Z"/>
 
     <!-- scattered suit accents (dark-on-dark) -->
-    <g font-size="120" font-weight="700" fill="#231915">
+    <g font-size="120" font-weight="700" fill="#1a1530">
       <text x="945" y="500">♥</text>
       <text x="1055" y="585">♦</text>
     </g>
 
     <!-- brand row: orange chip + label -->
     <g transform="translate(90 74) scale(1.9)">
-      <circle cx="16" cy="16" r="15.3" fill="#a85a3a"/>
+      <circle cx="16" cy="16" r="15.3" fill="#4a37a6"/>
       <g fill="#eef2f6">
         <rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/>
         <g transform="rotate(60 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
@@ -40,16 +40,16 @@
         <g transform="rotate(240 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
         <g transform="rotate(300 16 16)"><rect x="13.9" y="0.7" width="4.2" height="5.2" rx="2"/></g>
       </g>
-      <circle cx="16" cy="16" r="12.1" fill="#da7756"/>
+      <circle cx="16" cy="16" r="12.1" fill="#6b4fe0"/>
       <circle cx="16" cy="16" r="9" fill="none" stroke="#f3cd6b" stroke-width="0.9" stroke-dasharray="0.2 2.55" stroke-linecap="round"/>
-      <circle cx="16" cy="16" r="7.2" fill="#140c0a"/>
+      <circle cx="16" cy="16" r="7.2" fill="#0d0a1a"/>
       <path transform="translate(16 16) scale(0.6) translate(-12 -11.6)" fill="#f3cd6b"
             d="M12 2C12 2 4.5 8.4 4.5 13.4C4.5 15.9 6.2 17.5 8.2 17.5C9.4 17.5 10.4 16.9 11 16.1C10.8 18.3 10 19.9 8.6 20.9L15.4 20.9C14 19.9 13.2 18.3 13 16.1C13.6 16.9 14.6 17.5 15.8 17.5C17.8 17.5 19.5 15.9 19.5 13.4C19.5 8.4 12 2 12 2Z"/>
     </g>
-    <text x="178" y="118" font-size="27" font-weight="700" letter-spacing="4" fill="#c7b3a6">POKER HOME GAME TRACKER</text>
+    <text x="178" y="118" font-size="27" font-weight="700" letter-spacing="4" fill="#b0a8d0">POKER HOME GAME TRACKER</text>
 
     <!-- wordmark -->
-    <text x="92" y="350" font-size="150" font-weight="800" letter-spacing="-5" fill="#e9ebed">pot<tspan fill="#da7756">count</tspan></text>
+    <text x="92" y="350" font-size="150" font-weight="800" letter-spacing="-5" fill="#e9ebed">pot<tspan fill="#6b4fe0">count</tspan></text>
 
     <!-- tagline -->
     <text x="96" y="442" font-size="40" fill="#9aa0a6">Track buy-ins &amp; top-ups at your poker night —</text>
@@ -57,6 +57,6 @@
 
     <!-- footer -->
     <text x="96" y="582" font-size="28" fill="#7a7f84">Free · nothing to install · live on every phone</text>
-    <text x="1136" y="582" font-size="32" font-weight="700" text-anchor="end" fill="#da7756">potcount.com</text>
+    <text x="1136" y="582" font-size="32" font-weight="700" text-anchor="end" fill="#6b4fe0">potcount.com</text>
   </g>
 </svg>

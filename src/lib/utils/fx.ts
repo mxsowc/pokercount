@@ -8,7 +8,7 @@ export function haptic(pattern: number | number[] = 12) {
 
 export function celebrate(opts: { particles?: number; spread?: number; power?: number; colors?: string[] } = {}) {
   if (typeof window === 'undefined' || reduce()) return;
-  const { particles = 140, spread = 78, power = 13, colors = ['#da7756', '#f4c451', '#ffffff', '#6ea8ff', '#ff5f6d'] } = opts;
+  const { particles = 140, spread = 78, power = 13, colors = ['#6b4fe0', '#f4c451', '#ffffff', '#6ea8ff', '#ff5f6d'] } = opts;
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999';
   document.body.appendChild(canvas);
