@@ -256,7 +256,7 @@
   <div class="card mt-8">
     <h2 class="text-base font-bold m-0">Host a game in {label}</h2>
     <p class="text-muted mt-1.5 mb-3">Open a table, share one code, and everyone keeps their own score in real time.</p>
-    <a href="/" class="btn no-underline inline-block">Start a home game</a>
+    <a href="/?host=open&city={encodeURIComponent(label)}" class="btn no-underline inline-block">Start a home game</a>
   </div>
 
   <section class="mt-8">

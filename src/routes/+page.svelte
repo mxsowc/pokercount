@@ -152,8 +152,17 @@
     if (user?.city) openCity = user.city;
     // Prune server-deleted ghosts first, then fold in account-linked games.
     pruneDeletedGames().then(loadAccountGames);
-    // Deep link from a landing page (e.g. /poker-chip-tracker) → open the form straight away.
-    if (browser && $page.url.searchParams.get('start') === 'open') showOpen();
+    // Deep links into the create form:
+    //   ?start=open        → open the form (private default; e.g. /poker-chip-tracker)
+    //   ?host=open[&city=…] → open it in OPEN (public) mode, city pre-filled — used
+    //                          by "Start a home game" on the /homegames directory.
+    if (browser) {
+      const sp = $page.url.searchParams;
+      const cityParam = sp.get('city');
+      if (cityParam) openCity = cityParam;
+      if (sp.get('host') === 'open') { isOpenGame = true; showOpen(); }
+      else if (sp.get('start') === 'open') showOpen();
+    }
   });
 
   // Open game form

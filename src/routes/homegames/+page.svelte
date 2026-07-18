@@ -38,13 +38,13 @@
     </div>
   {:else}
     <div class="card">
-      <p class="m-0">No cities yet — be the first. <a href="/" class="text-accent">Start a home game</a> and set your city on your profile to put your town on the map.</p>
+      <p class="m-0">No cities yet — be the first. <a href="/?host=open" class="text-accent">Start a home game</a> and set your city on your profile to put your town on the map.</p>
     </div>
   {/if}
 
   <div class="card mt-8">
     <h2 class="text-base font-bold m-0">Hosting one?</h2>
     <p class="text-muted mt-1.5 mb-3">Open a table, share one code, and everyone keeps their own score. Social play, blinds only.</p>
-    <a href="/" class="btn no-underline inline-block">Start a home game</a>
+    <a href="/?host=open" class="btn no-underline inline-block">Start a home game</a>
   </div>
 </div>
