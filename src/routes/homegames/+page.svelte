@@ -55,7 +55,7 @@
               <span class="pill !border-accent/45 text-accent tabular-nums">{c.games} open</span>
             {/if}
             <span class="text-muted text-sm tabular-nums">
-              {c.players} player{c.players === 1 ? '' : 's'}
+              {c.players} active player{c.players === 1 ? '' : 's'}
             </span>
           </span>
         </a>
