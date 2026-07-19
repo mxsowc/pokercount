@@ -176,6 +176,13 @@ export interface Game {
    *  Defaults to 'NLH' (the standard). Only meaningful for public games — private
    *  code-only games don't collect it. Shown as a pill on the directory. */
   format?: string;
+  /** Cash game (default/absent) or a tournament — where the pool is split by
+   *  finishing place instead of each player cashing out their chip stack. */
+  mode?: 'cash' | 'tournament';
+  /** For a settled tournament: the payout % structure used and the finishing order
+   *  (playerIds, best-first, one per paid place). The money still lands in
+   *  `finalStacks` (payout per seat), so settlement/stats are unchanged. */
+  tournament?: { payouts: number[]; places: string[] };
   /** The host's queue of requests to join this public game. */
   joinRequests?: JoinRequest[];
   /** The host's queue of requests to claim an existing seat (from a device that
@@ -228,6 +235,9 @@ export interface NewGameInput {
   bigBlind?: number;
   /** Poker variant for a public game; defaults to 'NLH'. */
   format?: string;
+  /** 'tournament' opens the game in tournament mode (pool split by finishing place).
+   *  Absent/'cash' = a normal cash game. */
+  mode?: 'cash' | 'tournament';
   /** Optional host note shown to players (address hint, "BYO chips", etc.). */
   note?: string;
 }

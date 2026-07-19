@@ -8,7 +8,7 @@
   import { onMount } from 'svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
   import CityPicker from '$lib/components/CityPicker.svelte';
-  import { FORMATS } from '$lib/formats';
+  import { FORMATS, isTournamentFormat } from '$lib/formats';
   import { currencyForCountry } from '$lib/utils/currencies';
   import { citySlug, cityLabel } from '$lib/cities.js';
   import { nearestCity } from '$lib/city-coords';
@@ -174,6 +174,7 @@
   let openName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
+  let isTournament = $state(false); // private game: tournament mode (pool split by finish)
   let openNote = $state(''); // optional host note shown to players (address, BYO chips…)
   let openBuyIn = $state(''); // table's standard buy-in → seeds the quick-buy on the game page
   // Schedule-for-later: when on, the game is created as a `scheduled` invite lobby
@@ -286,6 +287,7 @@
         payload.visibility = 'public';
         payload.city = openCity.trim();
         payload.format = openFormat; // defaults to NLH
+        if (isTournamentFormat(openFormat)) payload.mode = 'tournament'; // NLH Tournament etc.
         const sb = Number(openSmallBlind), bb = Number(openBigBlind);
         if (sb > 0) payload.smallBlind = sb;
         if (bb > 0) payload.bigBlind = bb;
@@ -295,6 +297,8 @@
         if (mi > 0) payload.minBuyIn = mi;
         const ma = Number(openMaxBuyIn);
         if (ma > 0) payload.maxBuyIn = ma;
+      } else if (isTournament) {
+        payload.mode = 'tournament'; // private game, tournament toggle in More options
       }
       const res = await fetch('/api/games', {
         method: 'POST',
@@ -674,6 +678,15 @@
           <label class="block text-xs text-muted font-medium mb-1 mt-3">Currency</label>
           <CurrencyPicker bind:value={unitInput} />
           <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be "big blinds", "chips", anything.</p>
+
+          <!-- Cash vs tournament. Cash is the default; tournament splits the pool by finish. -->
+          <label class="flex items-start gap-2.5 mt-4 cursor-pointer">
+            <input type="checkbox" bind:checked={isTournament} class="mt-0.5 w-4 h-4 accent-accent shrink-0" />
+            <span>
+              <span class="text-sm font-medium text-text">Tournament</span>
+              <span class="block text-xs text-faint">Everyone plays for one prize pool, split by finishing place at the end (with a proposed payout you can edit). Off = normal cash game.</span>
+            </span>
+          </label>
         {/if}
 
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Standard buy-in (optional)</label>

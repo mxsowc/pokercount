@@ -14,3 +14,9 @@ const BY_UPPER = /** @type {Record<string,string>} */ (
 export function normFormat(f) {
   return BY_UPPER[String(f || '').trim().toUpperCase()] || 'NLH';
 }
+
+/** Does this format denote a tournament (vs a cash game)? Used to auto-set an open
+ *  game's mode from its chosen format. @param {unknown} f @returns {boolean} */
+export function isTournamentFormat(f) {
+  return /tournament/i.test(String(f || ''));
+}

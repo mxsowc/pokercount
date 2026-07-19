@@ -11,6 +11,7 @@
   import QrCode from '$lib/components/QrCode.svelte';
   import CurrencyPicker from '$lib/components/CurrencyPicker.svelte';
   import HostListing from '$lib/components/HostListing.svelte';
+  import TournamentResult from '$lib/components/TournamentResult.svelte';
   import GameThread from '$lib/components/GameThread.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
 
@@ -128,6 +129,7 @@
   // drift from the cents-exact settlement engine (e.g. 1000×0.07 ≠ 69.999…).
   const invested = (pid: string) => (game?.transactions ?? []).filter((t: any) => t.playerId === pid).reduce((s: number, t: any) => s + Math.round(t.amount * 100), 0) / 100;
   const unit = $derived(game?.unit || '€');
+  const isTournament = $derived(game?.mode === 'tournament'); // pool split by finish, not chip cash-out
 
   // ---- Nit game (side game) -------------------------------------------------
   // While on, every seated player "holds a button" until they win a pot. When
@@ -1803,6 +1805,10 @@
 
       <!-- Cash-out section -->
       {@const entered = game.players.filter((p: any) => game.finalStacks[p.id] != null).length}
+      {#if isTournament}
+        <h2 class="section-head mt-6" id="cashout">Finish the tournament</h2>
+        <TournamentResult {game} {api} onSettled={(g) => (game = g)} />
+      {:else}
       <h2 class="section-head mt-6" id="cashout">Cash-out &amp; settle</h2>
       <p class="text-muted text-xs mb-2">Enter how much each player has left at the end — or type their profit/loss and we'll work out the stack. Press <b>Enter</b> to jump to the next player.</p>
       <div class="card">
@@ -1841,6 +1847,7 @@
           <button class="btn-small btn-ghost w-full mt-1" onclick={markRestOut}>{game.players.every((p: any) => game.finalStacks[p.id] == null) ? 'Mark everyone as out (0)' : 'Mark everyone left as out (0)'}</button>
         {/if}
       </div>
+      {/if}
 
       <!-- Balance banner — only meaningful once everyone has cashed out; before
            that the live "counted X of Y" counter above gives running feedback. -->

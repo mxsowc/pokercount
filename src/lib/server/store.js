@@ -14,7 +14,7 @@ import { join } from "node:path";
 // engine modules use relative imports for the same reason. Vite resolves both.
 import { computeSettlement } from '../engine/settle.js';
 import { isRealGame } from '../engine/stats.js';
-import { normFormat } from '../formats.js';
+import { normFormat, isTournamentFormat } from '../formats.js';
 import { citySlug } from '../cities.js';
 
 /** @typedef {import('../types').Game} Game */
@@ -281,7 +281,7 @@ export function publicGamesByCity(slug) {
 }
 
 /** @param {NewGameInput} input @returns {Game} */
-export function createGame({ name, unit, players, code, defaultBuyIn, series, scheduledFor, visibility, city, maxPlayers, minBuyIn, maxBuyIn, smallBlind, bigBlind, format, note }) {
+export function createGame({ name, unit, players, code, defaultBuyIn, series, scheduledFor, visibility, city, maxPlayers, minBuyIn, maxBuyIn, smallBlind, bigBlind, format, mode, note }) {
   const humanCode = code ? normalizeCustomCode(code) : gameCode();
   // Internal id: unguessable, immutable, never shown. Shared links use this, so
   // they keep pointing at THIS game even after `humanCode` is recycled later.
@@ -340,6 +340,10 @@ export function createGame({ name, unit, players, code, defaultBuyIn, series, sc
     }
     game.format = normFormat(format); // default NLH (the standard) — only public games carry a variant
   }
+
+  // Tournament mode: explicit (private "Tournament" toggle) or implied by a
+  // tournament format (open game). Cash is the default — only stamp tournaments.
+  if (mode === 'tournament' || isTournamentFormat(format)) game.mode = 'tournament';
 
   for (const p of players || []) {
     const nm = p && p.name != null ? String(p.name).trim() : '';
