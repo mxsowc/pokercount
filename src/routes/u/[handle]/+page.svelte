@@ -199,7 +199,7 @@
       <div class="text-xs uppercase tracking-widest text-muted font-semibold mb-1.5">All-time{#if stats.gamesPlayed} · {stats.unit}{/if}</div>
       {#if stats.gamesPlayed}
         <div class="text-[2.7rem] leading-none font-extrabold tabular-nums {stats.totalProfit >= 0 ? 'text-win' : 'text-danger'} font-display">{fmtSigned(stats.totalProfit, stats.unit)}</div>
-        <div class="text-muted text-sm mt-2">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}{#if stats.streak && stats.streak.current > 0} · <span class="{stats.streak.kind === 'win' ? 'text-win' : 'text-danger'} font-semibold">{stats.streak.kind === 'win' ? '🔥' : '❄️'} {stats.streak.current}{stats.streak.kind === 'win' ? 'W' : 'L'}</span>{/if}</div>
+        <div class="text-muted text-sm mt-2">across {stats.gamesPlayed} game{stats.gamesPlayed === 1 ? '' : 's'}{#if stats.streak && stats.streak.current >= 3} · <span class="{stats.streak.kind === 'win' ? 'text-win' : 'text-danger'} font-semibold">{stats.streak.kind === 'win' ? '🔥' : '❄️'} {stats.streak.current}{stats.streak.kind === 'win' ? 'W' : 'L'}</span>{/if}</div>
         {#if stats.curve && stats.curve.length >= 2}
           <div class="mt-4">
             {#if stats.levelCurve?.length >= 2}

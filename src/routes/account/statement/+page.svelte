@@ -25,7 +25,9 @@
     if (stats) downloadText(statementFilename(user.handle, 'csv'), buildStatementCSV(user, stats));
   }
 
-  const streakLabel = (s: any) => (!s || !s.current || s.kind === 'none' ? '—' : `${s.current}${s.kind === 'win' ? 'W' : 'L'}`);
+  // A run only counts as a "streak" at 3+ (matches the profile + game-share tag) —
+  // losing one night isn't a cold streak.
+  const streakLabel = (s: any) => (!s || (s.current ?? 0) < 3 || s.kind === 'none' ? '—' : `${s.current}${s.kind === 'win' ? 'W' : 'L'}`);
 </script>
 
 <svelte:head><title>potcount — statement</title></svelte:head>

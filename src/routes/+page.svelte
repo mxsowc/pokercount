@@ -174,7 +174,6 @@
   let openName = $state('');
   let openCode = $state('');
   let openSeats = $state(0);
-  let openSeries = $state('');
   let openNote = $state(''); // optional host note shown to players (address, BYO chips…)
   let openBuyIn = $state(''); // table's standard buy-in → seeds the quick-buy on the game page
   // Schedule-for-later: when on, the game is created as a `scheduled` invite lobby
@@ -313,15 +312,6 @@
       }
       localStorage.setItem('pc_me_' + game.id, game.players[0].id);
       if (game.hostToken) localStorage.setItem('pc_host_' + game.id, game.hostToken);
-      // Tag with series if provided
-      const seriesVal = openSeries.trim();
-      if (seriesVal) {
-        await fetch(`/api/games/${game.id}/meta`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'X-Host-Token': game.hostToken || '' },
-          body: JSON.stringify({ series: seriesVal }),
-        }).catch(() => {});
-      }
       rememberGame(game);
       if (scheduling) toast('Game scheduled — share the invite link');
       // An open/public game lives on its city directory (that's where locals find
@@ -685,10 +675,6 @@
           <CurrencyPicker bind:value={unitInput} />
           <p class="text-muted text-xs mt-1">Pick one or type your own — it can even be "big blinds", "chips", anything.</p>
         {/if}
-
-        <label class="block text-xs text-muted font-medium mb-1 mt-3">Series (optional)</label>
-        <input class="input" bind:value={openSeries} placeholder="e.g. Thursday PLO" maxlength="60" />
-        <p class="text-xs text-faint mt-1">Tag recurring games to track a running leaderboard across sessions.</p>
 
         <label class="block text-xs text-muted font-medium mb-1 mt-3">Standard buy-in (optional)</label>
         <input class="input" bind:value={openBuyIn} inputmode="decimal" placeholder="e.g. 20" />

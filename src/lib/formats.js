@@ -3,7 +3,7 @@
 // default — the standard game — so an unset/unknown value falls back to it.
 
 /** @type {string[]} */
-export const FORMATS = ['NLH', 'PLO', 'PLO5', 'PLO6', 'LHE', 'Mixed', 'Other'];
+export const FORMATS = ['NLH', 'NLH Tournament', 'PLO', 'PLO5', 'PLO6', 'LHE', 'Mixed', 'Other'];
 
 const BY_UPPER = /** @type {Record<string,string>} */ (
   Object.fromEntries(FORMATS.map((f) => [f.toUpperCase(), f]))
