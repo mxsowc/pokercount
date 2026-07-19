@@ -16,6 +16,13 @@ export async function POST({ request, params }) {
   const body = await request.json().catch(() => ({}));
   const approve = body?.action === 'approve';
 
+  // Approving admits someone to the table, so the host must attest they personally
+  // know this player — open games are friends-only, not stranger matchmaking. (Reject
+  // needs no attestation.) Recorded in the log for a clear friends-only trail.
+  if (approve && body?.attested !== true) {
+    return json({ error: 'Confirm you personally know this player before approving.' }, { status: 400 });
+  }
+
   try {
     /** @type {any} */ let decided: any = null;
     const game = mutate(id, (g: any) => {
@@ -54,8 +61,9 @@ export async function POST({ request, params }) {
       g.players.push({ id: uid(6), name, userId: req.userId });
       req.status = 'approved';
       req.decidedAt = new Date().toISOString();
+      req.hostAttested = true; // host confirmed they personally know this player
       decided = req;
-      g.log.push(logEntry(actor, 'approve_join', { playerName: name, detail: { userId: req.userId } }));
+      g.log.push(logEntry(actor, 'approve_join', { playerName: name, detail: { userId: req.userId, hostAttested: true } }));
     });
     if (!game) return json({ error: 'game not found' }, { status: 404 });
 

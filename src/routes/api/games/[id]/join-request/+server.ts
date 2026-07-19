@@ -25,6 +25,14 @@ export async function POST({ request, params }) {
   const body = await request.json().catch(() => ({}));
   const message = body?.message ? String(body.message).trim().slice(0, 200) : '';
 
+  // Attestation gate: open games are for people who already know each other, NOT
+  // for matchmaking strangers into real-money poker. The requester must confirm they
+  // personally know the host and that play is a private, lawful, friendly game. We
+  // record it, so there's a clear trail that the platform is friends-only by design.
+  if (body?.attested !== true) {
+    return json({ error: 'Please confirm you personally know the host — open games are for friends, not strangers.' }, { status: 400 });
+  }
+
   try {
     let result: any = null;
     const game = mutate(id, (g: any) => {
@@ -42,6 +50,7 @@ export async function POST({ request, params }) {
       const req = {
         id: uid(8), userId: su.id, name: su.displayName, handle: su.handle,
         message, status: 'pending', at: new Date().toISOString(), decidedAt: null,
+        attested: true, attestedAt: new Date().toISOString(), // "I know the host, private friendly game"
       };
       g.joinRequests.push(req);
       result = { request: req, already: false };

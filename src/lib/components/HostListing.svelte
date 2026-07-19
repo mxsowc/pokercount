@@ -73,10 +73,15 @@
     }
   }
 
+  // Approving admits someone to your table, so it goes through a confirm step where
+  // the host attests they know the player — open games are friends-only.
+  let confirmId = $state<string | null>(null);
   async function decide(rid: string, action: 'approve' | 'reject') {
     busy = true; err = '';
     try {
-      await api('POST', `/api/games/${game.id}/join-request/${rid}`, { action });
+      // Approve carries the host's attestation (enforced server-side); reject doesn't.
+      await api('POST', `/api/games/${game.id}/join-request/${rid}`, action === 'approve' ? { action, attested: true } : { action });
+      confirmId = null;
       // Approve seats the player server-side; pull a fresh game so the roster updates.
       try { const g = await api('GET', `/api/games/${game.id}`); onUpdate(g); } catch {}
       await loadRequests();
@@ -137,7 +142,7 @@
     {:else if requests.length}
       <div class="grid gap-2 mt-3">
         {#each requests as r (r.id)}
-          <div class="transfer-row">
+          <div class="transfer-row flex-wrap">
             <div class="min-w-0">
               <div class="font-semibold truncate">{r.name}{#if r.handle} <span class="text-muted font-normal">@{r.handle}</span>{/if}</div>
               {#if r.accountCreatedAt}
@@ -152,9 +157,19 @@
               {/if}
             </div>
             <div class="ml-auto flex gap-1.5 shrink-0">
-              <button class="btn-small btn" disabled={busy} onclick={() => decide(r.id, 'approve')}>Approve</button>
-              <button class="btn-small btn-ghost" disabled={busy} onclick={() => decide(r.id, 'reject')}>Reject</button>
+              {#if confirmId === r.id}
+                <button class="btn-small btn" disabled={busy} onclick={() => decide(r.id, 'approve')}>Yes — I know them</button>
+                <button class="btn-small btn-ghost" disabled={busy} onclick={() => (confirmId = null)}>Cancel</button>
+              {:else}
+                <button class="btn-small btn" disabled={busy} onclick={() => (confirmId = r.id)}>Approve</button>
+                <button class="btn-small btn-ghost" disabled={busy} onclick={() => decide(r.id, 'reject')}>Reject</button>
+              {/if}
             </div>
+            {#if confirmId === r.id}
+              <p class="basis-full text-xs text-faint mt-2">
+                Only approve if you <b>personally know</b> {r.name}. Open games are for friends — not for playing with strangers for money, which may be unlawful where you are.
+              </p>
+            {/if}
           </div>
         {/each}
       </div>

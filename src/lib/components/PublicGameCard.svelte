@@ -14,9 +14,9 @@
     if (!browser || !user) return;
     try {
       const pend = JSON.parse(localStorage.getItem('pc_pending_join') || 'null');
-      if (pend && pend.gameId === game.id) {
+      if (pend && pend.gameId === game.id && pend.attested === true) {
         localStorage.removeItem('pc_pending_join');
-        if (!game.youSeated && !game.youRequested && !game.youRejected) send(pend.message || '');
+        if (!game.youSeated && !game.youRequested && !game.youRejected) send(pend.message || '', true);
       }
     } catch {}
   });
@@ -27,6 +27,9 @@
   // 'idle' | 'form' | 'busy' | 'sent' | 'seated' | 'rejected' | error string
   let state = $state<string>('idle');
   let message = $state('');
+  // Attestation: open games are for people who already know each other — you must
+  // confirm you know the host before you can send. Gates the request server-side too.
+  let attest = $state(false);
   const status = $derived(
     state !== 'idle' ? state
       : game.youSeated ? 'seated'
@@ -38,12 +41,12 @@
   // Where to come back to after a mid-flow signup (so the pending request auto-sends).
   const returnTo = $derived(backTo || (browser ? location.pathname + location.search : `/g/${game.id}`));
 
-  async function send(msg: string) {
+  async function send(msg: string, attested: boolean) {
     state = 'busy';
     try {
       const res = await fetch(`/api/games/${game.id}/join-request`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg || undefined }),
+        body: JSON.stringify({ message: msg || undefined, attested }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Could not send request');
@@ -58,13 +61,14 @@
     state = 'form';
   }
   async function submitRequest() {
+    if (!attest) return; // must confirm they know the host first
     if (!user) {
-      if (browser) localStorage.setItem('pc_pending_join', JSON.stringify({ gameId: game.id, message: message.trim() }));
+      if (browser) localStorage.setItem('pc_pending_join', JSON.stringify({ gameId: game.id, message: message.trim(), attested: true }));
       // Send them to sign up, returning here to finish automatically.
       location.href = `/account?next=${encodeURIComponent(returnTo)}`;
       return;
     }
-    await send(message.trim());
+    await send(message.trim(), true);
   }
 </script>
 
@@ -123,9 +127,18 @@
       <div class="flex flex-col gap-2">
         <textarea class="input text-sm min-h-[60px] resize-y" bind:value={message} maxlength="200"
           placeholder="Add a note for the host (optional) — e.g. how you play, who you know"></textarea>
+        <!-- Friends-only attestation. Open games are for people who already know each
+             other — not for playing with strangers for money. -->
+        <label class="flex items-start gap-2 text-xs text-muted mt-0.5 cursor-pointer">
+          <input type="checkbox" bind:checked={attest} class="mt-0.5 w-4 h-4 accent-accent shrink-0" />
+          <span>
+            I personally know {game.host ? game.host.displayName : 'the host'} and this is a private, friendly game.
+            <span class="block text-faint mt-0.5">Open games are for people who already know each other. Playing for money with strangers may be illegal where you live — you're responsible for keeping your game lawful.</span>
+          </span>
+        </label>
         <div class="flex gap-2">
-          <button class="btn-small btn" onclick={submitRequest}>{user ? 'Send request' : 'Create account & send'}</button>
-          <button class="btn-small btn-ghost" onclick={() => (state = 'idle')}>Cancel</button>
+          <button class="btn-small btn" disabled={!attest} onclick={submitRequest}>{user ? 'Send request' : 'Create account & send'}</button>
+          <button class="btn-small btn-ghost" onclick={() => { state = 'idle'; attest = false; }}>Cancel</button>
         </div>
         {#if !user}<p class="text-xs text-faint">You'll make a quick account to send it — your note is kept and sent automatically.</p>{/if}
       </div>
