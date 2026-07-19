@@ -120,7 +120,7 @@ export function withProfiles(game) {
   // other people's account ids + notes) — only the host sees it, via the
   // dedicated host-only endpoint. Strip both from everything served to
   // joiners/SSE. `visibility`/`city`/`maxPlayers` stay (they're not sensitive).
-  const { acquisition, joinRequests, votes, ...safe } = game;
+  const { acquisition, joinRequests, claimRequests, votes, ...safe } = game;
   // A public directory game's payload is served unauthenticated (its id is
   // published on /homegames), so never expose the coordination thread on one —
   // it's only written on private games, but strip defensively here too.

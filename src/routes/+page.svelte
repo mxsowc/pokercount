@@ -355,6 +355,7 @@
       if (!res.ok) { toast(data.error?.includes('not found') ? `No game with code #${code}` : data.error || 'Failed'); return; }
       const gid = data.game?.id || code;
       localStorage.setItem('pc_me_' + gid, data.playerId);
+      if (data.seatToken) localStorage.setItem('pc_seat_' + gid, data.seatToken);
       rememberGame(data.game);
       goto(`/game?g=${gid}`);
     } catch (e: any) { toast('Could not reach the server — check your connection'); }

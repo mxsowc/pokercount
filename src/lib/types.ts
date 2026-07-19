@@ -28,6 +28,25 @@ export interface JoinRequest {
   decidedAt?: string | null;
 }
 
+/** A request to link an EXISTING seat to your account, when you can't prove you
+ *  played it from this device (no seat token). The host approves — they know who
+ *  actually sat at their table — which stops strangers grabbing others' seats. */
+export interface ClaimRequest {
+  id: string;
+  /** Account making the claim. */
+  userId: string;
+  /** The seat being claimed. */
+  playerId: string;
+  /** Snapshot of the claimant's name + handle for the host's queue. */
+  name: string;
+  handle?: string | null;
+  /** The seat's name at request time (so the host sees "wants to be 'Dave'"). */
+  seatName?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  at: string;
+  decidedAt?: string | null;
+}
+
 export interface Transaction {
   id: string;
   playerId: string;
@@ -159,6 +178,9 @@ export interface Game {
   format?: string;
   /** The host's queue of requests to join this public game. */
   joinRequests?: JoinRequest[];
+  /** The host's queue of requests to claim an existing seat (from a device that
+   *  can't prove it played the seat). Host-approved. */
+  claimRequests?: ClaimRequest[];
   settlement?: Settlement;
   /** Prior settlements, archived (not destroyed) each time the game is reopened —
    *  so a locked-in result can't be quietly rewritten after it's been shared. */

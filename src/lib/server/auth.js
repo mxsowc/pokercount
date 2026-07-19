@@ -110,6 +110,23 @@ export function verifyGameToken(token, gameId) {
   return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
+// Seat token: a signed proof that a device holds a SPECIFIC seat. Issued to the
+// device that self-joined the seat, so it can later link that seat to an account
+// with NO host approval (same device that played = it really is their seat). Any
+// other account claiming a seat has to go through the host — this token is the
+// only thing that skips that. Never exposed in the served game body.
+/** @param {string} gameId @param {string} playerId @returns {string} */
+export function signSeatToken(gameId, playerId) {
+  return hmac('seat:' + gameId + ':' + playerId);
+}
+/** @param {string | null | undefined} token @param {string} gameId @param {string} playerId @returns {boolean} */
+export function verifySeatToken(token, gameId, playerId) {
+  if (!token) return false;
+  const expected = Buffer.from(signSeatToken(gameId, playerId));
+  const provided = Buffer.from(String(token));
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
+}
+
 // ---- Email unsubscribe tokens ------------------------------------------------
 // A one-click unsubscribe link in an email can't lean on a session cookie. We
 // sign the userId with the server secret so the link works while logged out, yet

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getGame, mutate, uid } from '$lib/server/store.js';
 import { sessionUser, getActor, logEntry, httpError, withProfiles } from '$lib/server/helpers.js';
+import { signSeatToken } from '$lib/server/auth.js';
 
 export async function POST({ request, params }) {
   const id = params.id.toUpperCase();
@@ -51,7 +52,10 @@ export async function POST({ request, params }) {
       newId = np.id;
       g.log.push(logEntry(actor, 'add_player', { playerId: np.id, playerName: np.name }));
     });
-    return json({ game: withProfiles(game), playerId: newId });
+    // Hand this device a proof it holds this seat, so it can later claim the seat
+    // onto an account without needing the host to approve (same device = it's theirs).
+    const seatToken = newId ? signSeatToken(id, newId) : null;
+    return json({ game: withProfiles(game), playerId: newId, seatToken });
   } catch (e: any) {
     return json({ error: e.message || 'failed' }, { status: e.status || 400 });
   }

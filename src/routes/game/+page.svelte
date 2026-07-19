@@ -99,6 +99,8 @@
       if (pid) h['X-Player-Id'] = pid;
       const ht = localStorage.getItem('pc_host_' + gameId);
       if (ht) h['X-Host-Token'] = ht;
+      const st = localStorage.getItem('pc_seat_' + gameId);
+      if (st) h['X-Seat-Token'] = st; // proof this device played its seat → claim without host approval
     }
     return h;
   }
@@ -414,11 +416,40 @@
   // ---- claim / leave a seat -------------------------------------------------
   async function claimSeat(playerId: string) {
     try {
-      game = await api('POST', `/api/games/${gameId}/claim`, { playerId });
+      const res = await api('POST', `/api/games/${gameId}/claim`, { playerId });
       claimOpen = false;
-      toast('Seat claimed — it’s linked to your account');
+      if (res?.requested) {
+        // No device proof — it's now a request the host approves.
+        claimRequested = true;
+        toast('Claim sent — the host will confirm it’s your seat');
+      } else {
+        game = res.game;
+        toast('Seat claimed — it’s linked to your account');
+      }
     } catch (e: any) { toast(e.message); }
   }
+  let claimRequested = $state(false); // this device sent a claim awaiting host approval
+
+  // Host: the pending seat-claim queue (stripped from the game body, fetched here).
+  let claimReqs = $state<any[]>([]);
+  let claimsLoaded = false;
+  async function loadClaimRequests() {
+    if (!browser || !amHost) { claimReqs = []; return; }
+    try {
+      const r = await api('GET', `/api/games/${gameId}/claim-request`);
+      claimReqs = r.requests || [];
+    } catch { /* host-only endpoint; ignore transient errors */ }
+  }
+  async function decideClaim(rid: string, action: 'approve' | 'reject') {
+    try {
+      const r = await api('POST', `/api/games/${gameId}/claim-request/${rid}`, { action });
+      if (r.game) game = r.game;
+      await loadClaimRequests();
+    } catch (e: any) { toast(e.message); }
+  }
+  $effect(() => {
+    if (amHost && game && !claimsLoaded) { claimsLoaded = true; loadClaimRequests(); }
+  });
 
   async function followPlayer(p: any) {
     if (!p?.handle || followedNow.has(p.userId)) return;
@@ -465,6 +496,7 @@
       const data = await api('POST', `/api/games/${gameId}/join`, { name: myAccount.displayName });
       game = data.game ?? game;
       if (data.playerId && browser) localStorage.setItem('pc_me_' + gameId, data.playerId);
+      if (data.seatToken && browser) localStorage.setItem('pc_seat_' + gameId, data.seatToken);
       haptic(12);
       toast("You're in 🎉");
     } catch (e: any) { toast(e.message); }
@@ -875,6 +907,7 @@
     const res = await api('POST', `/api/games/${gameId}/join`, { name });
     game = res.game;
     if (browser) localStorage.setItem('pc_me_' + gameId, res.playerId);
+    if (res.seatToken && browser) localStorage.setItem('pc_seat_' + gameId, res.seatToken);
     joinOpen = false;
   }
 
@@ -1160,6 +1193,10 @@
           <span>✓ Linked to your account as <b class="text-text">{mySeat.name}</b>.</span>
           <button class="underline hover:text-text" onclick={leaveSeat}>Not you? Leave</button>
         </div>
+      {:else if claimRequested}
+        <div class="banner banner-info mt-3">
+          <span>⏳ Claim sent — the host will confirm it's your seat, then it links to your profile.</span>
+        </div>
       {:else if myAccount && unclaimedSeats.length > 0}
         <div class="banner banner-info mt-3">
           {#if claimOpen}
@@ -1188,6 +1225,31 @@
       {:else if !myAccount}
         <div class="text-xs text-muted mt-3">
           Played in this game? <button class="underline hover:text-text" onclick={signInToClaim}>Sign in to claim your seat</button>.
+        </div>
+      {/if}
+    {/snippet}
+
+    <!-- Host-only: people asking to claim a seat who couldn't prove they played it
+         from their device. The host is the ground truth on who actually sat there. -->
+    {#snippet hostClaimRequests()}
+      {#if amHost && claimReqs.length > 0}
+        <div class="banner banner-warn mt-3">
+          <div class="font-semibold mb-1.5">Seat claims to review ({claimReqs.length})</div>
+          <div class="grid gap-2">
+            {#each claimReqs as r (r.id)}
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm">
+                  {#if r.handle}<a href="/u/{r.handle}" class="font-semibold hover:text-accent">@{r.handle}</a>{:else}<b>{r.name}</b>{/if}
+                  wants to be <b>{r.seatName}</b>
+                </span>
+                <span class="ml-auto flex gap-1.5 shrink-0">
+                  <button class="btn-small btn" onclick={() => decideClaim(r.id, 'approve')}>Approve</button>
+                  <button class="btn-small btn-ghost" onclick={() => decideClaim(r.id, 'reject')}>Reject</button>
+                </span>
+              </div>
+            {/each}
+          </div>
+          <p class="text-faint text-xs mt-2">Only approve people you know actually played that seat.</p>
         </div>
       {/if}
     {/snippet}
@@ -1596,6 +1658,7 @@
       {/if}
 
       {@render claimBanner()}
+      {@render hostClaimRequests()}
 
       <!-- Identity: a thin line, not a full banner (only once you're seated/editing) -->
       {#if !identityDismissed}
@@ -1868,6 +1931,7 @@
       </div>
 
       {@render claimBanner()}
+      {@render hostClaimRequests()}
 
       <!-- My balance callout -->
       {#if bal}
