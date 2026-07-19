@@ -797,7 +797,7 @@
   }
 
   async function closeGame() {
-    if (!(await askConfirm('Lock in the final standings for everyone? Anyone can reopen it later.', 'Lock in'))) return;
+    if (!(await askConfirm('Lock in the final standings for everyone? Only the host can reopen it later.', 'Lock in'))) return;
     try {
       game = await api('POST', `/api/games/${gameId}/close`);
       showShareBanner = false;
@@ -1555,7 +1555,7 @@
            the standings above are already live for everyone. -->
       <div class="border-t border-border-soft mt-6 pt-4">
         <button class="btn w-full" onclick={closeGame}>Lock in & track who's paid</button>
-        <p class="text-muted text-xs text-center mt-2">Finishes the game and freezes these standings so everyone can tick off who's paid. <b>Until you tap this the game stays open</b>, so you can keep fixing cash-outs or even out a miscount. Any player can reopen it later.</p>
+        <p class="text-muted text-xs text-center mt-2">Finishes the game and freezes these standings so everyone can tick off who's paid. <b>Until you tap this the game stays open</b>, so you can keep fixing cash-outs or even out a miscount. Only the host can reopen it later.</p>
         <!-- Share even without locking in — same shared format as the final summary. -->
         <button class="btn btn-secondary w-full mt-3" onclick={shareResult}>Share your night</button>
       </div>
@@ -2234,9 +2234,15 @@
 
       {@render receiptsLog()}
 
-      <!-- Reopen + activity — anyone in the game can reopen to keep editing. -->
+      <!-- Reopen + activity — reopening a finished game is host-only (its result is
+           shared + counted), so only the host sees the button. -->
+      {@const canReopen = amHost || (!!myAccount && !!game.ownerId && myAccount.id === game.ownerId)}
       <div class="border-t border-border-soft mt-4 pt-4 flex items-center justify-between">
-        <button class="btn-small btn-ghost" onclick={reopenGame}>↩ Reopen to edit</button>
+        {#if canReopen}
+          <button class="btn-small btn-ghost" onclick={reopenGame}>↩ Reopen to edit</button>
+        {:else}
+          <span class="text-faint text-xs">Only the host can reopen this game to edit it.</span>
+        {/if}
         <button class="btn-small btn-ghost" onclick={() => showActivity = !showActivity}>
           {showActivity ? 'Hide' : 'Show'} activity ({(game.log || []).length})
         </button>

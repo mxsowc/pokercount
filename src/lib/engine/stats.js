@@ -66,9 +66,9 @@ export function computeUserStats(games, userId, convert) {
   const convertible = (/** @type {string} */ unit) => conv(1, unit, unit) != null;
 
   let totalGames = 0;
-  /** @type {Array<{id:string,name:string,net:number|null,unit:string,at:string,status:string}>} */
+  /** @type {Array<{id:string,name:string,net:number|null,unit:string,at:string,status:string,tournament:boolean}>} */
   const recent = [];
-  /** @type {Array<{id:string,name:string,unit:string,net:number,invested:number,at:string,hours:number|null,status:string}>} */
+  /** @type {Array<{id:string,name:string,unit:string,net:number,invested:number,at:string,hours:number|null,status:string,place:{better:number,n:number}|null,tournament:boolean}>} */
   const finishedAll = [];
 
   for (const g of games) {
@@ -84,7 +84,7 @@ export function computeUserStats(games, userId, convert) {
     // even while the game runs on. A seat with no final stack yet has no result.
     const cashedOut = !!seat && g.finalStacks != null && g.finalStacks[seat.id] != null;
     if (!finished && !cashedOut) {
-      recent.push({ id: g.id, name: g.name, net: null, unit, at: g.updatedAt, status: g.status });
+      recent.push({ id: g.id, name: g.name, net: null, unit, at: g.updatedAt, status: g.status, tournament: g.mode === 'tournament' });
       continue;
     }
 
@@ -115,7 +115,7 @@ export function computeUserStats(games, userId, convert) {
     const invested = (g.transactions || []).reduce(
       (s, t) => t.playerId === seat.id ? s + Math.round((t.amount || 0) * 100) : s, 0) / 100;
     const hrs = g.hours && seat ? g.hours[seat.id] : null;
-    finishedAll.push({ id: g.id, name: g.name, unit, net, invested, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status, place });
+    finishedAll.push({ id: g.id, name: g.name, unit, net, invested, at: g.updatedAt, hours: typeof hrs === 'number' ? hrs : null, status: g.status, place, tournament: g.mode === 'tournament' });
   }
 
   // Report in the player's most-used convertible currency (default €).
@@ -139,7 +139,7 @@ export function computeUserStats(games, userId, convert) {
       // No exchange rate (chips / big blinds / Bitcoin / custom) — surfaced in the
       // games list in its own unit, but never mixed into the money total.
       otherGames++;
-      recent.push({ id: r.id, name: r.name, net: round2(r.net), unit: r.unit, at: r.at, status: r.status });
+      recent.push({ id: r.id, name: r.name, net: round2(r.net), unit: r.unit, at: r.at, status: r.status, tournament: r.tournament });
       ledger.push({ id: r.id, name: r.name, at: r.at, unit: r.unit, net: round2(r.net), invested: round2(r.invested), hours: r.hours, status: r.status, money: false });
       continue;
     }
@@ -150,7 +150,7 @@ export function computeUserStats(games, userId, convert) {
     if (converted > 0) profitable++;
     if (!best || converted > best.net) best = { id: r.id, name: r.name, net: round2(converted) };
     if (!worst || converted < worst.net) worst = { id: r.id, name: r.name, net: round2(converted) };
-    recent.push({ id: r.id, name: r.name, net: round2(converted), unit: displayUnit, at: r.at, status: r.status });
+    recent.push({ id: r.id, name: r.name, net: round2(converted), unit: displayUnit, at: r.at, status: r.status, tournament: r.tournament });
     moneyResults.push({ at: r.at, net: converted, hours: r.hours });
     ledger.push({ id: r.id, name: r.name, at: r.at, unit: displayUnit, net: round2(converted), invested: round2(convInvested), hours: r.hours, status: r.status, money: true });
   }

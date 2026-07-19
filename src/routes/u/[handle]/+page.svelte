@@ -344,6 +344,7 @@
             </span>
             <span class="font-semibold truncate">{r.name}</span>
             <span class="text-muted text-sm shrink-0">#{r.id}</span>
+            {#if r.tournament}<span class="pill shrink-0 !text-[10px] uppercase tracking-wide">tournament</span>{/if}
             {#if r.net != null}
               <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
             {:else}
@@ -354,6 +355,7 @@
           <a href="/game?g={r.id}" class="transfer-row no-underline text-text hover:border-border">
             <span class="font-semibold truncate">{r.name}</span>
             <span class="text-muted text-sm shrink-0">#{r.id}</span>
+            {#if r.tournament}<span class="pill shrink-0 !text-[10px] uppercase tracking-wide">tournament</span>{/if}
             {#if r.net != null}
               <span class="ml-auto font-bold tabular-nums shrink-0 {r.net >= 0 ? 'text-win' : 'text-danger'}">{fmtSigned(r.net, r.unit)}</span>
             {:else}
