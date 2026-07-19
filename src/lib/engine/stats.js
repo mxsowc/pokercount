@@ -13,6 +13,7 @@
 // convertible), preserving the original single-currency behaviour.
 
 import { computeSettlement } from './settle.js';
+import { ratePlayers, ordinal, SIGMA0 } from './rating.js';
 
 const round2 = (/** @type {number} */ n) => Math.round(n * 100) / 100;
 
@@ -314,54 +315,30 @@ function streakOf(nets) {
  *  @param {number} avgProfit  in display currency
  *  @param {number} avgBuyIn   in display currency
  *  @param {Array<{net:number, invested:number, money:boolean}>} ledger
- *  @param {{games: Array<import('../types').Game>, userId: string}} [ctx]
+ *  @param {{games: Array<import('../types').Game>, userId: string, ratings?: Map<string, {mu:number,sigma:number,games:number}>}} [ctx]
  *         Pass all games + the userId to enable opponent-adjusted rating.
  *  @returns {{level:number, score:number, label:string, reliability:number}} */
 export function computePlayerLevel(gamesPlayed, profitablePct, avgProfit, avgBuyIn, ledger, ctx) {
-  if (gamesPlayed < 5) return { level: 1, label: 'Newcomer', reliability: 0 };
+  // The level is now an OPPONENT-BASED rating (Weng–Lin, see rating.js) — skill is
+  // "who you beat", not profit. Personal money stats (win-rate/ROI/streaks) stay in
+  // the profile as their own numbers; they no longer drive the level. Needs the game
+  // history + this user to rate against real opponents.
+  if (!ctx?.games || !ctx.userId) return { level: 1, label: 'Newcomer', reliability: 0 };
+  const ratings = ctx.ratings || ratePlayers(ctx.games);
+  const r = ratings.get(ctx.userId);
+  if (!r || r.games < 5) return { level: 1, label: 'Newcomer', reliability: 0 };
+  return ratingToLevel(r);
+}
 
-  // --- Personal stats (0–1) ---
-  const winRate = (profitablePct || 0) / 100;
-
-  const safeBuyIn = Math.max(avgBuyIn || 0, 0.01);
-  const roi = (avgProfit || 0) / safeBuyIn;
-  const roiNorm = Math.max(0, Math.min(1, roi + 0.5));
-
-  const moneyGames = (ledger || []).filter((g) => g.money && g.invested > 0);
-  let consistency = 0.5;
-  if (moneyGames.length >= 3) {
-    const rois = moneyGames.map((g) => Math.max(-1, Math.min(2, g.net / g.invested)));
-    const mean = rois.reduce((s, r) => s + r, 0) / rois.length;
-    const variance = rois.reduce((s, r) => s + (r - mean) ** 2, 0) / rois.length;
-    consistency = Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / 1.5));
-  }
-
-  const effConsistency = roi >= 0 ? consistency : 0;
-  let skillScore = 0.35 * winRate + 0.35 * roiNorm + 0.15 * effConsistency;
-
-  // --- Opponent strength adjustment (adds up to ±0.15) ---
-  let pairCount = 0;
-  if (ctx?.games && ctx.userId) {
-    const peers = buildBaseScores(ctx.games);
-    const myBase = peers.get(ctx.userId) ?? 50;
-    const pa = pairwiseAdj(ctx.games, ctx.userId, myBase, peers);
-    skillScore = Math.max(0, Math.min(1, skillScore + pa.adj / 100));
-    pairCount = pa.pairs;
-  } else {
-    skillScore += 0.15 * 0.5;
-  }
-
-  // --- Confidence ramp ---
-  const confidence = Math.min(1, (gamesPlayed - 5) / 25);
-  const finalScore = skillScore * (0.25 + 0.75 * confidence);
-  const score = Math.round(finalScore * 100);
-
-  // --- Reliability (0–95%) ---
-  const gameRel = Math.sqrt(Math.min(1, gamesPlayed / 50)) * 85;
-  const pairRel = Math.min(10, (pairCount / 200) * 100);
-  const reliability = Math.min(95, Math.round(gameRel + pairRel));
-
+/** Map a Weng–Lin rating to the displayed {level, label, reliability}. The
+ *  conservative skill (mu − 3σ) is scaled onto the 0–100 band range; reliability is
+ *  driven by how much the uncertainty (σ) has shrunk from a new player's.
+ *  @param {{mu:number, sigma:number}} r */
+function ratingToLevel(r) {
+  // ordinal ~0 (new) .. ~40 (elite, low uncertainty) → 0..100 score.
+  const score = Math.max(0, Math.min(100, (ordinal(r.mu, r.sigma) / 40) * 100));
   const { level, label } = scoreToLevel(score);
+  const reliability = Math.max(0, Math.min(95, Math.round((1 - r.sigma / SIGMA0) * 100)));
   return { level, label, reliability };
 }
 
@@ -373,128 +350,22 @@ function scoreToLevel(score) {
   return { level: 2, label: 'Beginner' };
 }
 
-/** Build the level curve — one decimal-level value per money game, oldest→newest.
- *  Pre-computes opponent adjustment once from the full history, then replays
- *  personal stats incrementally so the curve is cheap to produce.
+/** Build the level curve — one decimal-level value per rated game, oldest→newest,
+ *  from the opponent-based rating replay (rating.js). `ledger` is unused now (kept
+ *  for the caller's signature).
  *  @param {Array<{net:number, invested:number, money:boolean}>} ledger
  *  @param {Array<import('../types').Game>} [games]
  *  @param {string} [userId]
  *  @returns {number[]} */
 function buildLevelCurve(ledger, games, userId) {
-  const moneyLedger = (ledger || []).filter((g) => g.money && g.invested > 0);
-  if (moneyLedger.length < 5) return [];
-
-  let oppAdj = 0.15 * 0.5;
-  if (games && userId) {
-    const peers = buildBaseScores(games);
-    const myBase = peers.get(userId) ?? 50;
-    oppAdj = pairwiseAdj(games, userId, myBase, peers).adj / 100;
-  }
-
-  const out = [];
-  let runGames = 0, runWins = 0, runProfitC = 0, runInvestedC = 0;
-  /** @type {Array<{net:number, invested:number}>} */
-  const runEntries = [];
-
-  for (const entry of moneyLedger) {
-    runGames++;
-    runProfitC += Math.round(entry.net * 100);
-    runInvestedC += Math.round(entry.invested * 100);
-    if (entry.net > 0) runWins++;
-    runEntries.push(entry);
-
-    if (runGames < 5) continue;
-
-    const winRate = runWins / runGames;
-    const avgBI = Math.max(runInvestedC / 100 / runGames, 0.01);
-    const roi = (runProfitC / 100 / runGames) / avgBI;
-    const roiNorm = Math.max(0, Math.min(1, roi + 0.5));
-
-    let consistency = 0.5;
-    if (runEntries.length >= 3) {
-      const rois = runEntries.map((g) => Math.max(-1, Math.min(2, g.net / g.invested)));
-      const mean = rois.reduce((s, r) => s + r, 0) / rois.length;
-      const variance = rois.reduce((s, r) => s + (r - mean) ** 2, 0) / rois.length;
-      consistency = Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / 1.5));
-    }
-    const effConsistency = roi >= 0 ? consistency : 0;
-
-    let skillScore = 0.35 * winRate + 0.35 * roiNorm + 0.15 * effConsistency;
-    skillScore = Math.max(0, Math.min(1, skillScore + oppAdj));
-
-    const confidence = Math.min(1, (runGames - 5) / 25);
-    const score = Math.round(skillScore * (0.25 + 0.75 * confidence) * 100);
-    out.push(scoreToLevel(score).level);
-  }
-  return out;
+  if (!games || !userId) return [];
+  // Replay the whole history once, keeping this user's rating after each of their
+  // rated games → a level value per point. Only meaningful once they hit 5 games.
+  const r = ratePlayers(games, { history: true }).get(userId);
+  if (!r || r.curve.length < 5) return [];
+  return r.curve.slice(4).map((pt) => {
+    const score = Math.max(0, Math.min(100, (pt.ordinal / 40) * 100));
+    return scoreToLevel(score).level;
+  });
 }
 
-/** Lightweight base score (0–100) for every user with 3+ finished games.
- *  Uses only win rate + ROI (no consistency, no opponent adj) so it can serve as
- *  the opponent-strength proxy without circular dependency.
- *  @param {Array<import('../types').Game>} games
- *  @returns {Map<string,number>} userId → baseScore */
-function buildBaseScores(games) {
-  /** @type {Map<string, {g:number, w:number, rs:number}>} */
-  const acc = new Map();
-  for (const g of games) {
-    if (!isRealGame(g) || (g.status !== 'ended' && g.status !== 'settled')) continue;
-    if (!g.settlement?.lines) continue;
-    for (const seat of g.players) {
-      if (!seat.userId) continue;
-      const ln = g.settlement.lines.find((l) => l.playerId === seat.id);
-      if (!ln || ln.net == null) continue;
-      const inv = (g.transactions || []).reduce(
-        (s, t) => t.playerId === seat.id ? s + Math.round((t.amount || 0) * 100) : s, 0) / 100;
-      if (inv <= 0) continue;
-      let e = acc.get(seat.userId);
-      if (!e) { e = { g: 0, w: 0, rs: 0 }; acc.set(seat.userId, e); }
-      e.g++;
-      if (ln.net > 0) e.w++;
-      e.rs += Math.max(-1, Math.min(2, ln.net / inv));
-    }
-  }
-  /** @type {Map<string,number>} */
-  const scores = new Map();
-  for (const [uid, d] of acc) {
-    if (d.g < 3) continue;
-    const wr = d.w / d.g;
-    const roiN = Math.max(0, Math.min(1, d.rs / d.g + 0.5));
-    scores.set(uid, Math.round((0.50 * wr + 0.50 * roiN) * 100));
-  }
-  return scores;
-}
-
-/** Pairwise Elo adjustment across all shared games. For each (me, opponent) pair
- *  in every finished game, computes expected-vs-actual outcome and averages the
- *  surprise. Returns adjustment in [−15, +15] on the 0–100 scale plus the pair count.
- *  @param {Array<import('../types').Game>} games
- *  @param {string} userId
- *  @param {number} myBase   0-100 base score
- *  @param {Map<string,number>} peers  userId → base score
- *  @returns {{adj:number, pairs:number}} */
-function pairwiseAdj(games, userId, myBase, peers) {
-  let delta = 0, pairs = 0;
-  for (const g of games) {
-    if (!isRealGame(g) || (g.status !== 'ended' && g.status !== 'settled')) continue;
-    if (!g.settlement?.lines) continue;
-    const seat = g.players.find((p) => p.userId === userId);
-    if (!seat) continue;
-    const myLn = g.settlement.lines.find((l) => l.playerId === seat.id);
-    if (!myLn || myLn.net == null) continue;
-    for (const opp of g.players) {
-      if (opp.id === seat.id || !opp.userId) continue;
-      const os = peers.get(opp.userId);
-      if (os == null) continue;
-      const oppLn = g.settlement.lines.find((l) => l.playerId === opp.id);
-      if (!oppLn || oppLn.net == null) continue;
-      const expected = 1 / (1 + Math.pow(10, (os - myBase) / 30));
-      const actual = myLn.net > oppLn.net ? 1 : myLn.net === oppLn.net ? 0.5 : 0;
-      delta += actual - expected;
-      pairs++;
-    }
-  }
-  if (pairs < 5) return { adj: 15 * 0.5, pairs };
-  const avg = delta / pairs;
-  return { adj: Math.max(-15, Math.min(15, avg * 30)), pairs };
-}
